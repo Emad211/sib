@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>داشبورد مدیریت - سیستم درمانگاه</title>
+
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: #f1f5f9;
+            display: flex;
+        }
+
+        /* =============== Sidebar =============== */
+        .sidebar {
+            width: 280px;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            border-left: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.1));
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .brand {
+            font-size: 1.4rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #a78bfa, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+        }
+
+        .brand-icon { 
+            font-size: 1.25rem;
+            width: 40px;
+            height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.06);
+            color: var(--sidebar-text);
+            box-shadow: 0 8px 24px rgba(15,23,42,0.6), 0 0 18px rgba(139,92,246,0.08);
+            filter: none;
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .brand-icon:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(15,23,42,0.7), 0 0 26px rgba(139,92,246,0.12); }
+
+        .sidebar-user {
+            padding: 1.25rem;
+            margin: 1rem;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(236, 72, 153, 0.1));
+            border-radius: 16px;
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .sidebar-user::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.3), transparent);
+            border-radius: 50%;
+            transform: translate(30%, -30%);
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #8b5cf6, #ec4899);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .user-role {
+            font-size: 0.7rem;
+            color: #a78bfa;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 0.25rem;
+        }
+
+        .user-name {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .nav-menu {
+            flex: 1;
+            padding: 0.75rem;
+            overflow-y: auto;
+        }
+
+        .nav-section { margin-bottom: 1.5rem; }
+
+        .nav-section-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+            letter-spacing: 2px;
+            padding: 0 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            color: #94a3b8;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            margin-bottom: 0.25rem;
+            position: relative;
+        }
+
+        .nav-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            transform: translateX(-4px);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(124, 58, 237, 0.9));
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 60%;
+            background: #fff;
+            border-radius: 4px;
+        }
+
+        .nav-icon {
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .logout-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            color: #fca5a5;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .logout-link:hover {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            transform: translateX(-4px);
+        }
+
+        /* =============== Main Content =============== */
+        .main-content {
+            flex: 1;
+            padding: 1.5rem 2rem;
+            overflow-y: auto;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .welcome-section h1 {
+            font-size: 1.8rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.25rem;
+        }
+
+        .welcome-section p {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .top-bar-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .time-display {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #a78bfa;
+            padding: 0.6rem 1.25rem;
+            border-radius: 12px;
+            font-weight: 800;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .date-display {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #6ee7b7;
+            padding: 0.6rem 1.25rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        /* =============== Stats Grid =============== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.06);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            transform: translate(40%, -40%);
+            opacity: 0.15;
+        }
+
+        .stat-card.purple::before { background: radial-gradient(circle, #8b5cf6, transparent); }
+        .stat-card.green::before { background: radial-gradient(circle, #10b981, transparent); }
+        .stat-card.blue::before { background: radial-gradient(circle, #3b82f6, transparent); }
+        .stat-card.orange::before { background: radial-gradient(circle, #f59e0b, transparent); }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .stat-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .stat-card.purple .stat-icon { background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1)); }
+        .stat-card.green .stat-icon { background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1)); }
+        .stat-card.blue .stat-icon { background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); }
+        .stat-card.orange .stat-icon { background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1)); }
+
+        /* stat-trend removed per design: percentage badges hidden */
+
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 900;
+            color: #fff;
+            margin-bottom: 0.3rem;
+            line-height: 1.1;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        /* =============== Dashboard Grid =============== */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card-title .icon {
+            font-size: 1.3rem;
+        }
+
+        /* =============== Chart Section =============== */
+        .chart-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(0,0,0,0.2);
+            padding: 0.4rem 0.6rem;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .control-group label {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            font-weight: 700;
+        }
+
+        .control-select {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0.2rem;
+        }
+
+        .control-select:focus { outline: none; }
+        .control-select option { background: #1e293b; color: #fff; }
+
+        .quick-btns {
+            display: flex;
+            gap: 0.3rem;
+        }
+
+        .quick-btn {
+            padding: 0.45rem 0.75rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #94a3b8;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover { background: rgba(139, 92, 246, 0.2); color: #a78bfa; border-color: rgba(139, 92, 246, 0.3); }
+        .quick-btn.active { background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; border-color: transparent; }
+
+        .btn-refresh {
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .btn-refresh:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 450px;
+            margin-top: 1rem;
+        }
+
+        /* =============== Quick Actions =============== */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+        }
+
+        .action-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: 14px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.04);
+            text-decoration: none;
+            color: #e2e8f0;
+            transition: all 0.3s;
+        }
+
+        .action-item:hover {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.3);
+            transform: translateX(-5px);
+        }
+
+        .action-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+
+        .action-item:nth-child(1) .action-icon-box { background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1)); }
+        .action-item:nth-child(2) .action-icon-box { background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1)); }
+        .action-item:nth-child(3) .action-icon-box { background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); }
+        .action-item:nth-child(4) .action-icon-box { background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(236, 72, 153, 0.1)); }
+        .action-item:nth-child(5) .action-icon-box { background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1)); }
+
+        .action-text {
+            flex: 1;
+        }
+
+        .action-text h4 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        .action-text p {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .action-arrow {
+            color: #64748b;
+            font-size: 1.2rem;
+            transition: transform 0.2s;
+        }
+
+        .action-item:hover .action-arrow {
+            transform: translateX(-5px);
+            color: #a78bfa;
+        }
+
+        /* =============== Bottom Grid =============== */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .info-card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .info-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .info-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .info-card:nth-child(1) .info-card-icon { background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1)); }
+        .info-card:nth-child(2) .info-card-icon { background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); }
+        .info-card:nth-child(3) .info-card-icon { background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(236, 72, 153, 0.1)); }
+
+        .info-card-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .info-list {
+            list-style: none;
+        }
+
+        .info-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.6rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            font-size: 0.85rem;
+        }
+
+        .info-list li:last-child { border-bottom: none; }
+
+        .info-list .label { color: #94a3b8; }
+        .info-list .value { font-weight: 700; color: #fff; }
+
+        /* =============== Responsive =============== */
+        @media (max-width: 1400px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .bottom-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { 
+                width: 70px; 
+            }
+            .sidebar-header .brand span:not(.brand-icon),
+            .sidebar-user,
+            .nav-section-title,
+            .nav-item span:not(.nav-icon),
+            .logout-link span:not(.nav-icon) { 
+                display: none; 
+            }
+            .nav-item, .logout-link { 
+                justify-content: center; 
+                padding: 0.85rem; 
+            }
+            .main-content { padding: 1rem; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand">
+                <span class="brand-icon">🏥</span>
+                <span>درمانگاه سیب</span>
+            </div>
+        </div>
+
+        <div class="sidebar-user">
+            <div class="user-avatar">👤</div>
+            <div class="user-role">مدیر سیستم</div>
+            <div class="user-name">{{ g.user.full_name }}</div>
+        </div>
+
+        <nav class="nav-menu">
+            <div class="nav-section">
+                <div class="nav-section-title">منوی اصلی</div>
+                <a href="{{ url_for('manager.index') }}" class="nav-item active">
+                    <span class="nav-icon">📊</span>
+                    <span>داشبورد</span>
+                </a>
+                <a href="{{ url_for('manager.reports') }}" class="nav-item">
+                    <span class="nav-icon">📈</span>
+                    <span>گزارشات</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">مدیریت</div>
+                <a href="{{ url_for('manager.tariffs_index') }}" class="nav-item">
+                    <span class="nav-icon">💰</span>
+                    <span>تعرفه‌ها</span>
+                </a>
+                <a href="{{ url_for('manager.insurance_arrears') }}" class="nav-item">
+                    <span class="nav-icon">💳</span>
+                    <span>معوقات بیمه</span>
+                </a>
+                <a href="{{ url_for('manager.payroll') }}" class="nav-item">
+                    <span class="nav-icon">💵</span>
+                    <span>حقوق</span>
+                </a>
+                <a href="{{ url_for('manager.users_management') }}" class="nav-item">
+                    <span class="nav-icon">👥</span>
+                    <span>کاربران</span>
+                </a>
+                <a href="{{ url_for('manager.activity_logs') }}" class="nav-item">
+                    <span class="nav-icon">📋</span>
+                    <span>لاگ فعالیت‌ها</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">تنظیمات</div>
+                <a href="{{ url_for('manager.settings') }}" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    <span>تنظیمات</span>
+                </a>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <a href="{{ url_for('auth.logout') }}" class="logout-link">
+                <span class="nav-icon">🚪</span>
+                <span>خروج</span>
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="top-bar">
+            <div class="welcome-section">
+                <h1>سلام، {{ g.user.full_name }} 👋</h1>
+                <p>به داشبورد مدیریت خوش آمدید</p>
+            </div>
+            <div class="top-bar-actions">
+                <div class="date-display" id="current-date"></div>
+                <div class="time-display">
+                    <span>🕐</span>
+                    <span id="current-time"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card purple">
+                <div class="stat-header">
+                    <div class="stat-icon">📋</div>
+                </div>
+                <div class="stat-value">{{ today_invoices | default(0) }}</div>
+                <div class="stat-label">فاکتور امروز</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-header">
+                    <div class="stat-icon">💵</div>
+                </div>
+                <div class="stat-value">{{ "{:,.0f}".format(today_revenue | default(0)) }}</div>
+                <div class="stat-label">درآمد امروز (تومان)</div>
+            </div>
+            <div class="stat-card blue">
+                <div class="stat-header">
+                    <div class="stat-icon">👥</div>
+                </div>
+                <div class="stat-value">{{ today_patients | default(0) }}</div>
+                <div class="stat-label">بیمار امروز</div>
+            </div>
+            <div class="stat-card orange">
+                <div class="stat-header">
+                    <div class="stat-icon">⏳</div>
+                </div>
+                <div class="stat-value">{{ open_invoices | default(0) }}</div>
+                <div class="stat-label">فاکتور باز</div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">
+                        <span class="icon">📊</span>
+                        نمودار تحلیلی
+                    </h2>
+                    <div class="chart-controls">
+                        <div class="quick-btns">
+                            <button class="quick-btn active" onclick="setQuickRange('r7', this)">۷ روز</button>
+                            <button class="quick-btn" onclick="setQuickRange('r30', this)">۳۰ روز</button>
+                            <button class="quick-btn" onclick="setQuickRange('r90', this)">۹۰ روز</button>
+                        </div>
+                        <select id="data-type" class="control-select" onchange="updateChart()">
+                            <option value="revenue">درآمد</option>
+                            <option value="invoices">فاکتور</option>
+                            <option value="patients">بیمار</option>
+                            <option value="services">خدمات (تفکیکی)</option>
+                        </select>
+                        <select id="chart-type" class="control-select" onchange="updateChart()">
+                            <option value="bar">میله‌ای</option>
+                            <option value="line" selected>خطی</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="mainChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-grid">
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">💊</div>
+                    <h3 class="info-card-title">خدمات امروز</h3>
+                </div>
+                <ul class="info-list">
+                    <li>
+                        <span class="label">ویزیت</span>
+                        <span class="value">{{ today_visits | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">تزریقات</span>
+                        <span class="value">{{ today_injections | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">کار عملی</span>
+                        <span class="value">{{ today_procedures | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">خدمات پرستاری</span>
+                        <span class="value">{{ today_nursing | default(0) }}</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">👨‍⚕️</div>
+                    <h3 class="info-card-title">کادر درمان</h3>
+                </div>
+                <ul class="info-list">
+                    <li>
+                        <span class="label">پزشکان فعال</span>
+                        <span class="value">{{ active_doctors | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">پرستاران فعال</span>
+                        <span class="value">{{ active_nurses | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">شیفت فعلی</span>
+                        <span class="value">{{ current_shift | default('صبح') }}</span>
+                    </li>
+                    <li>
+                        <span class="label">کل کاربران</span>
+                        <span class="value">{{ total_users | default(0) }}</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="info-card">
+                <div class="info-card-header">
+                    <div class="info-card-icon">📊</div>
+                    <h3 class="info-card-title">آمار کلی</h3>
+                </div>
+                <ul class="info-list">
+                    <li>
+                        <span class="label">کل بیماران</span>
+                        <span class="value">{{ total_patients | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">فاکتورهای ماه</span>
+                        <span class="value">{{ month_invoices | default(0) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">درآمد ماه</span>
+                        <span class="value">{{ "{:,.0f}".format(month_revenue | default(0)) }}</span>
+                    </li>
+                    <li>
+                        <span class="label">میانگین روزانه</span>
+                        <span class="value">{{ "{:,.0f}".format(avg_daily | default(0)) }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // داده‌های شمسی از سرور
+        const JALALI_RANGES = {{ jalali_ranges | tojson | safe }};
+        
+        // تبدیل اعداد به فارسی
+        function toPersianNum(num) {
+            const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+            return String(num).replace(/\d/g, d => persianDigits[d]);
+        }
+
+        // سال پایه شمسی
+        const BASE_JALALI_YEAR = JALALI_RANGES.today.y;
+        let currentRange = 'r7';
+
+        // تنظیم بازه سریع
+        function setQuickRange(key, btn) {
+            document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            currentRange = key;
+            updateChart();
+        }
+
+        // دریافت تاریخ
+        function getDateRange() {
+            const range = JALALI_RANGES[currentRange];
+            if (!range) return { from: '', to: '' };
+            return {
+                from: `${range.from.y}/${String(range.from.m).padStart(2, '0')}/${String(range.from.d).padStart(2, '0')}`,
+                to: `${range.to.y}/${String(range.to.m).padStart(2, '0')}/${String(range.to.d).padStart(2, '0')}`
+            };
+        }
+
+        let mainChart = null;
+
+        // دریافت داده از سرور
+        async function fetchChartData() {
+            const dates = getDateRange();
+            const dataType = document.getElementById('data-type').value;
+            
+            try {
+                const response = await fetch(`/manager/api/chart-data?from=${dates.from}&to=${dates.to}&type=${dataType}`);
+                if (!response.ok) throw new Error('Network error');
+                return await response.json();
+            } catch (error) {
+                console.error('Error:', error);
+                return { labels: [], values: [] };
+            }
+        }
+
+        // ساخت نمودار
+        async function updateChart() {
+            const chartType = document.getElementById('chart-type').value;
+            const dataType = document.getElementById('data-type').value;
+            const data = await fetchChartData();
+            
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            
+            if (mainChart) mainChart.destroy();
+
+            const dataLabels = {
+                revenue: 'درآمد (تومان)',
+                invoices: 'تعداد فاکتور',
+                patients: 'تعداد بیمار',
+                services: 'تعداد خدمات'
+            };
+
+            let datasets;
+            
+            // اگر نوع خدمات تفکیکی باشد
+            if (dataType === 'services' && data.datasets) {
+                datasets = [
+                    {
+                        label: '🩺 ویزیت',
+                        data: data.datasets.visits,
+                        backgroundColor: 'rgba(59, 130, 246, 0.85)',
+                        borderColor: '#3b82f6',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    },
+                    {
+                        label: '💉 تزریق',
+                        data: data.datasets.injections,
+                        backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    },
+                    {
+                        label: '🔧 کار عملی',
+                        data: data.datasets.procedures,
+                        backgroundColor: 'rgba(245, 158, 11, 0.85)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    }
+                ];
+            } else {
+                // نمودار عادی
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(139, 92, 246, 0.6)');
+                gradient.addColorStop(1, 'rgba(139, 92, 246, 0.05)');
+                
+                datasets = [{
+                    label: dataLabels[dataType] || 'مقدار',
+                    data: data.values,
+                    backgroundColor: chartType === 'line' ? gradient : 'rgba(139, 92, 246, 0.85)',
+                    borderColor: '#8b5cf6',
+                    borderWidth: 3,
+                    fill: chartType === 'line',
+                    tension: 0.4,
+                    borderRadius: chartType === 'bar' ? 10 : 0,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#8b5cf6',
+                    pointBorderWidth: 3,
+                    pointRadius: 6,
+                    pointHoverRadius: 9,
+                }];
+            }
+
+            mainChart = new Chart(ctx, {
+                type: chartType,
+                data: {
+                    labels: data.labels.map(l => toPersianNum(l)),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            display: dataType === 'services',
+                            position: 'top',
+                            rtl: true,
+                            labels: {
+                                font: { family: 'Vazirmatn', size: 16, weight: '900' },
+                                color: '#fff',
+                                padding: 25,
+                                usePointStyle: true,
+                                pointStyle: 'rectRounded'
+                            }
+                        },
+                        tooltip: {
+                            rtl: true,
+                            titleFont: { family: 'Vazirmatn', size: 16, weight: '900' },
+                            bodyFont: { family: 'Vazirmatn', size: 15, weight: '700' },
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            padding: 16,
+                            cornerRadius: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(ctx) {
+                                    let value = ctx.parsed.y;
+                                    if (dataType === 'revenue') {
+                                        return ' ' + toPersianNum(value.toLocaleString()) + ' تومان';
+                                    }
+                                    return ' ' + toPersianNum(value.toLocaleString()) + ' عدد';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { 
+                                font: { family: 'Vazirmatn', size: 14, weight: '900' }, 
+                                color: '#e2e8f0',
+                                padding: 8
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255, 255, 255, 0.08)' },
+                            ticks: {
+                                font: { family: 'Vazirmatn', size: 14, weight: '900' },
+                                color: '#e2e8f0',
+                                padding: 12,
+                                callback: function(value) {
+                                    if (dataType === 'revenue' && value >= 1000000) {
+                                        return toPersianNum((value / 1000000).toFixed(1)) + ' M';
+                                    }
+                                    return toPersianNum(value);
+                                }
+                            }
+                        }
+                    },
+                    animation: { duration: 800, easing: 'easeOutQuart' }
+                }
+            });
+        }
+
+        // مقداردهی اولیه
+        updateChart();
+
+        // ساعت و تاریخ (Synced with Tehran Server Time)
+        const serverTime = new Date("{{ server_time }}");
+        const clientTime = new Date();
+        const timeOffset = serverTime.getTime() - clientTime.getTime();
+
+        function updateDateTime() {
+            const now = new Date(new Date().getTime() + timeOffset);
+            
+            // ساعت
+            const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('fa-IR', timeOptions);
+            
+            // تاریخ شمسی
+            const dateOptions = { calendar: 'persian', year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById('current-date').textContent = now.toLocaleDateString('fa-IR', dateOptions);
+        }
+        
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>تعرفه‌ها</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    font-family: 'Vazirmatn', sans-serif; 
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #e5e7eb; 
+    padding: 2rem; 
+    min-height: 100vh; 
+  }
+  .tariffs-hub {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .page-header {
+    margin-bottom: 2.5rem;
+    text-align: center;
+  }
+  .page-header h1 {
+    font-size: 2rem;
+    font-weight: 900;
+    color: #f1f5f9;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: linear-gradient(135deg, #a78bfa, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .page-header p {
+    color: #a5b4fc;
+    margin-top: 0.8rem;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+  .tariff-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 2rem;
+  }
+  .tariff-card {
+    background: rgba(15,23,42,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 20px;
+    padding: 2rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: all 0.3s ease;
+    text-decoration: none;
+    display: block;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+    position: relative;
+    overflow: hidden;
+  }
+  .tariff-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 150px;
+    height: 150px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.15), transparent);
+    border-radius: 50%;
+    transform: translate(30%, -30%);
+    transition: all 0.3s ease;
+  }
+  .tariff-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 30px 60px rgba(139, 92, 246, 0.2);
+  }
+  .tariff-card:hover::before {
+    transform: translate(20%, -20%) scale(1.3);
+  }
+  .tariff-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.2rem;
+    margin-bottom: 1.2rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,.3);
+    position: relative;
+    z-index: 1;
+  }
+  .tariff-icon.nursing {
+    background: linear-gradient(135deg, #ec4899 0%, #be185d 100%);
+    box-shadow: 0 10px 30px rgba(236,72,153,0.4);
+  }
+  .tariff-icon.insurance {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    box-shadow: 0 10px 30px rgba(59,130,246,0.4);
+  }
+  .tariff-icon.consumables {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+    box-shadow: 0 10px 30px rgba(16,185,129,0.4);
+  }
+  .tariff-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #f1f5f9;
+    margin-bottom: 0.6rem;
+    position: relative;
+    z-index: 1;
+  }
+  .tariff-desc {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    line-height: 1.8;
+    position: relative;
+    z-index: 1;
+  }
+  .tariff-arrow {
+    margin-top: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #a78bfa;
+    font-size: 1rem;
+    font-weight: 700;
+    transition: all 0.2s;
+    position: relative;
+    z-index: 1;
+  }
+  .tariff-card:hover .tariff-arrow {
+    color: #c4b5fd;
+    transform: translateX(-8px);
+  }
+  .tariff-arrow svg {
+    width: 20px;
+    height: 20px;
+  }
+  .btn-back-wrap {
+    margin-top: 3rem;
+    text-align: center;
+  }
+  .btn-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: 14px;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(139,92,246,0.3);
+    color: #a5b4fc;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .btn-back:hover {
+    background: rgba(139,92,246,0.2);
+    border-color: #8b5cf6;
+    color: #f1f5f9;
+    transform: translateX(6px);
+  }
+  .btn-back svg {
+    width: 20px;
+    height: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="tariffs-hub">
+  <div class="page-header">
+    <h1>⚙️ مدیریت تعرفه‌ها</h1>
+    <p>از این بخش می‌توانید تعرفه خدمات پرستاری، بیمه‌ها و قیمت مصرفی‌ها را مدیریت کنید.</p>
+  </div>
+
+  <div class="tariff-cards">
+    <a href="{{ url_for('manager.nursing_tariffs') }}" class="tariff-card">
+      <div class="tariff-icon nursing">💉</div>
+      <div class="tariff-title">تعرفه خدمات پرستاری</div>
+      <div class="tariff-desc">
+        تنظیم قیمت تزریقات، سرم‌تراپی، پانسمان و سایر خدمات پرستاری
+      </div>
+      <div class="tariff-arrow">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+        ورود به تنظیمات
+      </div>
+    </a>
+
+    <a href="{{ url_for('manager.insurance_tariffs') }}" class="tariff-card">
+      <div class="tariff-icon insurance">🏥</div>
+      <div class="tariff-title">تعرفه بیمه‌ها</div>
+      <div class="tariff-desc">
+        تعریف انواع بیمه و تنظیم تعرفه ویزیت برای هر نوع بیمه
+      </div>
+      <div class="tariff-arrow">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+        ورود به تنظیمات
+      </div>
+    </a>
+
+    <a href="{{ url_for('manager.consumables_tariffs') }}" class="tariff-card">
+      <div class="tariff-icon consumables">💊</div>
+      <div class="tariff-title">قیمت مصرفی‌ها</div>
+      <div class="tariff-desc">
+        تنظیم قیمت داروها و مصرفی‌های عمومی مانند سرنگ، پنبه و ...
+      </div>
+      <div class="tariff-arrow">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+        ورود به تنظیمات
+      </div>
+    </a>
+  </div>
+
+  <div class="btn-back-wrap">
+    <a href="{{ url_for('manager.index') }}" class="btn-back">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+      بازگشت به داشبورد
+    </a>
+  </div>
+</div>
+</body>
+</html>

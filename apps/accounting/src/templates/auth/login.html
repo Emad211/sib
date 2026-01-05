@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ورود - سیستم حسابداری درمانگاه سیب</title>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Vazirmatn', Tahoma, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* انیمیشن پس‌زمینه */
+        body::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 50%);
+            animation: pulse 15s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(5%, 5%) scale(1.1); }
+        }
+        
+        .login-wrapper {
+            display: flex;
+            width: 100%;
+            max-width: 1000px;
+            min-height: 600px;
+            margin: 1rem;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* بخش سمت راست - اطلاعات */
+        .info-section {
+            flex: 1;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 50%, #4338ca 100%);
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .info-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            opacity: 0.5;
+        }
+        
+        .logo-container {
+            position: relative;
+            margin-bottom: 2rem;
+        }
+        
+        .logo-icon {
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .info-title {
+            font-size: 2rem;
+            font-weight: 900;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        
+        .info-subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+            max-width: 300px;
+            line-height: 1.8;
+            position: relative;
+        }
+        
+        .features-list {
+            margin-top: 2rem;
+            text-align: right;
+            position: relative;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .feature-icon {
+            width: 32px;
+            height: 32px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+        
+        /* بخش سمت چپ - فرم */
+        .form-section {
+            flex: 1;
+            background: #0f172a;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .form-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .form-title {
+            color: #e5e7eb;
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-subtitle {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        
+        /* تب‌ها */
+        .tabs {
+            display: flex;
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 0.5rem;
+            margin-bottom: 2rem;
+            gap: 0.5rem;
+        }
+        
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 0.875rem 1rem;
+            cursor: pointer;
+            border-radius: 12px;
+            color: #9ca3af;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .tab:hover {
+            color: #e5e7eb;
+            background: rgba(99, 102, 241, 0.1);
+        }
+        
+        .tab.active {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        
+        .tab-icon {
+            font-size: 1.1rem;
+        }
+        
+        /* فرم */
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        
+        .form-group {
+            position: relative;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #9ca3af;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .input-wrapper {
+            position: relative;
+        }
+        
+        .input-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.1rem;
+            color: #6b7280;
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            /* padding: top right bottom left - leave more space on the right for the icon in RTL */
+            padding: 1rem 3rem 1rem 1rem;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            color: #e5e7eb;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+        
+        .form-group input::placeholder {
+            color: #6b7280;
+        }
+        
+        .form-group select option {
+            background: #1e293b;
+            color: #e5e7eb;
+        }
+        
+        /* دکمه */
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        /* پیام خطا */
+        .flash-message {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+            animation: shake 0.5s ease;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .flash-icon {
+            font-size: 1.2rem;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        /* ریسپانسیو */
+        @media (max-width: 768px) {
+            .login-wrapper {
+                flex-direction: column;
+                max-width: 420px;
+            }
+            
+            .info-section {
+                padding: 2rem;
+                min-height: auto;
+            }
+            
+            .info-title {
+                font-size: 1.5rem;
+            }
+            
+            .features-list {
+                display: none;
+            }
+            
+            .form-section {
+                padding: 2rem;
+            }
+        }
+        
+        /* فوتر */
+        .form-footer {
+            margin-top: 2rem;
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.8rem;
+        }
+        
+        .version-tag {
+            display: inline-block;
+            background: #1e293b;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            color: #9ca3af;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <!-- بخش اطلاعات -->
+        <div class="info-section">
+            <div class="logo-container">
+                <div class="logo-icon">🏥</div>
+            </div>
+            <h1 class="info-title">سیستم حسابداری درمانگاه سیب</h1>
+            <p class="info-subtitle">مدیریت هوشمند پذیرش، صورتحساب و گزارش‌گیری درمانگاه شما</p>
+            
+            <div class="features-list">
+                <div class="feature-item">
+                    <div class="feature-icon">📋</div>
+                    <span>مدیریت پذیرش و صورتحساب</span>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">💉</div>
+                    <span>ثبت خدمات پرستاری و تزریقات</span>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📊</div>
+                    <span>گزارش‌گیری جامع و تحلیلی</span>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">👥</div>
+                    <span>مدیریت کادر درمان و حقوق</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- بخش فرم -->
+        <div class="form-section">
+            <div class="form-header">
+                <h2 class="form-title">خوش آمدید</h2>
+                <p class="form-subtitle">برای ورود، اطلاعات خود را وارد کنید</p>
+            </div>
+
+            {% for message in get_flashed_messages() %}
+                <div class="flash-message">
+                    <span class="flash-icon">⚠️</span>
+                    <span>{{ message }}</span>
+                </div>
+            {% endfor %}
+
+            <div class="tabs">
+                <div class="tab active" id="tab-reception">
+                    <span class="tab-icon">🖥️</span>
+                    <span>پذیرش</span>
+                </div>
+                <div class="tab" id="tab-manager">
+                    <span class="tab-icon">👨‍💼</span>
+                    <span>مدیر</span>
+                </div>
+            </div>
+
+            <!-- فرم پذیرش -->
+            <form method="post" id="form-reception" class="login-form">
+                <input type="hidden" name="role" value="reception">
+                <div class="form-group">
+                    <label for="reception_username">نام کاربری پذیرش</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <select name="reception_username" id="reception_username" required>
+                            {% for u in reception_users %}
+                                <option value="{{ u }}">{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="reception_password">رمز عبور</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" name="password" id="reception_password" placeholder="رمز عبور خود را وارد کنید" required>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn">
+                    <span>ورود به پذیرش</span>
+                    <span>←</span>
+                </button>
+            </form>
+
+            <!-- فرم مدیر -->
+            <form method="post" id="form-manager" class="login-form hidden">
+                <input type="hidden" name="role" value="manager">
+                <div class="form-group">
+                    <label for="username">نام کاربری مدیر</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text" name="username" id="username" placeholder="نام کاربری مدیر">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="manager_password">رمز عبور</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" name="password" id="manager_password" placeholder="رمز عبور خود را وارد کنید">
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn">
+                    <span>ورود به مدیریت</span>
+                    <span>←</span>
+                </button>
+            </form>
+            
+            <div class="form-footer">
+                <p>سیستم حسابداری درمانگاه سیب</p>
+                <span class="version-tag">نسخه ۲.۰</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tabReception = document.getElementById('tab-reception');
+        const tabManager = document.getElementById('tab-manager');
+        const formReception = document.getElementById('form-reception');
+        const formManager = document.getElementById('form-manager');
+
+        tabReception.addEventListener('click', () => {
+            tabReception.classList.add('active');
+            tabManager.classList.remove('active');
+            formReception.classList.remove('hidden');
+            formManager.classList.add('hidden');
+        });
+
+        tabManager.addEventListener('click', () => {
+            tabManager.classList.add('active');
+            tabReception.classList.remove('active');
+            formManager.classList.remove('hidden');
+            formReception.classList.add('hidden');
+        });
+        
+        // انیمیشن ورود
+        document.querySelectorAll('.submit-btn').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                this.style.transform = 'scale(0.98)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 100);
+            });
+        });
+    </script>
+</body>
+</html>

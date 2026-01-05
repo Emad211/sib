@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مدیریت حقوق</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body { 
+      font-family: 'Vazirmatn', sans-serif; 
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      color: #e5e7eb; 
+      min-height: 100vh;
+      padding: 2rem; 
+    }
+    
+    .container { max-width: 1500px; margin: 0 auto; }
+    
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2.5rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    
+    .header-title { display: flex; align-items: center; gap: 1.25rem; }
+    
+    .header-icon {
+      width: 70px; height: 70px;
+      background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.2rem;
+      box-shadow: 0 15px 40px rgba(16, 185, 129, 0.4);
+    }
+    
+    .header h1 { font-size: 2rem; font-weight: 900; color: #fff; margin: 0; }
+    .header p { font-size: 1.05rem; color: #9ca3af; margin-top: 0.4rem; }
+    
+    .btn-back {
+      display: inline-flex; align-items: center; gap: 0.75rem;
+      padding: 0.9rem 1.5rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 14px;
+      color: #9ca3af; text-decoration: none;
+      font-size: 1rem; font-weight: 700;
+      transition: all 0.3s ease;
+    }
+    .btn-back:hover { background: rgba(255,255,255,0.1); color: #fff; transform: translateX(-5px); }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+      background: rgba(0,0,0,0.3);
+      padding: 0.75rem;
+      border-radius: 20px;
+      width: fit-content;
+      backdrop-filter: blur(10px);
+    }
+    
+    .tab {
+      padding: 1rem 2rem;
+      border-radius: 14px;
+      background: transparent;
+      color: #9ca3af;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      font-weight: 800;
+      font-family: inherit;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .tab:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .tab.active {
+      background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+      color: #fff;
+      box-shadow: 0 8px 25px rgba(16, 185, 129, 0.5);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Section Card */
+    .section-card {
+      background: rgba(30, 41, 59, 0.6);
+      backdrop-filter: blur(16px);
+      border-radius: 24px;
+      padding: 2rem;
+      border: 1px solid rgba(255,255,255,0.06);
+      margin-bottom: 2rem;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .section-title {
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+    .section-title .icon {
+      width: 55px; height: 55px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem;
+    }
+    .section-title .icon.calc { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+    .section-title .icon.settings { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .section-title .icon.add { background: linear-gradient(135deg, #10b981, #047857); }
+
+    /* Filter Box */
+    .filter-box {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+      background: rgba(0,0,0,0.2);
+      padding: 1.5rem;
+      border-radius: 18px;
+    }
+    
+    .filter-field { display: flex; flex-direction: column; gap: 0.5rem; }
+    .filter-field label { font-size: 0.95rem; color: #94a3b8; font-weight: 700; }
+    .filter-field input, .filter-field select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      color: #f3f4f6;
+      font-size: 1.05rem;
+      font-family: inherit;
+      direction: rtl;
+      transition: all 0.2s;
+    }
+    .filter-field input:focus, .filter-field select:focus { 
+      outline: none; 
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    }
+
+    /* Jalali Date Inputs */
+    .jalali-date-group {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .jalali-date-group input {
+      width: 60px;
+      text-align: center;
+      padding: 1rem 0.5rem;
+      font-size: 1.05rem;
+    }
+    .jalali-date-group input:first-child { width: 75px; }
+    .jalali-date-group span {
+      color: #6b7280;
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    /* Quick Date Buttons */
+    .quick-dates {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .quick-btn {
+      padding: 0.8rem 1.5rem;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 12px;
+      color: #c4b5fd;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover { background: rgba(139, 92, 246, 0.3); color: #fff; transform: translateY(-2px); }
+    .quick-btn.active { 
+      background: linear-gradient(135deg, #8b5cf6, #6366f1); 
+      color: #fff; 
+      border-color: transparent;
+      box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+    }
+
+    .btn-calculate {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      color: white;
+      border: none;
+      padding: 1.1rem 2.5rem;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 1.15rem;
+      font-weight: 800;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+      transition: all 0.3s;
+    }
+    .btn-calculate:hover { transform: translateY(-3px); box-shadow: 0 12px 35px rgba(99, 102, 241, 0.5); }
+
+    /* Results */
+    .results-container { margin-top: 2rem; }
+    .result-card {
+      background: rgba(0,0,0,0.25);
+      border-radius: 20px;
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid rgba(255,255,255,0.06);
+      transition: all 0.3s;
+    }
+    .result-card:hover {
+      border-color: rgba(16, 185, 129, 0.3);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .result-name {
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .result-name .badge {
+      padding: 0.45rem 1rem;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+    .badge.doctor { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+    .badge.nurse { background: rgba(236, 72, 153, 0.2); color: #f9a8d4; }
+    .result-total {
+      font-size: 1.7rem;
+      font-weight: 900;
+      color: #10b981;
+    }
+    
+    /* BIG Details Table */
+    .details-table { 
+      width: 100%; 
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .details-table thead { background: rgba(0,0,0,0.3); }
+    .details-table th, .details-table td { 
+      padding: 1.1rem 1.3rem; 
+      text-align: right; 
+    }
+    .details-table th { 
+      color: #94a3b8; 
+      font-size: 1.05rem; 
+      font-weight: 800;
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    .details-table th:first-child { border-radius: 0 12px 0 0; }
+    .details-table th:last-child { border-radius: 12px 0 0 0; }
+    .details-table tbody tr { transition: all 0.2s; }
+    .details-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+    .details-table td { 
+      color: #e5e7eb; 
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255,255,255,0.04); 
+    }
+    .details-table .negative { color: #f87171; }
+    .details-table .positive { color: #6ee7b7; }
+
+    .no-results {
+      text-align: center;
+      padding: 4rem;
+      color: #6b7280;
+    }
+    .no-results .icon { font-size: 4rem; margin-bottom: 1.25rem; }
+    .no-results p { font-size: 1.15rem; }
+
+    /* Settings Grid */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      gap: 1.25rem;
+    }
+    @media (max-width: 900px) { .settings-grid { grid-template-columns: 1fr; } }
+    
+    .staff-settings-card {
+      background: rgba(0,0,0,0.25);
+      border-radius: 18px;
+      padding: 1.5rem;
+      border: 1px solid rgba(255,255,255,0.05);
+      transition: all 0.3s;
+    }
+    .staff-settings-card:hover {
+      border-color: rgba(139, 92, 246, 0.3);
+      transform: translateY(-3px);
+    }
+    .staff-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .staff-name {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .staff-type-icon {
+      width: 45px; height: 45px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+    }
+    .staff-type-icon.doctor { background: linear-gradient(135deg, #10b981, #047857); }
+    .staff-type-icon.nurse { background: linear-gradient(135deg, #ec4899, #be185d); }
+    
+    .settings-display { 
+      display: grid; 
+      grid-template-columns: repeat(2, 1fr); 
+      gap: 0.6rem; 
+    }
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.7rem 0.9rem;
+      background: rgba(0,0,0,0.25);
+      border-radius: 10px;
+    }
+    .setting-item label {
+      font-size: 0.9rem;
+      color: #9ca3af;
+    }
+    .setting-item .value {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #10b981;
+    }
+
+    /* Add Settings Form */
+    .add-settings-form {
+      background: rgba(0,0,0,0.2);
+      border-radius: 18px;
+      padding: 1.75rem;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.25rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .form-row { grid-template-columns: 1fr; } }
+    
+    .staff-select-group { display: flex; flex-direction: column; gap: 0.5rem; }
+    .staff-select-group label { font-size: 1rem; color: #94a3b8; font-weight: 700; }
+    .staff-select-group select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      color: #f3f4f6;
+      font-size: 1.05rem;
+      font-family: inherit;
+    }
+    
+    .settings-inputs {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    
+    .input-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .input-group label { font-size: 0.9rem; color: #9ca3af; font-weight: 700; }
+    .input-group input {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      color: #f3f4f6;
+      font-size: 1rem;
+      font-family: inherit;
+      text-align: left;
+      direction: ltr;
+    }
+    .input-group input:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15); }
+    .input-group.doctor-only { background: rgba(16, 185, 129, 0.08); border-radius: 12px; padding: 0.5rem; }
+    .input-group.nurse-only { background: rgba(236, 72, 153, 0.08); border-radius: 12px; padding: 0.5rem; }
+    
+    .btn-add-settings {
+      background: linear-gradient(135deg, #10b981, #047857);
+      color: white;
+      border: none;
+      padding: 1.1rem 2rem;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      font-weight: 800;
+      font-family: inherit;
+      margin-top: 1.25rem;
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+      transition: all 0.3s;
+    }
+    .btn-add-settings:hover { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(16, 185, 129, 0.5); }
+
+    .divider {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin: 2rem 0;
+    }
+    
+    .hint { font-size: 0.9rem; color: #6b7280; margin-top: 0.3rem; }
+    
+    /* Flash Messages */
+    .flash-messages { margin-bottom: 1.5rem; }
+    .flash {
+      padding: 1rem 1.25rem;
+      border-radius: 14px;
+      margin-bottom: 0.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .flash.success { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .flash.error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 3rem;
+      color: #9ca3af;
+    }
+    .loading.active { display: block; }
+    .spinner {
+      width: 50px; height: 50px;
+      border: 4px solid rgba(255,255,255,0.1);
+      border-top-color: #10b981;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1.25rem;
+    }
+    .loading p { font-size: 1.15rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    /* Summary */
+    .summary-box {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+      border: 2px solid rgba(16, 185, 129, 0.3);
+      border-radius: 20px;
+      padding: 1.5rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.5rem;
+    }
+    .summary-label { font-size: 1.25rem; font-weight: 800; color: #94a3b8; }
+    .summary-value { font-size: 2.2rem; font-weight: 900; color: #10b981; }
+    
+    /* Print */
+    .btn-print {
+      background: rgba(139, 92, 246, 0.2);
+      color: #c4b5fd;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      padding: 0.8rem 1.5rem;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn-print:hover { background: rgba(139, 92, 246, 0.3); transform: translateY(-2px); }
+    
+    @media print {
+      body { background: white; color: black; padding: 1rem; }
+      .header, .tabs, .filter-box, .quick-dates, .btn-calculate, .btn-print, .tab-content:not(.active) { display: none !important; }
+      .section-card { background: white; border: 1px solid #ddd; box-shadow: none; }
+      .result-card { background: #f9f9f9; border: 1px solid #ddd; }
+      .result-total { color: #047857; }
+      .details-table th, .details-table td { border-bottom: 1px solid #ddd; color: black; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.5); }
+  </style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-title">
+        <div class="header-icon">💵</div>
+        <div>
+          <h1>مدیریت حقوق</h1>
+          <p>محاسبه و تنظیمات حقوق کادر درمان</p>
+        </div>
+      </div>
+      <a href="{{ url_for('manager.index') }}" class="btn-back">← بازگشت به داشبورد</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('calculate')">
+        <span>🧮</span> محاسبه حقوق
+      </button>
+      <button class="tab" onclick="showTab('settings')">
+        <span>⚙️</span> تنظیمات ذخیره شده
+      </button>
+      <button class="tab" onclick="showTab('add')">
+        <span>➕</span> افزودن/ویرایش تنظیمات
+      </button>
+    </div>
+
+    <!-- ========== Tab 1: محاسبه حقوق ========== -->
+    <div class="tab-content active" id="tab-calculate">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">
+            <div class="icon calc">🧮</div>
+            محاسبه حقوق
+          </div>
+          <button type="button" class="btn-print" onclick="window.print()">🖨️ چاپ</button>
+        </div>
+
+        <!-- Quick Date Buttons -->
+        <div class="quick-dates">
+          <button type="button" class="quick-btn" onclick="setQuickDate('today')">امروز</button>
+          <button type="button" class="quick-btn" onclick="setQuickDate('yesterday')">دیروز</button>
+          <button type="button" class="quick-btn" onclick="setQuickDate('thisWeek')">این هفته</button>
+          <button type="button" class="quick-btn" onclick="setQuickDate('lastWeek')">هفته قبل</button>
+          <button type="button" class="quick-btn active" onclick="setQuickDate('thisMonth')">این ماه</button>
+          <button type="button" class="quick-btn" onclick="setQuickDate('lastMonth')">ماه قبل</button>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-box">
+          <div class="filter-field">
+            <label>نوع پرسنل</label>
+            <select id="filter-staff-type">
+              <option value="all">همه</option>
+              <option value="doctor">پزشکان</option>
+              <option value="nurse">پرستاران</option>
+            </select>
+          </div>
+          <div class="filter-field">
+            <label>انتخاب فرد</label>
+            <select id="filter-staff-id">
+              <option value="all">همه</option>
+              {% for s in doctors %}
+              <option value="{{ s.id }}" data-type="doctor">🩺 {{ s.full_name }}</option>
+              {% endfor %}
+              {% for s in nurses %}
+              <option value="{{ s.id }}" data-type="nurse">💉 {{ s.full_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-field">
+            <label>از تاریخ</label>
+            <div class="jalali-date-group">
+              <input type="number" id="from-day" placeholder="روز" min="1" max="31" value="1">
+              <span>/</span>
+              <input type="number" id="from-month" placeholder="ماه" min="1" max="12" value="{{ today_jalali.split('-')[1] }}">
+              <span>/</span>
+              <input type="number" id="from-year" placeholder="سال" min="1400" max="1410" value="{{ today_jalali.split('-')[0] }}">
+            </div>
+          </div>
+          <div class="filter-field">
+            <label>تا تاریخ</label>
+            <div class="jalali-date-group">
+              <input type="number" id="to-day" placeholder="روز" min="1" max="31" value="{{ today_jalali.split('-')[2] }}">
+              <span>/</span>
+              <input type="number" id="to-month" placeholder="ماه" min="1" max="12" value="{{ today_jalali.split('-')[1] }}">
+              <span>/</span>
+              <input type="number" id="to-year" placeholder="سال" min="1400" max="1410" value="{{ today_jalali.split('-')[0] }}">
+            </div>
+          </div>
+          <div class="filter-field">
+            <label>شیفت</label>
+            <select id="filter-shift">
+              <option value="all">همه شیفت‌ها</option>
+              <option value="morning">صبح</option>
+              <option value="evening">عصر</option>
+              <option value="night">شب</option>
+            </select>
+          </div>
+          <div class="filter-field" style="justify-content: flex-end;">
+            <button type="button" class="btn-calculate" onclick="calculatePayroll()">
+              <span>📊</span> محاسبه
+            </button>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-container" id="results-container">
+          <div class="no-results" id="no-results">
+            <div class="icon">📋</div>
+            <p>برای مشاهده حقوق، فیلترها را انتخاب کرده و دکمه محاسبه را بزنید</p>
+          </div>
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>در حال محاسبه...</p>
+          </div>
+          <div id="results-list"></div>
+          <div class="summary-box" id="summary-box" style="display: none;">
+            <span class="summary-label">جمع کل حقوق:</span>
+            <span class="summary-value" id="total-summary">0 تومان</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 2: تنظیمات ذخیره شده (فقط نمایش) ========== -->
+    <div class="tab-content" id="tab-settings">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">
+            <div class="icon settings">⚙️</div>
+            تنظیمات حقوق ذخیره شده
+          </div>
+          <span class="hint">برای ویرایش به تب «افزودن/ویرایش تنظیمات» بروید</span>
+        </div>
+
+        <h3 style="color: #10b981; margin-bottom: 1.25rem; font-size: 1.3rem; font-weight: 800;">🩺 پزشکان</h3>
+        <div class="settings-grid">
+          {% for s in doctors %}
+          <div class="staff-settings-card">
+            <div class="staff-card-header">
+              <div class="staff-name">
+                <div class="staff-type-icon doctor">🩺</div>
+                {{ s.full_name }}
+              </div>
+            </div>
+            <div class="settings-display">
+              <div class="setting-item">
+                <label>پایه صبح</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_morning or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>پایه عصر</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_evening or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>پایه شب</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_night or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>هزینه ویزیت</label>
+                <span class="value">{{ "{:,.0f}".format(s.visit_fee or 20000) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>درصد تزریقات</label>
+                <span class="value">{{ s.injection_percent or 30 }}%</span>
+              </div>
+              <div class="setting-item">
+                <label>درصد کار عملی</label>
+                <span class="value">{{ s.procedure_percent or 40 }}%</span>
+              </div>
+              <div class="setting-item">
+                <label>درصد مالیات</label>
+                <span class="value" style="color: #f87171;">{{ s.tax_percent or 10 }}%</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="divider" style="margin: 2rem 0;"></div>
+
+        <h3 style="color: #ec4899; margin-bottom: 1.25rem; font-size: 1.3rem; font-weight: 800;">💉 پرستاران</h3>
+        <div class="settings-grid">
+          {% for s in nurses %}
+          <div class="staff-settings-card">
+            <div class="staff-card-header">
+              <div class="staff-name">
+                <div class="staff-type-icon nurse">💉</div>
+                {{ s.full_name }}
+              </div>
+            </div>
+            <div class="settings-display">
+              <div class="setting-item">
+                <label>پایه صبح</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_morning or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>پایه عصر</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_evening or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>پایه شب</label>
+                <span class="value">{{ "{:,.0f}".format(s.base_night or 0) }}</span>
+              </div>
+              <div class="setting-item">
+                <label>درصد خدمات پرستاری</label>
+                <span class="value">{{ s.nursing_percent or 6 }}%</span>
+              </div>
+              <div class="setting-item">
+                <label>درصد کار عملی</label>
+                <span class="value">{{ s.nurse_procedure_percent or 35 }}%</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Tab 3: افزودن/ویرایش تنظیمات ========== -->
+    <div class="tab-content" id="tab-add">
+      <div class="section-card">
+        <div class="section-header">
+          <div class="section-title">
+            <div class="icon add">➕</div>
+            افزودن یا ویرایش تنظیمات حقوق
+          </div>
+        </div>
+
+        <form method="post" class="add-settings-form">
+          <input type="hidden" name="action" value="save_settings">
+          
+          <div class="form-row">
+            <div class="staff-select-group">
+              <label>انتخاب پرسنل</label>
+              <select name="staff_id" id="add-staff-select" onchange="loadStaffSettings()" required>
+                <option value="">-- انتخاب کنید --</option>
+                <optgroup label="پزشکان">
+                  {% for s in doctors %}
+                  <option value="{{ s.id }}" data-type="doctor">{{ s.full_name }}</option>
+                  {% endfor %}
+                </optgroup>
+                <optgroup label="پرستاران">
+                  {% for s in nurses %}
+                  <option value="{{ s.id }}" data-type="nurse">{{ s.full_name }}</option>
+                  {% endfor %}
+                </optgroup>
+              </select>
+              <span class="hint">با انتخاب پرسنل، تنظیمات فعلی بارگذاری می‌شود</span>
+            </div>
+
+            <div class="settings-inputs" id="add-settings-inputs">
+              <!-- Common Fields -->
+              <div class="input-group">
+                <label>پایه شیفت صبح (تومان)</label>
+                <input type="number" name="base_morning" id="add-base-morning" value="0" step="1000">
+              </div>
+              <div class="input-group">
+                <label>پایه شیفت عصر (تومان)</label>
+                <input type="number" name="base_evening" id="add-base-evening" value="0" step="1000">
+              </div>
+              <div class="input-group">
+                <label>پایه شیفت شب (تومان)</label>
+                <input type="number" name="base_night" id="add-base-night" value="0" step="1000">
+              </div>
+              
+              <!-- Doctor Fields -->
+              <div class="input-group doctor-only" id="field-visit-fee">
+                <label>هزینه هر ویزیت (تومان)</label>
+                <input type="number" name="visit_fee" id="add-visit-fee" value="20000" step="1000">
+              </div>
+              <div class="input-group doctor-only" id="field-injection-percent">
+                <label>درصد سهم تزریقات</label>
+                <input type="number" name="injection_percent" id="add-injection-percent" value="30" min="0" max="100">
+              </div>
+              <div class="input-group doctor-only" id="field-procedure-percent">
+                <label>درصد سهم کار عملی</label>
+                <input type="number" name="procedure_percent" id="add-procedure-percent" value="40" min="0" max="100">
+              </div>
+              <div class="input-group doctor-only" id="field-tax-percent">
+                <label>درصد کسر مالیات</label>
+                <input type="number" name="tax_percent" id="add-tax-percent" value="10" min="0" max="100">
+              </div>
+              
+              <!-- Nurse Fields -->
+              <div class="input-group nurse-only" id="field-nursing-percent" style="display: none;">
+                <label>درصد خدمات پرستاری</label>
+                <input type="number" name="nursing_percent" id="add-nursing-percent" value="6" min="0" max="100">
+              </div>
+              <div class="input-group nurse-only" id="field-nurse-procedure" style="display: none;">
+                <label>درصد کار عملی پرستار</label>
+                <input type="number" name="nurse_procedure_percent" id="add-nurse-procedure-percent" value="35" min="0" max="100">
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-add-settings">💾 ذخیره تنظیمات</button>
+        </form>
+
+        <div class="divider"></div>
+
+        <div style="padding: 1.5rem; background: rgba(99, 102, 241, 0.1); border-radius: 16px; border: 1px solid rgba(99, 102, 241, 0.2);">
+          <h4 style="color: #a5b4fc; margin-bottom: 1rem; font-size: 1.15rem;">📌 راهنمای محاسبه حقوق</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; font-size: 1rem; color: #9ca3af;">
+            <div>
+              <strong style="color: #10b981; font-size: 1.1rem;">پزشک:</strong>
+              <ul style="margin: 0.75rem 0 0 1.25rem; line-height: 2;">
+                <li>پایه حقوق × تعداد شیفت</li>
+                <li>تعداد ویزیت × هزینه هر ویزیت</li>
+                <li>درصد تعیین شده از مجموع تزریقات</li>
+                <li>درصد تعیین شده از کارهای عملی</li>
+                <li>کسر درصد مالیات از کل</li>
+              </ul>
+            </div>
+            <div>
+              <strong style="color: #ec4899; font-size: 1.1rem;">پرستار:</strong>
+              <ul style="margin: 0.75rem 0 0 1.25rem; line-height: 2;">
+                <li>پایه حقوق × تعداد شیفت</li>
+                <li>درصد خدمات پرستاری از کل خدمات</li>
+                <li>درصد تعیین شده از کارهای عملی پرستار</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Staff settings data from server
+    const staffSettings = {
+      {% for s in staff %}
+      '{{ s.id }}': {
+        type: '{{ s.staff_type }}',
+        base_morning: {{ s.base_morning or 0 }},
+        base_evening: {{ s.base_evening or 0 }},
+        base_night: {{ s.base_night or 0 }},
+        visit_fee: {{ s.visit_fee or 20000 }},
+        injection_percent: {{ s.injection_percent or 30 }},
+        procedure_percent: {{ s.procedure_percent or 40 }},
+        tax_percent: {{ s.tax_percent or 10 }},
+        nursing_percent: {{ s.nursing_percent or 6 }},
+        nurse_procedure_percent: {{ s.nurse_procedure_percent or 35 }}
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    };
+
+    // Tab Switching
+    function showTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.closest('.tab').classList.add('active');
+      document.getElementById('tab-' + tabName).classList.add('active');
+    }
+
+    // Jalali month days
+    const jalaliMonthDays = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
+    const todayYear = {{ today_jalali.split('-')[0] }};
+    const todayMonth = {{ today_jalali.split('-')[1] }};
+    const todayDay = {{ today_jalali.split('-')[2] }};
+
+    // Convert Jalali to Gregorian
+    function jalaliToGregorian(jy, jm, jd) {
+      jy += 1595;
+      var days = -355668 + (365 * jy) + (~~(jy / 33) * 8) + ~~(((jy % 33) + 3) / 4) + jd + ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+      var gy = 400 * ~~(days / 146097);
+      days %= 146097;
+      if (days > 36524) {
+        gy += 100 * ~~(--days / 36524);
+        days %= 36524;
+        if (days >= 365) days++;
+      }
+      gy += 4 * ~~(days / 1461);
+      days %= 1461;
+      if (days > 365) {
+        gy += ~~((days - 1) / 365);
+        days = (days - 1) % 365;
+      }
+      var gd = days + 1;
+      var sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      var gm;
+      for (gm = 0; gm < 13 && gd > sal_a[gm]; gm++) gd -= sal_a[gm];
+      return { year: gy, month: gm, day: gd };
+    }
+
+    // Quick Date Functions (Jalali)
+    function setQuickDate(type) {
+      document.querySelectorAll('.quick-btn').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      let fromYear = todayYear, fromMonth = todayMonth, fromDay = todayDay;
+      let toYear = todayYear, toMonth = todayMonth, toDay = todayDay;
+      
+      switch(type) {
+        case 'today':
+          fromDay = toDay;
+          break;
+        case 'yesterday':
+          if (todayDay > 1) {
+            fromDay = todayDay - 1;
+            toDay = fromDay;
+          } else if (todayMonth > 1) {
+            fromMonth = todayMonth - 1;
+            toMonth = fromMonth;
+            fromDay = jalaliMonthDays[fromMonth - 1];
+            toDay = fromDay;
+          } else {
+            fromYear = todayYear - 1;
+            toYear = fromYear;
+            fromMonth = 12;
+            toMonth = 12;
+            fromDay = 29;
+            toDay = 29;
+          }
+          break;
+        case 'thisWeek':
+          fromDay = Math.max(1, todayDay - 6);
+          break;
+        case 'lastWeek':
+          if (todayDay > 13) {
+            fromDay = todayDay - 13;
+            toDay = todayDay - 7;
+          } else {
+            fromDay = 1;
+            toDay = Math.max(1, todayDay - 7);
+          }
+          break;
+        case 'thisMonth':
+          fromDay = 1;
+          break;
+        case 'lastMonth':
+          if (todayMonth > 1) {
+            fromMonth = todayMonth - 1;
+            toMonth = fromMonth;
+          } else {
+            fromMonth = 12;
+            toMonth = 12;
+            fromYear = todayYear - 1;
+            toYear = fromYear;
+          }
+          fromDay = 1;
+          toDay = jalaliMonthDays[fromMonth - 1];
+          break;
+      }
+      
+      document.getElementById('from-year').value = fromYear;
+      document.getElementById('from-month').value = fromMonth;
+      document.getElementById('from-day').value = fromDay;
+      document.getElementById('to-year').value = toYear;
+      document.getElementById('to-month').value = toMonth;
+      document.getElementById('to-day').value = toDay;
+    }
+
+    // Calculate Payroll
+    async function calculatePayroll() {
+      const staffType = document.getElementById('filter-staff-type').value;
+      const staffId = document.getElementById('filter-staff-id').value;
+      const shift = document.getElementById('filter-shift').value;
+      
+      const fromYear = parseInt(document.getElementById('from-year').value);
+      const fromMonth = parseInt(document.getElementById('from-month').value);
+      const fromDay = parseInt(document.getElementById('from-day').value);
+      const toYear = parseInt(document.getElementById('to-year').value);
+      const toMonth = parseInt(document.getElementById('to-month').value);
+      const toDay = parseInt(document.getElementById('to-day').value);
+      
+      const fromGreg = jalaliToGregorian(fromYear, fromMonth, fromDay);
+      const toGreg = jalaliToGregorian(toYear, toMonth, toDay);
+      
+      const dateFrom = `${fromGreg.year}-${String(fromGreg.month).padStart(2, '0')}-${String(fromGreg.day).padStart(2, '0')}`;
+      const dateTo = `${toGreg.year}-${String(toGreg.month).padStart(2, '0')}-${String(toGreg.day).padStart(2, '0')}`;
+      
+      document.getElementById('no-results').style.display = 'none';
+      document.getElementById('loading').classList.add('active');
+      document.getElementById('results-list').innerHTML = '';
+      document.getElementById('summary-box').style.display = 'none';
+      
+      const formData = new FormData();
+      formData.append('staff_type', staffType);
+      formData.append('staff_id', staffId);
+      formData.append('date_from', dateFrom);
+      formData.append('date_to', dateTo);
+      formData.append('shift', shift);
+      
+      try {
+        const response = await fetch('{{ url_for("manager.calculate_payroll") }}', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+        document.getElementById('loading').classList.remove('active');
+        
+        if (data.success && data.results.length > 0) {
+          let html = '';
+          let grandTotal = 0;
+          
+          data.results.forEach(person => {
+            grandTotal += person.total_salary;
+            
+            html += `
+              <div class="result-card">
+                <div class="result-header">
+                  <div class="result-name">
+                    ${person.type === 'doctor' ? '🩺' : '💉'} ${person.name}
+                    <span class="badge ${person.type}">${person.type_label}</span>
+                  </div>
+                  <div class="result-total">${formatNumber(person.total_salary)} تومان</div>
+                </div>
+                <table class="details-table">
+                  <thead>
+                    <tr>
+                      <th>شرح</th>
+                      <th>تعداد/مقدار</th>
+                      <th>واحد (تومان)</th>
+                      <th>جمع (تومان)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+            `;
+            
+            person.details.forEach(detail => {
+              const isNegative = detail.total < 0;
+              html += `
+                <tr>
+                  <td>${detail.type}</td>
+                  <td>${detail.count}</td>
+                  <td>${formatNumber(detail.unit_price)}</td>
+                  <td class="${isNegative ? 'negative' : 'positive'}">${isNegative ? '-' : ''}${formatNumber(Math.abs(detail.total))}</td>
+                </tr>
+              `;
+            });
+            
+            html += `
+                  </tbody>
+                </table>
+              </div>
+            `;
+          });
+          
+          document.getElementById('results-list').innerHTML = html;
+          document.getElementById('total-summary').textContent = formatNumber(grandTotal) + ' تومان';
+          document.getElementById('summary-box').style.display = 'flex';
+        } else {
+          document.getElementById('no-results').innerHTML = `
+            <div class="icon">📭</div>
+            <p>نتیجه‌ای برای این فیلترها یافت نشد</p>
+          `;
+          document.getElementById('no-results').style.display = 'block';
+        }
+      } catch (error) {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('no-results').innerHTML = `
+          <div class="icon">❌</div>
+          <p>خطا در محاسبه: ${error.message}</p>
+        `;
+        document.getElementById('no-results').style.display = 'block';
+      }
+    }
+    
+    function formatNumber(num) {
+      return Math.round(num).toLocaleString('fa-IR');
+    }
+
+    // Load staff settings when selected
+    function loadStaffSettings() {
+      const select = document.getElementById('add-staff-select');
+      const selectedOption = select.options[select.selectedIndex];
+      const staffId = select.value;
+      const staffType = selectedOption.dataset.type;
+      
+      const doctorFields = document.querySelectorAll('.doctor-only');
+      const nurseFields = document.querySelectorAll('.nurse-only');
+      
+      if (staffType === 'doctor') {
+        doctorFields.forEach(f => f.style.display = 'flex');
+        nurseFields.forEach(f => f.style.display = 'none');
+      } else if (staffType === 'nurse') {
+        doctorFields.forEach(f => f.style.display = 'none');
+        nurseFields.forEach(f => f.style.display = 'flex');
+      }
+      
+      // Load saved settings
+      if (staffId && staffSettings[staffId]) {
+        const settings = staffSettings[staffId];
+        document.getElementById('add-base-morning').value = settings.base_morning;
+        document.getElementById('add-base-evening').value = settings.base_evening;
+        document.getElementById('add-base-night').value = settings.base_night;
+        document.getElementById('add-visit-fee').value = settings.visit_fee;
+        document.getElementById('add-injection-percent').value = settings.injection_percent;
+        document.getElementById('add-procedure-percent').value = settings.procedure_percent;
+        document.getElementById('add-tax-percent').value = settings.tax_percent;
+        document.getElementById('add-nursing-percent').value = settings.nursing_percent;
+        document.getElementById('add-nurse-procedure-percent').value = settings.nurse_procedure_percent;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>گزارش فاکتورها - مدیریت</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    *{box-sizing:border-box;} body{font-family:'Vazirmatn',sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#e5e7eb;margin:0;padding:2rem;min-height:100vh;}
+    .wrap{max-width:1500px;margin:0 auto;}
+    .card{background:rgba(15,23,42,0.85);backdrop-filter:blur(16px);border-radius:18px;border:1px solid rgba(255,255,255,0.08);padding:1.4rem 1.6rem;margin-bottom:1.2rem;box-shadow:0 20px 50px rgba(0,0,0,.4);}  
+    .filters{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;} .field{display:flex;flex-direction:column;gap:.3rem;min-width:150px;} 
+    label{font-size:.85rem;font-weight:700;color:#a5b4fc;} select,input{padding:.55rem .7rem;border-radius:10px;border:1px solid rgba(139,92,246,0.3);background:rgba(30,41,59,0.8);color:#e5e7eb;font-family:inherit;font-size:.95rem;}
+    .date-row{display:flex;gap:.3rem;align-items:center;} .date-select{padding:.45rem .5rem;border-radius:8px;border:1px solid rgba(139,92,246,0.3);background:rgba(30,41,59,0.8);color:#e5e7eb;} .year-select{min-width:85px;}
+    .quick-range{display:flex;gap:.5rem;flex-wrap:wrap;} .chip{padding:.5rem .9rem;border-radius:999px;border:1px solid rgba(139,92,246,0.4);background:rgba(30,41,59,0.7);color:#e5e7eb;font-size:.85rem;font-weight:700;cursor:pointer;} .chip.active{background:linear-gradient(135deg,#8b5cf6,#7c3aed);}
+    .summary{display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem;} .sum-box{flex:1 1 180px;background:linear-gradient(135deg,rgba(139,92,246,0.15),rgba(236,72,153,0.1));border-radius:14px;border:1px solid rgba(139,92,246,0.2);padding:.9rem 1.1rem;}
+    table{width:100%;border-collapse:separate;border-spacing:0;margin-top:.6rem;} th,td{padding:.75rem .8rem;font-size:1rem;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center;} th{background:rgba(30,41,59,0.9);color:#a5b4fc;font-weight:700;position:sticky;top:0;z-index:1;font-size:.95rem;}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:.8rem;flex-wrap:wrap;}
+    .btn-main{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .9rem;border:none;border-radius:12px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 10px 25px rgba(124,58,237,.35);text-decoration:none;}
+    .btn-secondary{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .8rem;border:none;border-radius:12px;background:rgba(30,41,59,0.9);color:#e5e7eb;font-weight:700;cursor:pointer;text-decoration:none;border:1px solid rgba(139,92,246,0.35);}
+    /* Modal (copied from reception invoice details) */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center;}
+    .modal-overlay.active{display:flex;}
+    .modal{background:rgba(255,255,255,0.02);border-radius:12px;max-width:900px;width:95%;max-height:85vh;overflow:auto;box-shadow:0 20px 40px rgba(0,0,0,.3);border:1px solid rgba(255,255,255,0.06);}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid rgba(255,255,255,0.04);border-radius:12px 12px 0 0;background:rgba(30,41,59,0.9);}
+    .modal-header h2{margin:0;font-size:1.1rem;font-weight:800;color:#e5e7eb}
+    .modal-close{cursor:pointer;background:#ef4444;color:#fff;border:none;width:32px;height:32px;border-radius:50%;font-size:1.2rem;font-weight:700;display:flex;align-items:center;justify-content:center;}
+    .modal-body{padding:1.2rem;color:#e5e7eb}
+    .detail-row{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid rgba(255,255,255,0.04);}
+    .detail-item{min-width:140px;}
+    .detail-label{font-size:.75rem;color:#9ca3af;font-weight:600;margin-bottom:.2rem;}
+    .detail-value{font-size:.95rem;font-weight:700;color:#e5e7eb}
+    .items-section{margin-top:1rem;}
+    .items-section h3{font-size:.95rem;font-weight:700;margin:0 0 .6rem;color:#9ca3af}
+    .item-card{background:rgba(30,41,59,0.85);border:1px solid rgba(255,255,255,0.03);border-radius:8px;padding:.8rem;margin-bottom:.5rem;color:#e5e7eb}
+    .item-type{font-size:.7rem;padding:.2rem .5rem;border-radius:4px;background:#4f46e5;color:#fff;font-weight:700;display:inline-block;margin-bottom:.4rem;}
+    .item-type.visit{background:#10b981;}
+    .item-type.injection{background:#f59e0b;}
+    .item-type.procedure{background:#8b5cf6;}
+    .item-type.consumable{background:#ec4899;}
+    .item-details{display:flex;flex-wrap:wrap;gap:1rem;font-size:.85rem;}
+    .item-details span{color:#9ca3af}
+    .item-details strong{color:#e5e7eb}
+    .financials-box{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:10px;padding:1rem;margin-top:1rem;}
+    .financials-box h4{margin:0 0 .6rem;font-size:.9rem;font-weight:700}
+    .fin-row{display:flex;justify-content:space-between;padding:.3rem 0;font-size:.9rem}
+    .fin-row.total{border-top:1px solid rgba(255,255,255,.3);margin-top:.5rem;padding-top:.5rem;font-weight:800;font-size:1rem}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div style="font-size:1.05rem;font-weight:900;color:#e5e7eb;">گزارش فاکتورها</div>
+    <div style="margin-inline-start:auto;display:flex;gap:.6rem;">
+      <a href="{{ url_for('manager.reports') }}" class="btn-secondary">⬅️ بازگشت به گزارشات</a>
+    </div>
+  </div>
+  <div class="card">
+    <form method="get" class="filters">
+      <div class="field">
+        <label>از تاریخ (شمسی)</label>
+        <div class="date-row">
+          <select id="from-day" class="date-select"></select>
+          <span>/</span>
+          <select id="from-month" class="date-select"></select>
+          <span>/</span>
+          <select id="from-year" class="date-select year-select"></select>
+        </div>
+        <input type="hidden" name="from" id="from-date-hidden" value="{{ active_filters.from or '' }}">
+      </div>
+      <div class="field">
+        <label>تا تاریخ (شمسی)</label>
+        <div class="date-row">
+          <select id="to-day" class="date-select"></select>
+          <span>/</span>
+          <select id="to-month" class="date-select"></select>
+          <span>/</span>
+          <select id="to-year" class="date-select year-select"></select>
+        </div>
+        <input type="hidden" name="to" id="to-date-hidden" value="{{ active_filters.to or '' }}">
+      </div>
+      <div class="field">
+        <label>وضعیت</label>
+        <select name="status">
+          <option value="">همه</option>
+          <option value="open" {% if active_filters.status == 'open' %}selected{% endif %}>باز</option>
+          <option value="closed" {% if active_filters.status == 'closed' %}selected{% endif %}>بسته</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>بیمه</label>
+        <select name="insurance_type">
+          <option value="">همه</option>
+          {% for ins in insurances %}
+          <option value="{{ ins.insurance_type }}" {% if active_filters.insurance_type == ins.insurance_type %}selected{% endif %}>{{ ins.insurance_type }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>پذیرش</label>
+        <select name="reception_user">
+          <option value="">همه</option>
+          {% for u in users %}
+          <option value="{{ u.username }}" {% if active_filters.reception_user == u.username %}selected{% endif %}>{{ u.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>بازه‌های سریع</label>
+        <div class="quick-range">
+          <span class="chip" onclick="setQuickRange('today', this)">امروز</span>
+          <span class="chip" onclick="setQuickRange('r7', this)">۷ روزه</span>
+          <span class="chip" onclick="setQuickRange('r30', this)">۳۰ روزه</span>
+          <span class="chip" onclick="setQuickRange('r90', this)">۹۰ روزه</span>
+        </div>
+      </div>
+      <div class="field" style="margin-inline-start:auto;">
+        <button type="submit" class="btn-main">🔎 اعمال فیلتر</button>
+      </div>
+    </form>
+
+    <div class="summary">
+      <div class="sum-box"><div class="sum-label">تعداد فاکتور</div><div class="sum-value">{{ total_count }}</div></div>
+      <div class="sum-box"><div class="sum-label">باز</div><div class="sum-value">{{ total_open }}</div></div>
+      <div class="sum-box"><div class="sum-label">بسته</div><div class="sum-value">{{ total_closed }}</div></div>
+      <div class="sum-box"><div class="sum-label">جمع مبلغ (ت)</div><div class="sum-value">{{ (total_amount or 0)|int | fa_num }}</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.2rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem;">
+      <div style="font-size:.95rem;font-weight:800;">لیست فاکتورها</div>
+      <div style="display:flex;gap:.5rem;align-items:center;">
+        <a href="{{ url_for('manager.export_invoices_csv', **active_filters) }}" class="btn-secondary" style="font-size:.8rem;">📥 CSV</a>
+      </div>
+    </div>
+    <div style="max-height:60vh;overflow:auto;" id="printArea">
+      <table>
+        <thead>
+          <tr>
+            <th>شماره</th>
+            <th>باز شده</th>
+            <th>بسته شده</th>
+            <th>وضعیت</th>
+            <th>مبلغ کل</th>
+            <th>بیمه</th>
+            <th>بیمه تکمیلی</th>
+            <th>پذیرش</th>
+            <th>بسته توسط</th>
+            <th>جزئیات</th>
+            <th>بیمار</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in invoices %}
+          <tr>
+            <td>{{ r.id }}</td>
+            <td>{{ r.opened_at | jalali_datetime }}</td>
+            <td>{{ r.closed_at and (r.closed_at | jalali_datetime) or '—' }}</td>
+            <td>{{ r.status }}</td>
+            <td>{{ (r.total_amount or 0)|int | fa_num }}</td>
+            <td>{{ r.insurance_type or 'آزاد' }}</td>
+            <td>{{ r.supplementary_insurance or '—' }}</td>
+            <td>{{ r.opened_by_name or r.opened_by or '—' }}</td>
+            <td>{{ r.closed_by_name or r.closed_by or '—' }}</td>
+            <td><button class="btn-secondary" onclick="showInvoiceDetails({{ r.id }})">مشاهده</button></td>
+            <td style="font-weight:600;">{{ r.patient_name }}</td>
+          </tr>
+        {% endfor %}
+        {% if not invoices %}
+          <tr><td colspan="11" style="text-align:center;color:#6b7280;padding:1.5rem;">هیچ فاکتوری با این فیلترها یافت نشد</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+  const JALALI_RANGES = {{ jalali_ranges | tojson | safe }};
+  function toPersianNum(num){const p=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];return String(num).replace(/\d/g,d=>p[d]);}
+  const BASE_JALALI_YEAR = JALALI_RANGES.today.y;
+  function populateDateSelects(){
+    const currentYear = BASE_JALALI_YEAR;
+    ['from-day','to-day'].forEach(id=>{const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=''; for(let d=1; d<=31; d++){const opt=document.createElement('option'); opt.value=d; opt.textContent=toPersianNum(d); sel.appendChild(opt);} });
+    const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+    ['from-month','to-month'].forEach(id=>{const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=''; months.forEach((name,idx)=>{const opt=document.createElement('option'); opt.value=idx+1; opt.textContent=name; sel.appendChild(opt);} );});
+    ['from-year','to-year'].forEach(id=>{const sel=document.getElementById(id); if(!sel) return; sel.innerHTML=''; for(let y=currentYear; y>=currentYear-10; y--){const opt=document.createElement('option'); opt.value=y; opt.textContent=toPersianNum(y); sel.appendChild(opt);} });
+    const fromHidden=document.getElementById('from-date-hidden').value; const toHidden=document.getElementById('to-date-hidden').value;
+    if(fromHidden && toHidden){applyHiddenToSelects(fromHidden,'from'); applyHiddenToSelects(toHidden,'to');} else {setQuickRange('r7');}
+  }
+  function applyHiddenToSelects(value,prefix){const parts=value.split('/'); if(parts.length!==3) return; document.getElementById(prefix+'-year').value=parseInt(parts[0],10); document.getElementById(prefix+'-month').value=parseInt(parts[1],10); document.getElementById(prefix+'-day').value=parseInt(parts[2],10);}
+  function syncHiddenDates(){
+    const yFrom=document.getElementById('from-year').value; const mFrom=String(document.getElementById('from-month').value).padStart(2,'0'); const dFrom=String(document.getElementById('from-day').value).padStart(2,'0');
+    const yTo=document.getElementById('to-year').value; const mTo=String(document.getElementById('to-month').value).padStart(2,'0'); const dTo=String(document.getElementById('to-day').value).padStart(2,'0');
+    document.getElementById('from-date-hidden').value=`${yFrom}/${mFrom}/${dFrom}`; document.getElementById('to-date-hidden').value=`${yTo}/${mTo}/${dTo}`;
+  }
+  function setQuickRange(key,chipEl){
+    const range=JALALI_RANGES[key]; if(!range) return; const f=range.from, t=range.to;
+    document.getElementById('from-year').value=f.y; document.getElementById('from-month').value=f.m; document.getElementById('from-day').value=f.d;
+    document.getElementById('to-year').value=t.y; document.getElementById('to-month').value=t.m; document.getElementById('to-day').value=t.d;
+    syncHiddenDates(); if(chipEl){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); chipEl.classList.add('active');}
+  }
+  window.addEventListener('DOMContentLoaded',()=>{populateDateSelects(); ['from-day','from-month','from-year','to-day','to-month','to-year'].forEach(id=>{const el=document.getElementById(id); if(el) el.addEventListener('change', syncHiddenDates);} );});
+
+  // Invoice Details (reused from reception)
+  function displayDate(dateStr) { if(!dateStr || dateStr === '—') return '—'; return dateStr; }
+
+  async function showInvoiceDetails(invoiceId) {
+    const modal = document.getElementById('invoice-modal');
+    const modalBody = document.getElementById('modal-body-content');
+    modalBody.innerHTML = '<div style="text-align:center;padding:2rem;color:#9ca3af;">در حال بارگذاری...</div>';
+    modal.classList.add('active');
+    try {
+      const resp = await fetch(`/reception/api/invoice/${invoiceId}/details`);
+      if(!resp.ok) throw new Error('خطا در دریافت اطلاعات');
+      const data = await resp.json();
+      const inv = data.invoice;
+      const items = data.items || [];
+      const fin = data.financials || {};
+      const typeLabels = {visit:'ویزیت', injection:'خدمت پرستاری', procedure:'کار عملی', consumable:'مصرفی'};
+      const formatNum = n => new Intl.NumberFormat('fa-IR').format(n||0);
+      let itemsHtml = items.map(it => {
+        const patientProvidedHtml = it.type === 'consumable' 
+          ? `<span>آورده بیمار:</span> <strong>${it.patient_provided == 1 ? '✅ بله' : '❌ خیر'}</strong>` 
+          : '';
+        const priceDisplay = it.type === 'visit' 
+          ? `<span>تعرفه پایه:</span> <strong>${formatNum(it.recorded_price)} ت</strong>
+             <span>سهم بیمار:</span> <strong>${formatNum(it.patient_share)} ت</strong>`
+          : `<span>مبلغ:</span> <strong>${formatNum(it.recorded_price || it.amount)} ت</strong>
+             <span>سهم بیمار:</span> <strong>${formatNum(it.patient_share)} ت</strong>`;
+        const coveredBadge = it.covered_by_insurance ? '<span style="background:#10b981;color:#fff;padding:.2rem .5rem;border-radius:4px;font-size:.7rem;font-weight:700;margin-right:.5rem;">تحت پوشش بیمه</span>' : '';
+        return `
+        <div class="item-card">
+          <span class="item-type ${it.type}">${typeLabels[it.type]||it.type}</span>${coveredBadge}
+          <div class="item-details">
+            <span>توضیحات:</span> <strong>${it.description||'—'}</strong>
+            ${priceDisplay}
+            <span>پزشک:</span> <strong>${it.doctor_name||'—'}</strong>
+            <span>پرستار:</span> <strong>${it.nurse_name||'—'}</strong>
+            <span>تاریخ:</span> <strong>${displayDate(it.date)}</strong>
+            ${patientProvidedHtml}
+          </div>
+        </div>
+      `}).join('');
+      modalBody.innerHTML = `
+        <div class="detail-row">
+          <div class="detail-item"><div class="detail-label">شماره فاکتور</div><div class="detail-value">#${inv.id}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمار</div><div class="detail-value">${inv.patient_name||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمه اصلی</div><div class="detail-value">${inv.insurance_type||'آزاد'}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمه تکمیلی</div><div class="detail-value">${inv.supplementary_insurance||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">پذیرش</div><div class="detail-value">${inv.opened_by_name||inv.opened_by||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">وضعیت</div><div class="detail-value">${inv.status==='closed'?'بسته شده':'باز'}</div></div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-item"><div class="detail-label">زمان باز شدن</div><div class="detail-value">${displayDate(inv.opened_at)}</div></div>
+          <div class="detail-item"><div class="detail-label">زمان بسته شدن</div><div class="detail-value">${displayDate(inv.closed_at)}</div></div>
+        </div>
+        <div class="items-section">
+          <h3>آیتم‌های فاکتور (${items.length} مورد)</h3>
+          ${itemsHtml || '<div class="empty">آیتمی ثبت نشده</div>'}
+        </div>
+        <div class="financials-box">
+          <h4>خلاصه مالی</h4>
+          <div class="fin-row"><span>ویزیت‌ها:</span><span>${formatNum(fin.visits)} ت</span></div>
+          <div class="fin-row"><span>خدمات پرستاری:</span><span>${formatNum(fin.injections)} ت</span></div>
+          <div class="fin-row"><span>کارهای عملی:</span><span>${formatNum(fin.procedures)} ت</span></div>
+          <div class="fin-row" style="color:#f59e0b;"><span>مصرفی‌ها (غیر درآمدی):</span><span>${formatNum(fin.consumables)} ت</span></div>
+          <div class="fin-row" style="border-top:1px solid rgba(255,255,255,.3);margin-top:.4rem;padding-top:.4rem;"><span>💰 درآمد (بدون مصرفی):</span><span>${formatNum(fin.revenue)} ت</span></div>
+          <div class="fin-row total"><span>جمع کل فاکتور:</span><span>${formatNum(fin.total)} ت</span></div>
+          <div class="fin-row" style="color:#4ade80;"><span>💳 پرداخت کارتخوان:</span><span>${formatNum(fin.paid_card)} ت</span></div>
+          <div class="fin-row" style="color:#cbd5e1;"><span>💵 پرداخت نقدی:</span><span>${formatNum(fin.paid_cash)} ت</span></div>
+          <div class="fin-row" style="color:#fbbf24;"><span>مانده:</span><span>${formatNum(fin.remaining)} ت</span></div>
+        </div>
+      `;
+    } catch(e) {
+      modalBody.innerHTML = `<div class="empty" style="color:#ef4444;">${e.message}</div>`;
+    }
+  }
+  function closeModal() { document.getElementById('invoice-modal').classList.remove('active'); }
+  document.getElementById('invoice-modal')?.addEventListener('click', e => { if(e.target.classList.contains('modal-overlay')) closeModal(); });
+</script>
+
+<!-- Invoice Details Modal -->
+<div id="invoice-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>جزئیات فاکتور</h2>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body-content"></div>
+  </div>
+</div>
+</body>
+</html>

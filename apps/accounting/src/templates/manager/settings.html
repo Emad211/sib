@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>تنظیمات - سیستم درمانگاه</title>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: #f1f5f9;
+            padding: 1.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 1.25rem 1.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1));
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 900;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-top: 0.2rem;
+        }
+
+        .btn-back {
+            background: rgba(255,255,255,0.1);
+            color: #e2e8f0;
+            text-decoration: none;
+            padding: 0.7rem 1.2rem;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-back:hover {
+            background: rgba(255,255,255,0.15);
+            transform: translateX(3px);
+        }
+
+        /* Flash Messages */
+        .flash-messages { margin-bottom: 1.5rem; }
+        .flash {
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+        .flash.success { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .flash.error { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            background: rgba(0,0,0,0.3);
+            padding: 0.5rem;
+            border-radius: 16px;
+            width: fit-content;
+        }
+
+        .tab {
+            padding: 0.8rem 1.5rem;
+            border-radius: 12px;
+            background: transparent;
+            color: #9ca3af;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 700;
+            font-family: inherit;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .tab:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .tab.active {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Cards */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 1000px) { .settings-grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .card-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+        }
+
+        .card-icon.purple { background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1)); }
+        .card-icon.green { background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1)); }
+        .card-icon.blue { background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); }
+        .card-icon.orange { background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1)); }
+        .card-icon.pink { background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(236, 72, 153, 0.1)); }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #94a3b8;
+            margin-bottom: 0.4rem;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            color: #f3f4f6;
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+
+        .form-group textarea { resize: vertical; min-height: 80px; }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #047857);
+            color: white;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #e2e8f0;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.8rem;
+            font-size: 0.8rem;
+        }
+
+        /* Stats Grid */
+        .stats-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.75rem;
+        }
+
+        .stat-mini {
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+
+        .stat-mini .value {
+            font-size: 1.3rem;
+            font-weight: 900;
+            color: #fff;
+        }
+
+        .stat-mini .label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 0.25rem;
+        }
+
+        /* Backup List */
+        .backup-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .backup-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            border: 1px solid rgba(255,255,255,0.04);
+            transition: all 0.2s;
+        }
+
+        .backup-item:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .backup-info {
+            flex: 1;
+        }
+
+        .backup-name {
+            font-weight: 700;
+            color: #fff;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .backup-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .backup-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .no-backups {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+        }
+
+        .no-backups .icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }
+
+        /* Upload Form */
+        .upload-area {
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 14px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            margin-top: 1rem;
+        }
+
+        .upload-area:hover {
+            border-color: rgba(139, 92, 246, 0.5);
+            background: rgba(139, 92, 246, 0.05);
+        }
+
+        .upload-area .icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .upload-area p {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+        }
+
+        .upload-area input[type="file"] {
+            display: none;
+        }
+
+        /* Toggle Switch */
+        .toggle-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .toggle-label {
+            font-size: 0.9rem;
+            color: #e2e8f0;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.1);
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: linear-gradient(135deg, #10b981, #047857);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        /* Info Box */
+        .info-box {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: #93c5fd;
+        }
+
+        .info-box .icon {
+            margin-left: 0.5rem;
+        }
+
+        /* Danger Zone */
+        .danger-zone {
+            background: rgba(239, 68, 68, 0.05);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 14px;
+            padding: 1.25rem;
+            margin-top: 1.5rem;
+        }
+
+        .danger-zone h4 {
+            color: #fca5a5;
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .danger-zone p {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Full Width Card */
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.3); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(139, 92, 246, 0.5); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <div class="header-icon">⚙️</div>
+                <div>
+                    <h1>تنظیمات سیستم</h1>
+                    <p>مدیریت تنظیمات، پشتیبان‌گیری و بازیابی داده‌ها</p>
+                </div>
+            </div>
+            <a href="{{ url_for('manager.index') }}" class="btn-back">← بازگشت به داشبورد</a>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">
+                            {% if category == 'success' %}✓{% else %}⚠{% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('backup')">
+                <span>💾</span> پشتیبان‌گیری
+            </button>
+            <button class="tab" onclick="showTab('clinic')">
+                <span>🏥</span> اطلاعات کلینیک
+            </button>
+            <button class="tab" onclick="showTab('network')">
+                <span>🌐</span> شبکه
+            </button>
+            <button class="tab" onclick="showTab('database')">
+                <span>📊</span> آمار دیتابیس
+            </button>
+            <button class="tab" onclick="showTab('system')">
+                <span>🔧</span> تنظیمات سیستم
+            </button>
+        </div>
+
+        <!-- ========== Tab 1: پشتیبان‌گیری ========== -->
+        <div class="tab-content active" id="tab-backup">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">💾</div>
+                        <h3 class="card-title">ایجاد پشتیبان جدید</h3>
+                    </div>
+
+                    <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.25rem;">
+                        با کلیک روی دکمه زیر، یک نسخه پشتیبان از کل دیتابیس ایجاد می‌شود.
+                    </p>
+
+                    <form method="post">
+                        <input type="hidden" name="action" value="create_backup">
+                        <button type="submit" class="btn btn-success">
+                            <span>💾</span> ایجاد پشتیبان جدید
+                        </button>
+                    </form>
+
+                    <div class="info-box">
+                        <span class="icon">ℹ️</span>
+                        بکاپ خودکار هفتگی فعال است. هر هفته یک بکاپ خودکار ذخیره می‌شود.
+                    </div>
+
+                    <div class="upload-area">
+                        <div class="icon">📤</div>
+                        <p>یا یک فایل بکاپ آپلود کنید</p>
+                        <form method="post" action="{{ url_for('manager.upload_backup') }}" enctype="multipart/form-data" id="upload-form">
+                            <input type="file" name="backup_file" id="backup-file" accept=".db" onchange="document.getElementById('upload-form').submit()">
+                            <label for="backup-file" class="btn btn-secondary">
+                                <span>📁</span> انتخاب فایل .db
+                            </label>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">📋</div>
+                        <h3 class="card-title">لیست پشتیبان‌ها</h3>
+                    </div>
+
+                    <div class="backup-list">
+                        {% if backups %}
+                            {% for backup in backups %}
+                            <div class="backup-item">
+                                <div class="backup-info">
+                                    <div class="backup-name">{{ backup.name }}</div>
+                                    <div class="backup-meta">
+                                        <span>📅 {{ backup.date }}</span>
+                                        <span>📦 {{ backup.size }} KB</span>
+                                    </div>
+                                </div>
+                                <div class="backup-actions">
+                                    <a href="{{ url_for('manager.download_backup', backup_name=backup.name) }}" class="btn btn-secondary btn-sm" title="دانلود">
+                                        ⬇️
+                                    </a>
+                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را بازگردانی کنید؟ دیتابیس فعلی جایگزین می‌شود.');">
+                                        <input type="hidden" name="action" value="restore_backup">
+                                        <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <button type="submit" class="btn btn-primary btn-sm" title="بازگردانی">
+                                            🔄
+                                        </button>
+                                    </form>
+                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را حذف کنید؟');">
+                                        <input type="hidden" name="action" value="delete_backup">
+                                        <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <button type="submit" class="btn btn-danger btn-sm" title="حذف">
+                                            🗑️
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="no-backups">
+                                <div class="icon">📭</div>
+                                <p>هنوز هیچ پشتیبانی ایجاد نشده است</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== Tab 2: اطلاعات کلینیک ========== -->
+        <div class="tab-content" id="tab-clinic">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">🏥</div>
+                        <h3 class="card-title">اطلاعات کلینیک</h3>
+                    </div>
+
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_settings">
+
+                        <div class="form-group">
+                            <label>نام کلینیک / درمانگاه</label>
+                            <input type="text" name="clinic_name" value="{{ settings.get('clinic_name', 'درمانگاه سیب') }}" placeholder="نام درمانگاه">
+                        </div>
+
+                        <div class="form-group">
+                            <label>شماره تماس</label>
+                            <input type="text" name="clinic_phone" value="{{ settings.get('clinic_phone', '') }}" placeholder="021-12345678">
+                        </div>
+
+                        <div class="form-group">
+                            <label>آدرس</label>
+                            <textarea name="clinic_address" placeholder="آدرس کامل درمانگاه">{{ settings.get('clinic_address', '') }}</textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <span>💾</span> ذخیره تغییرات
+                        </button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">🖨️</div>
+                        <h3 class="card-title">تنظیمات چاپ</h3>
+                    </div>
+
+                    <p style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 2rem;">
+                        تنظیمات چاپ فاکتور و قبض در نسخه‌های آینده اضافه خواهد شد.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== Tab 3: شبکه ========== -->
+        <div class="tab-content" id="tab-network">
+            <div class="settings-grid">
+                <!-- کارت اصلی اطلاعات شبکه -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <div class="card-icon" style="background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(6, 182, 212, 0.1));">🌐</div>
+                        <h3 class="card-title">دسترسی از شبکه محلی</h3>
+                    </div>
+
+                    <!-- آدرس اصلی -->
+                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15)); border: 2px solid rgba(16, 185, 129, 0.3); border-radius: 16px; padding: 1.5rem; text-align: center; margin-bottom: 1.5rem;">
+                        <div style="font-size: 0.9rem; color: #10b981; margin-bottom: 0.5rem; font-weight: 700;">✅ آدرس برای دسترسی از دستگاه‌های دیگر:</div>
+                        {% if network_info.access_urls and network_info.access_urls|length > 0 %}
+                        <div id="main-url" style="font-family: 'Consolas', 'Monaco', monospace; font-size: 1.6rem; font-weight: 900; color: #fff; background: rgba(0,0,0,0.4); padding: 1.25rem; border-radius: 12px; margin: 1rem 0; letter-spacing: 1px; direction: ltr;">
+                            {{ network_info.access_urls[0] }}
+                        </div>
+                        <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+                            <button onclick="copyUrl()" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+                                <span>📋</span> کپی آدرس
+                            </button>
+                            <button onclick="openInNewTab()" class="btn btn-secondary">
+                                <span>🔗</span> باز کردن در تب جدید
+                            </button>
+                        </div>
+                        {% else %}
+                        <div style="font-family: monospace; font-size: 1.4rem; font-weight: 900; color: #fff; background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 12px; margin-bottom: 1rem;">
+                            http://127.0.0.1:8080
+                        </div>
+                        <div style="color: #f59e0b; font-size: 0.85rem;">
+                            ⚠️ آدرس شبکه یافت نشد. سرور را با --host=0.0.0.0 اجرا کنید.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- اطلاعات سرور -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+                        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">🖥️ نام سرور</div>
+                            <div style="font-size: 1rem; font-weight: 700; color: #fff;">{{ network_info.hostname }}</div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">🔌 پورت</div>
+                            <div style="font-size: 1rem; font-weight: 700; color: #22d3ee;">{{ network_info.port }}</div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 1rem; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.5rem;">📡 وضعیت</div>
+                            <div style="font-size: 1rem; font-weight: 700; color: #10b981;">● آنلاین</div>
+                        </div>
+                    </div>
+
+                    <!-- لیست IP ها -->
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="font-size: 0.9rem; font-weight: 700; color: #e2e8f0; margin-bottom: 0.75rem;">📡 آدرس‌های IP موجود:</div>
+                        {% for ip in network_info.local_ips %}
+                        <div style="background: rgba(0,0,0,0.25); border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.05);">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <span style="font-family: 'Consolas', monospace; font-size: 1.05rem; color: #22d3ee; direction: ltr;">{{ ip }}</span>
+                                <span style="color: #64748b;">:</span>
+                                <span style="font-family: monospace; color: #a78bfa;">{{ network_info.port }}</span>
+                            </div>
+                            {% if ip == '127.0.0.1' %}
+                            <span style="font-size: 0.7rem; color: #64748b; background: rgba(255,255,255,0.05); padding: 0.3rem 0.6rem; border-radius: 6px;">🖥️ لوکال</span>
+                            {% elif ip.startswith('192.168.') %}
+                            <span style="font-size: 0.7rem; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 0.3rem 0.6rem; border-radius: 6px;">📶 WiFi / LAN</span>
+                            {% elif ip.startswith('172.') %}
+                            <span style="font-size: 0.7rem; color: #f59e0b; background: rgba(245, 158, 11, 0.15); padding: 0.3rem 0.6rem; border-radius: 6px;">🐳 Docker/WSL</span>
+                            {% elif ip.startswith('10.') %}
+                            <span style="font-size: 0.7rem; color: #3b82f6; background: rgba(59, 130, 246, 0.15); padding: 0.3rem 0.6rem; border-radius: 6px;">🏢 شبکه سازمانی</span>
+                            {% else %}
+                            <span style="font-size: 0.7rem; color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 0.3rem 0.6rem; border-radius: 6px;">✓ شبکه</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- کارت راهنما -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon blue">📱</div>
+                        <h3 class="card-title">راهنمای اتصال</h3>
+                    </div>
+
+                    <div style="font-size: 0.85rem; color: #94a3b8; line-height: 1.8;">
+                        <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;">
+                            <div style="color: #22d3ee; font-weight: 700; margin-bottom: 0.5rem;">1️⃣ اتصال به شبکه</div>
+                            <p>مطمئن شوید دستگاه شما (موبایل/کامپیوتر) به <strong style="color: #fff;">همان WiFi یا شبکه LAN</strong> که سرور متصل است، وصل باشد.</p>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;">
+                            <div style="color: #22d3ee; font-weight: 700; margin-bottom: 0.5rem;">2️⃣ باز کردن مرورگر</div>
+                            <p>در موبایل یا کامپیوتر دیگر، مرورگر (Chrome, Safari, Firefox) را باز کنید.</p>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;">
+                            <div style="color: #22d3ee; font-weight: 700; margin-bottom: 0.5rem;">3️⃣ وارد کردن آدرس</div>
+                            <p>آدرس بالا را <strong style="color: #fff;">دقیقاً</strong> در نوار آدرس مرورگر تایپ کنید یا کپی کنید.</p>
+                        </div>
+                        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 10px; padding: 1rem;">
+                            <div style="color: #10b981; font-weight: 700; margin-bottom: 0.5rem;">💡 نکته</div>
+                            <p style="color: #86efac;">برای دسترسی سریع‌تر، آدرس را به صفحه اصلی موبایل اضافه کنید (Add to Home Screen).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- کارت عیب‌یابی -->
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon orange">🔧</div>
+                        <h3 class="card-title">عیب‌یابی</h3>
+                    </div>
+
+                    <div style="font-size: 0.85rem; color: #94a3b8; line-height: 1.8;">
+                        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;">
+                            <div style="color: #fca5a5; font-weight: 700; margin-bottom: 0.5rem;">❌ صفحه باز نمی‌شود؟</div>
+                            <ul style="margin: 0; padding-right: 1.25rem; color: #f87171;">
+                                <li>فایروال ویندوز را چک کنید</li>
+                                <li>پورت {{ network_info.port }} باید باز باشد</li>
+                                <li>آنتی‌ویروس را موقتاً غیرفعال کنید</li>
+                            </ul>
+                        </div>
+                        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 10px; padding: 1rem; margin-bottom: 0.75rem;">
+                            <div style="color: #fcd34d; font-weight: 700; margin-bottom: 0.5rem;">⚠️ دستور باز کردن فایروال:</div>
+                            <code style="display: block; background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 8px; font-size: 0.75rem; color: #fbbf24; direction: ltr; text-align: left; overflow-x: auto;">
+New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -LocalPort {{ network_info.port }} -Action Allow
+                            </code>
+                            <p style="margin-top: 0.5rem; font-size: 0.75rem; color: #d97706;">* این دستور را در PowerShell با دسترسی Admin اجرا کنید.</p>
+                        </div>
+                        <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 10px; padding: 1rem;">
+                            <div style="color: #93c5fd; font-weight: 700; margin-bottom: 0.5rem;">🔄 هنوز مشکل دارید؟</div>
+                            <p style="color: #60a5fa;">سرور را ری‌استارت کنید و مطمئن شوید با <code style="background: rgba(0,0,0,0.3); padding: 0.2rem 0.4rem; border-radius: 4px;">--host=0.0.0.0</code> اجرا شده است.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== Tab 4: آمار دیتابیس ========== -->
+        <div class="tab-content" id="tab-database">
+            <div class="settings-grid">
+                <div class="card full-width">
+                    <div class="card-header">
+                        <div class="card-icon pink">📊</div>
+                        <h3 class="card-title">وضعیت دیتابیس</h3>
+                    </div>
+
+                    <div class="stats-mini-grid" style="grid-template-columns: repeat(6, 1fr); margin-bottom: 1.5rem;">
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.patients }}</div>
+                            <div class="label">بیمار</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.invoices }}</div>
+                            <div class="label">فاکتور</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.visits }}</div>
+                            <div class="label">ویزیت</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.injections }}</div>
+                            <div class="label">تزریق</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.procedures }}</div>
+                            <div class="label">کار عملی</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="value">{{ db_stats.users }}</div>
+                            <div class="label">کاربر</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 2rem; justify-content: center; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 12px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 2rem; font-weight: 900; color: #a78bfa;">{{ db_size }}</div>
+                            <div style="font-size: 0.8rem; color: #94a3b8;">مگابایت</div>
+                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;">حجم دیتابیس</div>
+                        </div>
+                        <div style="width: 1px; background: rgba(255,255,255,0.1);"></div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 2rem; font-weight: 900; color: #10b981;">{{ backups|length }}</div>
+                            <div style="font-size: 0.8rem; color: #94a3b8;">عدد</div>
+                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 0.25rem;">نسخه پشتیبان</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== Tab 4: تنظیمات سیستم ========== -->
+        <div class="tab-content" id="tab-system">
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon green">🔄</div>
+                        <h3 class="card-title">پشتیبان‌گیری خودکار</h3>
+                    </div>
+
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_settings">
+
+                        <div class="toggle-group">
+                            <span class="toggle-label">بکاپ خودکار هفتگی</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" name="auto_backup" value="1" {% if settings.get('auto_backup', '1') == '1' %}checked{% endif %}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="info-box" style="margin-top: 1rem;">
+                            <span class="icon">📅</span>
+                            بکاپ خودکار هر هفته (شنبه‌ها) ساعت ۳ صبح انجام می‌شود.
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.25rem;">
+                            <span>💾</span> ذخیره تنظیمات
+                        </button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-icon purple">🔐</div>
+                        <h3 class="card-title">امنیت</h3>
+                    </div>
+
+                    <div class="toggle-group">
+                        <span class="toggle-label">لاگ فعالیت‌ها</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" checked disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-group">
+                        <span class="toggle-label">ذخیره تاریخچه تغییرات</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" checked disabled>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="danger-zone">
+                        <h4>⚠️ منطقه خطر</h4>
+                        <p>این عملیات‌ها غیرقابل بازگشت هستند. با احتیاط استفاده کنید.</p>
+                        <button class="btn btn-danger btn-sm" onclick="alert('این قابلیت در نسخه‌های آینده فعال خواهد شد.')">
+                            🗑️ پاک‌سازی داده‌های قدیمی
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            // Remove active from all tabs and content
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Add active to clicked tab and corresponding content
+            event.target.closest('.tab').classList.add('active');
+            document.getElementById('tab-' + tabName).classList.add('active');
+        }
+        
+        function copyUrl() {
+            const urlElement = document.getElementById('main-url');
+            if (urlElement) {
+                const url = urlElement.textContent.trim();
+                navigator.clipboard.writeText(url).then(() => {
+                    const btn = event.target.closest('button');
+                    const originalHtml = btn.innerHTML;
+                    btn.innerHTML = '<span>✓</span> کپی شد!';
+                    btn.style.background = 'linear-gradient(135deg, #10b981, #047857)';
+                    setTimeout(() => {
+                        btn.innerHTML = originalHtml;
+                        btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                    }, 2000);
+                }).catch(err => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = url;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert('آدرس کپی شد: ' + url);
+                });
+            }
+        }
+        
+        function openInNewTab() {
+            const urlElement = document.getElementById('main-url');
+            if (urlElement) {
+                const url = urlElement.textContent.trim();
+                window.open(url, '_blank');
+            }
+        }
+    </script>
+</body>
+</html>

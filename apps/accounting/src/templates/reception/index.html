@@ -1,0 +1,2172 @@
+
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>داشبورد پذیرش - سیستم درمانگاه</title>
+
+    <!-- فونت وزیرمتن (ضخیم و خوانا) -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        /* ========== تم روز ========== */
+        :root {
+            --sidebar-bg: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            --sidebar-text: #e5e7eb;
+            --sidebar-accent: rgba(99, 102, 241, 0.15);
+            --main-bg: #f8fafc;
+            --accent: #6366f1;
+            --accent-light: #818cf8;
+            --accent-hover: #4f46e5;
+            --card-bg: #ffffff;
+            --card-border: rgba(0, 0, 0, 0.06);
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            --text-dark: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --table-header-bg: #f8fafc;
+            --table-row-hover: #f1f5f9;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        /* ========== تم شب ========== */
+        body.theme-dark {
+            --sidebar-bg: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+            --sidebar-text: #e6edf3;
+            --sidebar-accent: rgba(136, 146, 255, 0.12);
+            --main-bg: #1a202c;
+            --accent: #8b5cf6;
+            --accent-light: #a78bfa;
+            --accent-hover: #7c3aed;
+            /* cards are dark/opaque so they contrast with gray background */
+            --card-bg: #0f172a;
+            --card-border: rgba(255, 255, 255, 0.06);
+            --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            --text-dark: #e6eef8;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+            --table-header-bg: #0c1322;
+            --table-row-hover: #1e293b;
+            --success: #3fb950;
+            --warning: #d29922;
+            --danger: #f85149;
+            --info: #58a6ff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            /* Darker gray gradient (top-right lighter -> bottom-left darker). Kept fixed. */
+            background-image: linear-gradient(to bottom left, #f1f2f4 0%, #e1e6ec 35%, #c8d0d8 70%, #b4bcc4 100%);
+            background-color: #b4bcc4; /* fallback */
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
+            color: var(--text-dark);
+            font-size: 16px;
+            overflow-x: hidden;
+            display: flex;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* Dark theme: gray gradient background (visible), cards stay dark */
+        body.theme-dark {
+            /* Gray gradient: lighter top-right -> darker bottom-left (but NOT black) */
+            background-image: linear-gradient(to bottom left, #4a5568 0%, #3d4552 35%, #2d3748 70%, #1a202c 100%) !important;
+            background-color: #1a202c !important;
+            background-attachment: fixed !important;
+            background-repeat: no-repeat !important;
+        }
+
+        /* ========== سایدبار ========== */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            flex-shrink: 0;
+            height: 100vh;
+            position: sticky;
+            top: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        .app-brand {
+            font-size: 1.3rem;
+            font-weight: 900;
+            color: white;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            padding: 1rem;
+            background: var(--sidebar-accent);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        /* ویجت کادر درمان */
+        .staff-widget {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+        }
+        
+        .staff-widget-header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .staff-widget-header .title {
+            font-weight: 800;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .staff-widget-header .subtitle {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+        
+        #lock-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+        }
+        
+        #lock-badge.locked {
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+        }
+        
+        #lock-badge.unlocked {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        .staff-row {
+            margin-bottom: 0.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+        
+        .staff-label { 
+            font-size: 0.8rem; 
+            color: #94a3b8;
+        }
+        
+        .staff-value { 
+            font-weight: 700; 
+            color: #f8fafc; 
+            font-size: 0.95rem;
+        }
+        
+        .btn-staff-edit {
+            width: 100%;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0;
+            padding: 0.5rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: inherit;
+            margin-top: 0.75rem;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-staff-edit:hover { 
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* دکمه‌های ناوبری */
+        .nav-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 700;
+            margin: 1.25rem 0 0.6rem 0;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 0.9rem 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            text-align: right;
+            gap: 0.75rem;
+        }
+
+        .nav-btn.primary {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        }
+        
+        .nav-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
+        }
+
+        .nav-btn.secondary {
+            background: rgba(255,255,255,0.05);
+            color: #cbd5e1;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        
+        .nav-btn.secondary:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        /* ========== محتوای اصلی ========== */
+        .main-wrapper {
+            flex: 1;
+            padding: 1.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+
+        /* هدر */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            background: var(--card-bg);
+            padding: 1rem 1.5rem;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--card-border);
+            transition: all 0.3s ease;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-display {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            color: var(--text-dark);
+            font-size: 0.95rem;
+            padding: 0.5rem 1rem;
+            background: var(--sidebar-accent);
+            border-radius: 10px;
+        }
+        
+        body.theme-dark .user-display {
+            background: rgba(139, 92, 246, 0.1);
+        }
+
+        .time-display {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+            color: white;
+            padding: 0.5rem 1.25rem;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            min-width: 11rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        }
+
+        /* Patient header (responsive, theme-aware) */
+        .patient-header {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 1rem 1.2rem;
+            border-radius: 12px;
+            color: var(--text-dark);
+        }
+        .patient-header .patient-name {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .patient-header .patient-meta {
+            margin-top: 0.45rem;
+            display:flex;
+            gap:0.9rem;
+            align-items:center;
+            flex-wrap:wrap;
+            color:var(--text-muted);
+            font-size:1rem;
+        }
+        .patient-header .patient-meta strong { font-weight:700; color:var(--text-dark); }
+
+        /* نشان شیفت */
+        #shift-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text-dark);
+            transition: all 0.3s ease;
+        }
+
+        #shift-badge.shift-morning { 
+            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); 
+            color: #065f46; 
+            border-color: #a7f3d0;
+        }
+        #shift-badge.shift-evening { 
+            background: linear-gradient(135deg, #fffbeb 0%, #fde68a 100%); 
+            color: #92400e;
+            border-color: #fcd34d;
+        }
+        #shift-badge.shift-night { 
+            background: linear-gradient(135deg, #eef2ff 0%, #c7d2fe 100%); 
+            color: #3730a3;
+            border-color: #a5b4fc;
+        }
+
+        body.theme-dark #shift-badge.shift-morning { 
+            background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); 
+            color: #a7f3d0;
+            border-color: #047857;
+        }
+        body.theme-dark #shift-badge.shift-evening { 
+            background: linear-gradient(135deg, #78350f 0%, #92400e 100%); 
+            color: #fde68a;
+            border-color: #b45309;
+        }
+        body.theme-dark #shift-badge.shift-night { 
+            background: linear-gradient(135deg, #312e81 0%, #3730a3 100%); 
+            color: #c7d2fe;
+            border-color: #4338ca;
+        }
+
+        .shift-icon { font-size: 1rem; }
+        .shift-text { font-weight: 700; }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-weight: 700;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            font-size: 0.85rem;
+        }
+        
+        .logout-btn:hover { 
+            background: var(--danger); 
+            color: white;
+            border-color: var(--danger);
+        }
+
+        .theme-toggle {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-dark);
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+        
+        .theme-toggle:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .refresh-btn {
+            padding: 0 1.25rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            cursor: pointer;
+            font-size: 1rem;
+            color: var(--text-dark);
+            transition: all 0.2s ease;
+        }
+        
+        .refresh-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* فضای کاری */
+        .workspace {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--card-border);
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        /* اینپوت‌ها و سلکت‌ها */
+        .big-select {
+            width: 100%;
+            padding: 0.875rem 1.25rem;
+            font-size: 1rem;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--card-bg);
+            font-family: inherit;
+            color: var(--text-dark);
+            transition: all 0.2s ease;
+        }
+        
+        .big-select:focus {
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+        }
+
+        /* کارت‌های مالی */
+        .fin-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.25rem;
+            margin: 1.5rem 0;
+        }
+        
+        .fin-card {
+            padding: 1.5rem;
+            border-radius: 16px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s ease;
+        }
+        
+        .fin-card:hover {
+            transform: translateY(-3px);
+        }
+        
+        .fin-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            transform: translate(30%, -30%);
+        }
+        
+        .fin-card.total { 
+            background: linear-gradient(135deg, var(--info) 0%, #1d4ed8 100%);
+            box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35);
+        }
+        .fin-card.paid { 
+            background: linear-gradient(135deg, var(--success) 0%, #059669 100%);
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
+        }
+        .fin-card.remain { 
+            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35);
+        }
+        
+        .fin-label { 
+            opacity: 0.9; 
+            font-size: 0.85rem; 
+            font-weight: 600;
+        }
+        
+        .fin-value { 
+            font-size: 1.75rem; 
+            font-weight: 900; 
+            letter-spacing: 0.5px;
+        }
+        
+        .fin-value small {
+            font-size: 0.85rem;
+            font-weight: 600;
+            opacity: 0.9;
+        }
+
+        /* جدول */
+        .table-container {
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            background: var(--card-bg);
+        }
+        
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .custom-table th {
+            background: var(--table-header-bg);
+            text-align: right;
+            padding: 1rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            font-size: 1rem;
+            border-bottom: 2px solid var(--border-color);
+        }
+        
+        .custom-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1rem;
+            color: var(--text-dark);
+            vertical-align: middle;
+        }
+        
+        .custom-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .custom-table tr:hover { 
+            background-color: var(--table-row-hover); 
+        }
+        
+        .price-text { 
+            font-weight: 800; 
+            font-size: 2rem;
+            color: var(--accent);
+            line-height:1.30;
+        }
+        
+        body.theme-dark .price-text {
+            color: var(--accent-light);
+        }
+
+        /* نشان نوع */
+        .type-badge {
+            padding: 0.4rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            display: inline-block;
+        }
+        
+        .type-badge.visit { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
+        .type-badge.injection { background: rgba(236, 72, 153, 0.15); color: #ec4899; }
+        .type-badge.procedure { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+        .type-badge.consumable { background: rgba(20, 184, 166, 0.15); color: #14b8a6; }
+
+        /* دکمه حذف */
+        .btn-icon {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-icon:hover { 
+            background: var(--danger); 
+            color: white;
+            transform: scale(1.1);
+        }
+
+        /* حالت خالی */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+        }
+        
+        .empty-state h1, 
+        .empty-state h2, 
+        .empty-state h3 {
+            color: var(--text-dark);
+            margin-bottom: 0.75rem;
+        }
+        
+        .empty-state p {
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* مودال‌ها */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        .modal-content {
+            background: var(--card-bg);
+            width: 85%;
+            max-width: 1000px;
+            height: 80vh;
+            border-radius: 24px;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--card-border);
+        }
+        
+        .modal-content h2 {
+            color: var(--text-dark);
+        }
+
+        /* استایل‌های تاریخچه */
+        .modal-overlay .modal-content .custom-table th {
+            font-size: 1.1rem;
+            padding: 1rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        
+        .modal-overlay .modal-content .custom-table td {
+            font-size: 1rem;
+            padding: 0.9rem;
+            font-weight: 600;
+            color: var(--text-dark);
+        }
+
+        /* Table panel inside history modal: let outer container handle scrolling */
+        .table-panel {
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+        }
+
+        /* Print rules: expand modal content and show full tables (no clipped scroll areas) */
+        @media print {
+            .modal-overlay {
+                position: static !important;
+                background: white !important;
+                box-shadow: none !important;
+            }
+            .modal-overlay .modal-content {
+                position: static !important;
+                height: auto !important;
+                max-height: none !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0.5rem !important;
+            }
+            .modal-overlay .modal-content #history-content {
+                overflow: visible !important;
+                max-height: none !important;
+            }
+            .modal-overlay .modal-content .table-panel {
+                overflow: visible !important;
+                max-height: none !important;
+            }
+            .modal-overlay, .modal-overlay * { -webkit-print-color-adjust: exact !important; }
+        }
+
+        .tab-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+        
+        .tab-btn:hover,
+        .tab-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        /* استایل‌های فرم کادر درمان */
+        #staff-form select {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.08);
+            color: #f8fafc;
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+        
+        #staff-form select option {
+            background: #1e293b;
+            color: #f8fafc;
+        }
+
+        /* پرداخت سریع */
+        .quick-pay-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 700;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+        
+        .quick-pay-btn.card {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent);
+        }
+        
+        .quick-pay-btn.cash {
+            background: rgba(100, 116, 139, 0.15);
+            color: var(--text-muted);
+        }
+        
+        .quick-pay-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        /* چکباکس پرداخت */
+        .pay-checkbox {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            accent-color: var(--success);
+        }
+
+        /* سلکت پرداخت */
+        .pay-select {
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-dark);
+            font-family: inherit;
+            font-size: 0.85rem;
+        }
+        .main-wrapper {
+            flex: 1;
+            padding: 1.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+
+        /* Top Header */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            background: var(--card-bg);
+            padding: 1rem 1.5rem;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            backdrop-filter: blur(10px);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .user-display {
+            font-weight: 700;
+            color: var(--text-dark);
+            font-size: 1.05rem;
+        }
+
+        .time-display {
+            background: var(--accent);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            min-width: 12rem;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(2,6,23,0.06);
+        }
+        /* Dark theme override for time display */
+        body.theme-dark .time-display { background: transparent; color:#e6eef8; border:1px solid rgba(255,255,255,0.06); box-shadow:none; }
+
+        /* Shift badge base + variants - redesigned */
+        #shift-badge {
+            display:inline-flex;
+            align-items:center;
+            gap:0.5rem;
+            padding:0.45rem 0.9rem;
+            border-radius:999px;
+            background:linear-gradient(180deg,#ffffff,#f8fafc);
+            color:#0f172a;
+            font-size:0.95rem;
+            font-weight:800;
+            border:1px solid rgba(15,23,42,0.06);
+            box-shadow: 0 6px 18px rgba(2,6,23,0.06);
+            min-height:36px;
+            padding-left:0.9rem;padding-right:0.9rem;
+        }
+        body.theme-dark #shift-badge { background: linear-gradient(180deg,#0b1220,#0f172a); color:#e6eef8; border:1px solid rgba(255,255,255,0.04); box-shadow: 0 6px 18px rgba(2,6,23,0.5); }
+
+        /* Light theme colored accents */
+        #shift-badge.shift-morning { background: linear-gradient(180deg,#ecfdf5,#d1fae5); color:#065f46; }
+        #shift-badge.shift-evening { background: linear-gradient(180deg,#fffbeb,#fde68a); color:#92400e; }
+        #shift-badge.shift-night { background: linear-gradient(180deg,#eef2ff,#c7d2fe); color:#3730a3; }
+
+        /* Dark-theme safe variants (subtle tones) */
+        body.theme-dark #shift-badge.shift-morning { background: linear-gradient(180deg,#08332f,#063c2f); color:#a7f3d0; }
+        body.theme-dark #shift-badge.shift-evening { background: linear-gradient(180deg,#4b2e00,#3b2200); color:#ffedd5; }
+        body.theme-dark #shift-badge.shift-night { background: linear-gradient(180deg,#1f2a78,#17215a); color:#dbeafe; }
+
+        .logout-btn {
+            background: #fff5f5;
+            color: #b91c1c;
+            text-decoration: none;
+            padding: 0.5rem 0.95rem;
+            border-radius: 10px;
+            font-weight: 800;
+            transition: 0.15s ease;
+            border:1px solid rgba(0,0,0,0.04);
+            font-size:0.95rem;
+        }
+        .logout-btn:hover { background: #dc2626; color: white; border-color:transparent; }
+
+        /* Theme toggle button */
+        .theme-toggle {
+            background: transparent;
+            border:1px solid rgba(15,23,42,0.06);
+            color:var(--text-dark);
+            padding:.45rem .8rem;
+            border-radius:10px;
+            font-weight:800;
+            cursor:pointer;
+            font-size:0.95rem;
+        }
+        body.theme-dark .theme-toggle { border-color: rgba(255,255,255,0.06); color:#e6eef8; }
+
+        /* shift badge internals */
+        .shift-icon { opacity:0.9; font-size:0.95rem; }
+        .shift-text { font-weight:800; font-size:0.95rem; }
+
+        /* Workspace (Invoice Area) */
+        .workspace {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 20px;
+            box-shadow: 0 10px 25px -6px rgba(0,0,0,0.35);
+            padding: 2rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(10px);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            margin-bottom: 1.5rem;
+            color: var(--text-dark);
+            border-bottom: 2px solid #f1f5f9;
+            padding-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Inputs & Selects */
+        .big-select {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            font-size: 1.1rem;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--card-bg);
+            font-family: inherit;
+            color: var(--text-dark);
+            transition: 0.2s;
+        }
+        .big-select:focus {
+            border-color: var(--accent);
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35);
+        }
+
+        /* Financial Cards */
+        .fin-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .fin-card {
+            padding: 1.5rem;
+            border-radius: 16px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .fin-card.total { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+        .fin-card.paid { background: linear-gradient(135deg, #10b981, #059669); }
+        .fin-card.remain { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        
+        .fin-label { opacity: 0.9; font-size: 0.9rem; }
+        .fin-value { font-size: 1.8rem; font-weight: 800; letter-spacing: 1px; }
+
+        /* Table */
+        .table-container {
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        .custom-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .custom-table th {
+            background: var(--table-header-bg);
+            text-align: right;
+            padding: 1.2rem 1rem;
+            font-weight: 700;
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+        .custom-table td {
+            padding: 1.2rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1rem;
+            color: var(--text-dark);
+        }
+        .custom-table tr:hover { background-color: var(--table-row-hover); }
+        
+        .custom-table td.price-text { font-weight: 800; font-size: 1.6rem; line-height:1.25; color: var(--accent); }
+        
+        /* Badges */
+        .type-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            background: #eef2ff;
+            color: #4338ca;
+        }
+
+        /* Action Buttons in Table */
+        .btn-icon {
+            background: #fee2e2;
+            color: #ef4444;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: #ef4444; color: white; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 4rem;
+            color: #94a3b8;
+        }
+
+        /* Larger + bold table font specifically inside patient history modal */
+        .modal-overlay .modal-content { font-size: 1.02rem; }
+        .modal-overlay .modal-content .custom-table th {
+            font-size: 1.30rem;
+            padding: 1.05rem 1rem;
+            font-weight: 800;
+            color: var(--text-dark);
+        }
+        .modal-overlay .modal-content .custom-table td {
+            font-size: 1.15rem;
+            padding: 1rem 1rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+        /* Increase section badge and tab/button sizes inside modal */
+        .modal-overlay .modal-content .tab-btn { font-size: 0.88rem; padding: 0.5rem 0.9rem; }
+        .modal-overlay .modal-content .panel > div[style*='background:#eef2ff'] { font-size: 0.9rem; padding:.45rem .8rem; }
+        /* Summary / finance boxes inside modal: larger labels and values */
+        .modal-overlay .modal-content .fin-card .fin-label { font-size: 0.82rem; }
+        .modal-overlay .modal-content .fin-card .fin-value { font-size: 1.25rem; }
+        /* Make small helper text in header slightly larger */
+        .modal-overlay .modal-content h2 { font-size: 1.18rem; }
+
+        /* Patient Search Modal */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+            display: none; align-items: center; justify-content: center; z-index: 9999;
+        }
+        .modal-content {
+            background: white; width: 80%; max-width: 1000px; height: 80vh;
+            border-radius: 20px; padding: 2rem; display: flex; flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            border:1px solid var(--border-color);
+        }
+        /* Dark theme adjustments for patient search modal for better contrast */
+        body.theme-dark .modal-content {
+            background: var(--card-bg); /* unified with other dark cards */
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.55);
+        }
+        body.theme-dark .modal-content h2 { color: var(--text-dark); }
+        body.theme-dark .modal-content .custom-table th {
+            background: var(--table-header-bg);
+            color: var(--text-dark);
+            border-bottom:1px solid var(--border-color);
+        }
+        body.theme-dark .modal-content .custom-table td { color: var(--text-dark); }
+        body.theme-dark #patient-search-input.big-select {
+            background: var(--card-bg);
+            color: var(--text-dark);
+            border:1px solid var(--border-color);
+        }
+        body.theme-dark #patient-search-input.big-select::placeholder { color:#94a3b8; opacity:1; }
+        body.theme-dark .modal-content .logout-btn {
+            background: rgba(239,68,68,0.08);
+            color: #ef4444;
+            border:1px solid rgba(239,68,68,0.3);
+        }
+        body.theme-dark .modal-content .logout-btn:hover { background: #ef4444; color:#fff; }
+
+        /* Staff Modal (Since it's no longer inline) */
+        .staff-modal-content {
+            background: white; padding: 2rem; border-radius: 16px; width: 400px;
+            display: flex; flex-direction: column; gap: 1rem;
+        }
+
+        /* Shift Selection Cards */
+        .shift-card-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .shift-select-card {
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.25rem 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .shift-select-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .shift-select-card.active {
+            border-color: var(--accent);
+            background: var(--sidebar-accent);
+        }
+
+        .shift-select-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            filter: grayscale(1);
+            pointer-events: none;
+        }
+
+        .shift-select-card.active::after {
+            content: '✓';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--accent);
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .shift-select-card .icon {
+            font-size: 2rem;
+            transition: transform 0.3s ease;
+        }
+
+        .shift-select-card:hover .icon {
+            transform: scale(1.2);
+        }
+
+        .shift-select-card .name {
+            font-weight: 800;
+            font-size: 0.95rem;
+            color: var(--text-dark);
+        }
+
+        .shift-select-card .time-range {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .shift-select-card.morning:hover { background: linear-gradient(135deg, rgba(252, 211, 77, 0.1) 0%, transparent 100%); }
+        .shift-select-card.evening:hover { background: linear-gradient(135deg, rgba(251, 146, 60, 0.1) 0%, transparent 100%); }
+        .shift-select-card.night:hover { background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%); }
+
+        .modal-footer {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="app-brand">
+            <span>🏥</span>
+            <span>پذیرش درمانگاه</span>
+        </div>
+
+        <!-- Staff Widget -->
+        <div class="staff-widget">
+            <div class="staff-widget-header">
+                <span class="title">👨‍⚕️ کادر درمان شیفت</span>
+                <span class="subtitle">پزشک / پرستار</span>
+                {% if shift_staff and shift_staff.doctor_id %}
+                <span id="lock-badge" class="locked">🔒 ثبت شده</span>
+                {% else %}
+                <span id="lock-badge" class="unlocked">⚠️ ثبت نشده</span>
+                {% endif %}
+            </div>
+            
+            {% if shift_staff and shift_staff.doctor_id %}
+            <div id="staff-locked-view">
+                <div class="staff-row">
+                    <span class="staff-label">پزشک:</span>
+                    <span class="staff-value" style="color:#4ade80;">
+                        {% set doc = doctors | selectattr('id','equalto', shift_staff.doctor_id) | list %}
+                        {{ doc[0].full_name if doc and doc[0] else '---' }}
+                    </span>
+                </div>
+                <div class="staff-row">
+                    <span class="staff-label">پرستار:</span>
+                    <span class="staff-value">
+                        {% set nur = nurses | selectattr('id','equalto', shift_staff.nurse_id) | list %}
+                        {{ nur[0].full_name if nur and nur[0] else '---' }}
+                    </span>
+                </div>
+                <button class="btn-staff-edit" onclick="unlockStaff()">✏️ تغییر کادر درمان</button>
+            </div>
+            {% endif %}
+
+            <div id="staff-form" style="{% if shift_staff and shift_staff.doctor_id %}display: none;{% else %}display: flex;{% endif %} flex-direction: column; gap: 0.75rem;">
+                <select id="doctor-select">
+                    <option value="">— انتخاب پزشک —</option>
+                    {% for d in doctors %}
+                    <option value="{{ d.id }}" {% if shift_staff and shift_staff.doctor_id == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <select id="nurse-select">
+                    <option value="">— انتخاب پرستار —</option>
+                    {% for n in nurses %}
+                    <option value="{{ n.id }}" {% if shift_staff and shift_staff.nurse_id == n.id %}selected{% endif %}>{{ n.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="nav-btn primary" style="justify-content:center; font-size:0.85rem; padding:0.7rem;" onclick="saveStaff()">🔒 ثبت کادر درمان</button>
+            </div>
+        </div>
+
+        <div class="nav-section-title">عملیات اصلی</div>
+        <button class="nav-btn primary" onclick="addVisit()">📄 ویزیت جدید</button>
+        <button class="nav-btn primary" onclick="openNursing()">💉 خدمات پرستاری</button>
+        <button class="nav-btn primary" onclick="openProcedures()">🏥 ثبت کار عملی</button>
+        <button class="nav-btn primary" onclick="showPatientSearch()">🔍 جستجوی بیمار</button>
+        
+        <div class="nav-section-title">گزارشات</div>
+        <button type="button" class="nav-btn secondary" onclick="window.location='{{ url_for('reception.combined_ledgers') }}'">📚 دفاتر شیفت</button>
+        <button type="button" class="nav-btn secondary" onclick="window.location='{{ url_for('reception.shift_performance') }}'">📊 عملکرد شیفت</button>
+    </aside>
+
+    <!-- Main Wrapper -->
+    <div class="main-wrapper">
+        
+        <!-- Header -->
+        <div class="header-bar">
+            <div class="header-left">
+                <div class="user-display">
+                    <span>👤</span>
+                    <span>{{ g.user['username'] if g.user else 'کاربر' }}</span>
+                </div>
+                <a href="{{ url_for('auth.logout') }}" class="logout-btn">🚪 خروج</a>
+                <button id="themeToggle" class="theme-toggle">🌙 تم شب</button>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <!-- Manual Shift Control -->
+                {% set ss = (g.user_shift_status if g.user_shift_status is defined else {
+                    'active_shift': initial_active_shift or 'morning',
+                    'work_date': initial_work_date,
+                    'is_overdue': initial_is_overdue,
+                    'should_prompt': initial_should_prompt,
+                    'open_invoices_count': 0
+                }) %}
+                
+                <div id="shift-badge" class="shift-{{ ss.active_shift or 'morning' }}" onclick="changeShiftManual()" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                    <span class="shift-icon">{% if ss.active_shift=='morning' %}☀️{% elif ss.active_shift=='evening' %}🌅{% else %}🌙{% endif %}</span>
+                    <span class="shift-text">{{ 'شیفت صبح' if ss.active_shift=='morning' else ('شیفت عصر' if ss.active_shift=='evening' else 'شیفت شب') }}</span>
+                </div>
+
+                <button onclick="changeShiftManual()" style="background: var(--accent); color: white; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    🔄 <span>تغییر شیفت دستی</span>
+                </button>
+
+                <span id="open-invoices-count-badge" title="فاکتورهای باز" style="{{ 'display:inline-block;' if ss.open_invoices_count and ss.open_invoices_count > 0 else 'display:none;' }} background:#fef2f2; color:#b91c1c; border-radius:12px; padding:0.2rem 0.6rem; font-size:0.8rem; font-weight:700; border: 1px solid #fee2e2;">
+                    ⚠️ <span id="open-invoices-count-value">{{ ss.open_invoices_count or '' }}</span> فاکتور باز
+                </span>
+
+                <div class="time-display" id="datetime">۱۴۰۲/۰۱/۰۱ - ۱۲:۰۰</div>
+            </div>
+        </div>
+
+        <!-- Shift Change Dialog Modal -->
+        <div class="modal-overlay" id="shift-change-modal" style="display:none;">
+            <div class="modal-content" style="max-width:500px; height: auto; padding:2rem; border-radius: 24px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
+                    <h2 style="margin:0; font-size:1.4rem; font-weight: 900; color:var(--text-dark); display: flex; align-items: center; gap: 0.75rem;">
+                        <span style="background: var(--sidebar-accent); padding: 0.5rem; border-radius: 12px;">🔄</span>
+                        تغییر شیفت کاری
+                    </h2>
+                    <button class="btn-icon" onclick="hideShiftChangeModal()" style="background: transparent; color: var(--text-muted);">✖</button>
+                </div>
+
+                <div style="background: var(--main-bg); padding: 1rem; border-radius: 16px; margin-bottom: 1.5rem; border: 1px dashed var(--border-color);">
+                    <p style="margin:0; color:var(--text-muted); font-size: 0.9rem; font-weight: 600;">
+                        شیفت فعلی شما: <span id="modal-current-shift" style="color: var(--accent); font-weight: 800;"></span>
+                    </p>
+                </div>
+
+                <div class="shift-card-grid">
+                    <div class="shift-select-card morning modal-shift-btn" onclick="confirmShiftChange('morning')">
+                        <span class="icon">☀️</span>
+                        <span class="name">شیفت صبح</span>
+                        <span class="time-range">۰۷:۳۰ تا ۱۳:۳۰</span>
+                    </div>
+                    <div class="shift-select-card evening modal-shift-btn" onclick="confirmShiftChange('evening')">
+                        <span class="icon">🌅</span>
+                        <span class="name">شیفت عصر</span>
+                        <span class="time-range">۱۳:۳۰ تا ۱۹:۳۰</span>
+                    </div>
+                    <div class="shift-select-card night modal-shift-btn" onclick="confirmShiftChange('night')">
+                        <span class="icon">🌙</span>
+                        <span class="name">شیفت شب</span>
+                        <span class="time-range">۱۹:۳۰ تا ۰۷:۳۰</span>
+                    </div>
+                </div>
+
+                <div id="modal-open-invoices-warning" style="display:none; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); border-radius: 16px; padding: 1rem; margin-bottom: 1.5rem; text-align: right;">
+                    <div style="font-weight:800; color:var(--danger); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span>⚠️</span> فاکتورهای باز شناسایی شد:
+                    </div>
+                    <div id="modal-open-invoices-list" style="font-size:0.85rem; color:var(--text-dark); line-height: 1.6; font-weight: 600;"></div>
+                    <div style="font-size:0.8rem; color:var(--danger); margin-top: 0.75rem; font-weight: 700; border-top: 1px solid rgba(239, 68, 68, 0.2); padding-top: 0.5rem;">
+                        لطفاً قبل از تغییر شیفت، تمامی فاکتورهای باز را تسویه یا ابطال کنید.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="nav-btn secondary" style="width:100%; padding:0.8rem; justify-content: center;" onclick="hideShiftChangeModal()">انصراف و بازگشت</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workspace -->
+        <div class="workspace">
+            
+            {% if open_invoices %}
+            <div class="section-title">
+                <span>مدیریت فاکتور بیمار</span>
+                <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                    <button class="nav-btn primary" style="width:auto; padding:0.6rem 1.4rem; font-size:0.9rem;" onclick="window.location='{{ url_for('reception.new_visit') }}'">🆕 فاکتور جدید</button>
+                    {% if selected_invoice %}
+                    <button class="nav-btn primary" style="width:auto; padding:0.6rem 1.4rem; font-size:0.9rem; background:linear-gradient(90deg,#10b981,#059669);" onclick="closeInvoice()">✅ بستن فاکتور</button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div style="margin-bottom: 2rem;">
+                <label style="display:block; margin-bottom:0.5rem; font-weight:700; color:#64748b;">انتخاب بیمار فعال:</label>
+                <div style="display:flex; gap:1rem;">
+                    <select id="invoice-select" class="big-select" onchange="window.location.href='?invoice_id='+this.value">
+                        {% for inv in open_invoices %}
+                        <option value="{{ inv.id }}" {% if selected_invoice and inv.id == selected_invoice.id %}selected{% endif %}>
+                            {{ inv.patient_name }} — {{ inv.insurance_type or 'آزاد' }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="refresh-btn" onclick="location.reload()">🔄</button>
+                </div>
+            </div>
+
+            {% if selected_invoice %}
+                <!-- Financial Overview Cards -->
+                <div class="fin-row" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="fin-card" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);box-shadow:0 8px 24px rgba(139,92,246,0.35);">
+                        <span class="fin-label">جمع کل فاکتور</span>
+                        <span id="fin-total" class="fin-value">{{ (selected_invoice.total_amount or 0) | fa_num }} <small style="font-size:1rem">تومان</small></span>
+                    </div>
+                    <div class="fin-card total">
+                        <span class="fin-label">مانده قابل پرداخت</span>
+                        <span id="fin-remaining" class="fin-value">{{ (financials.remaining if financials.remaining is not none else (selected_invoice.total_amount or 0)) | fa_num }} <small style="font-size:1rem">تومان</small></span>
+                    </div>
+                    <div class="fin-card paid">
+                        <span class="fin-label">💳 کارتخوان</span>
+                        <span id="fin-paid-card" class="fin-value">{{ (financials.paid_card if financials.paid_card is not none else 0) | fa_num }} <small style="font-size:1rem">تومان</small></span>
+                    </div>
+                    <div class="fin-card" style="background:linear-gradient(135deg,#64748b,#475569);box-shadow:0 8px 24px rgba(100,116,139,0.35);">
+                        <span class="fin-label">💵 نقدی</span>
+                        <span id="fin-paid-cash" class="fin-value">{{ (financials.paid_cash if financials.paid_cash is not none else 0) | fa_num }} <small style="font-size:1rem">تومان</small></span>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                {% if invoice_items %}
+                <div style="margin-bottom:1.25rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-weight:700; color:var(--text-muted); font-size:0.9rem;">پرداخت سریع:</span>
+                    <button onclick="applyPaymentAll('card')" class="quick-pay-btn card">💳 همه با کارتخوان</button>
+                    <button onclick="applyPaymentAll('cash')" class="quick-pay-btn cash">💵 همه نقدی</button>
+                    <button onclick="settleAll()" class="quick-pay-btn card" style="background:linear-gradient(90deg,#10b981,#059669);">🧾 تسویه یکجا</button>
+                </div>
+
+                <div class="table-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>زمان</th>
+                                <th>نوع خدمت</th>
+                                <th>شرح</th>
+                                <th>پزشک</th>
+                                <th>پرستار</th>
+                                <th>تعرفه</th>
+                                <th>سهم بیمار</th>
+                                <th>روش پرداخت</th>
+                                <th>تسویه؟</th>
+                                <th>حذف</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for item in invoice_items %}
+                            <tr data-item-type="{{ item.type }}" data-item-id="{{ item.id }}" data-covered="{{ 1 if item.patient_share == 0 else 0 }}">
+                                <td>{{ item.date | jalali_datetime }}</td>
+                                <td>
+                                    <span class="type-badge {% if item.type == 'visit' %}visit{% elif item.type == 'injection' %}injection{% elif item.type == 'procedure' %}procedure{% elif item.type == 'consumable' %}consumable{% endif %}">
+                                        {% if item.type == 'visit' %}ویزیت
+                                        {% elif item.type == 'injection' %}خدمات پرستاری
+                                        {% elif item.type == 'procedure' %}کار عملی
+                                        {% elif item.type == 'consumable' %}مصرفی/دارو
+                                        {% else %}{{ item.type }}{% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ item.description or '—' }}</td>
+                                <td>{{ item.doctor_name or '—' }}</td>
+                                <td>{% if item.type != 'visit' %}{{ item.nurse_name or '—' }}{% else %}—{% endif %}</td>
+                                <td class="price-text">{{ (item.recorded_price or 0) | fa_num }}</td>
+                                <td class="price-text">
+                                    {{ (item.patient_share or 0) | fa_num }}
+                                    {% if item.covered_by_insurance %}
+                                    <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.25rem;">
+                                        <small style="color:var(--muted);">بیمه: {{ (item.insurance_share or 0) | fa_num }} تومان</small>
+                                        <span class="badge" style="background:#2d9cdb;color:#fff;padding:0.15rem 0.45rem;border-radius:0.35rem;font-size:0.75rem;">تحت پوشش بیمه</span>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set pay = (payments | selectattr('item_type','equalto', item.type) | selectattr('item_id','equalto', item.id) | list) %}
+                                    {% set current_type = pay[0].payment_type if (pay and pay[0].payment_type) else '' %}
+                                    {% if item.patient_share == 0 %}
+                                        <!-- Covered by insurance: show empty cell (no dropdown) -->
+                                        <div style="min-width:120px; color:var(--muted);">—</div>
+                                    {% else %}
+                                        <select class="pay-select" onchange="updatePayment('{{ item.type }}', {{ item.id }}, this.value, this.parentElement.parentElement)">
+                                            <option value="card" {% if current_type in ['', 'card'] %}selected{% endif %}>💳 کارتخوان</option>
+                                            <option value="cash" {% if current_type=='cash' %}selected{% endif %}>💵 نقدی</option>
+                                        </select>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set is_paid = (pay and pay[0].is_paid == 1) %}
+                                    <input type="checkbox" class="pay-checkbox" {% if is_paid %}checked{% endif %} onchange="togglePaid('{{ item.type }}', {{ item.id }}, this.checked, this.parentElement.parentElement)">
+                                </td>
+                                <td>
+                                    <button class="btn-icon" onclick="deleteItem('{{ item.type }}', {{ item.id }})">🗑️</button>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <h3>فاکتور خالی است</h3>
+                    <p>لطفاً از منوی سمت راست خدمات مورد نظر را اضافه کنید.</p>
+                </div>
+                {% endif %}
+
+            {% else %}
+                <div class="empty-state">
+                    <h2>هیچ بیماری انتخاب نشده است</h2>
+                    <p>لطفاً یک بیمار را از لیست بالا انتخاب کنید یا فاکتور جدید ایجاد کنید.</p>
+                    <br>
+                    <button class="nav-btn primary" style="width:auto; display:inline-flex;" onclick="location.href='{{ url_for('reception.new_visit') }}'">+ ایجاد فاکتور جدید</button>
+                </div>
+            {% endif %}
+
+            {% else %}
+            <div class="empty-state">
+                <h1>صف انتظار خالی است</h1>
+                <p>برای شروع پذیرش، روی دکمه زیر کلیک کنید.</p>
+                <br><br>
+                <button class="nav-btn primary" style="width:auto; display:inline-flex; padding:1rem 3rem;" onclick="location.href='{{ url_for('reception.new_visit') }}'">+ پذیرش بیمار جدید</button>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    <!-- Patient Search Modal -->
+    <div class="modal-overlay" id="patient-search-modal">
+        <div class="modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                <h2 style="margin:0;">جستجوی پرونده بیمار</h2>
+                <button onclick="closePatientSearch()" class="logout-btn">بستن</button>
+            </div>
+            <input type="text" id="patient-search-input" class="big-select" placeholder="نام بیمار، کد ملی یا شماره تلفن را وارد کنید..." oninput="filterPatients()" style="margin-bottom:1.5rem;">
+            
+            <div style="flex:1; overflow:auto; border:1px solid #e2e8f0; border-radius:12px;">
+                <table class="custom-table" id="patient-table">
+                    <thead>
+                        <tr>
+                            <th>نام کامل</th>
+                            <th>کد ملی</th>
+                            <th>تلفن</th>
+                            <th>بیمه</th>
+                            <th>انتخاب</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patient-tbody">
+                         <tr><td colspan="5" style="text-align:center; padding:2rem;">در حال جستجو...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unpaid Items Modal (shown when invoice close fails) -->
+    <div class="modal-overlay" id="unpaid-items-modal" style="display:none;">
+        <div class="modal-content" style="max-width:700px;padding:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+                <h2 style="margin:0;font-size:1.05rem;">آیتم‌های تسویه‌نشده</h2>
+                <button class="logout-btn" onclick="hideUnpaidItemsModal()">✖ بستن</button>
+            </div>
+            <div id="unpaid-items-content" style="max-height:50vh; overflow:auto;">
+                <!-- populated dynamically -->
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:0.8rem;gap:0.5rem;">
+                <button class="nav-btn primary" onclick="gotoInvoice()">بازگشت به فاکتور</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patient History Modal Container -->
+    <div id="patient-history-modal-container"></div>
+
+    <script>
+        // =====================================================
+        // Shift Management (مدیریت شیفت دستی)
+        // =====================================================
+        let shiftCheckInterval = null;
+        let lastShiftStatus = null;
+
+        function checkShiftStatus() {
+            fetch('{{ url_for("reception.get_shift_status") }}', { credentials: 'same-origin' })
+                .then(r => r.json())
+                .then(data => {
+                    lastShiftStatus = data;
+                    updateShiftUI(data);
+                })
+                .catch(err => console.error('Shift status check error:', err));
+        }
+
+        function updateShiftUI(data) {
+            const shiftBadge = document.getElementById('shift-badge');
+            const iconEl = shiftBadge.querySelector('.shift-icon');
+            const textEl = shiftBadge.querySelector('.shift-text');
+            const openCountBadge = document.getElementById('open-invoices-count-badge');
+            const openCountValue = document.getElementById('open-invoices-count-value');
+            
+            // Update badge based on USER's active shift (not clock)
+            shiftBadge.classList.remove('shift-morning', 'shift-evening', 'shift-night');
+            
+            const shiftIcons = { morning: '☀️', evening: '🌅', night: '🌙' };
+            const shiftNames = { morning: 'شیفت صبح', evening: 'شیفت عصر', night: 'شیفت شب' };
+            
+            shiftBadge.classList.add('shift-' + data.active_shift);
+            if (iconEl) iconEl.textContent = shiftIcons[data.active_shift] || '🕐';
+            
+            // Display shift name only (removed Gregorian date)
+            if (textEl) textEl.textContent = (shiftNames[data.active_shift] || data.active_shift_fa);
+
+            // Update open invoices count badge
+            const openCount = Number(data.open_invoices_count || 0);
+            if (openCountBadge && openCountValue) {
+                if (openCount > 0) {
+                    openCountValue.textContent = String(openCount);
+                    openCountBadge.style.display = 'inline-block';
+                } else {
+                    openCountValue.textContent = '';
+                    openCountBadge.style.display = 'none';
+                }
+            }
+        }
+
+        function showShiftChangeModal(data) {
+            const modal = document.getElementById('shift-change-modal');
+            const currentShiftEl = document.getElementById('modal-current-shift');
+            const warningDiv = document.getElementById('modal-open-invoices-warning');
+            const listDiv = document.getElementById('modal-open-invoices-list');
+            const shiftButtons = Array.from(document.querySelectorAll('.modal-shift-btn'));
+            
+            if (currentShiftEl) currentShiftEl.textContent = data.active_shift_fa;
+
+            // Reset invoice warning state
+            if (listDiv) listDiv.innerHTML = '';
+            
+            // Disable shift selection if there are open invoices (Policy A)
+            if (data.open_invoices_count > 0) {
+                if (warningDiv) warningDiv.style.display = 'block';
+                if (listDiv) listDiv.innerHTML = `تعداد فاکتورهای باز: ${data.open_invoices_count}`;
+                shiftButtons.forEach(btn => btn.classList.add('disabled'));
+            } else {
+                if (warningDiv) warningDiv.style.display = 'none';
+                shiftButtons.forEach(btn => btn.classList.remove('disabled'));
+            }
+            
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function hideShiftChangeModal() {
+            const modal = document.getElementById('shift-change-modal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function confirmShiftChange(shiftKey) {
+            fetch('{{ url_for("reception.change_shift") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shift: shiftKey }),
+                credentials: 'same-origin'
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    // Show open invoices if any
+                    if (data.open_invoices && data.open_invoices.length) {
+                        const warningDiv = document.getElementById('modal-open-invoices-warning');
+                        const listDiv = document.getElementById('modal-open-invoices-list');
+                        const shiftButtons = Array.from(document.querySelectorAll('.modal-shift-btn'));
+                        
+                        if (warningDiv) warningDiv.style.display = 'block';
+                        if (listDiv) {
+                            const names = data.open_invoices.map(inv => inv.patient_name).slice(0, 5);
+                            if (data.open_invoices.length > 5) names.push(`و ${data.open_invoices.length - 5} فاکتور دیگر...`);
+                            listDiv.innerHTML = names.join('<br>');
+                        }
+                        shiftButtons.forEach(btn => btn.disabled = true);
+                    } else {
+                        alert(data.message || data.error);
+                    }
+                    return;
+                }
+                // Success - reload page
+                hideShiftChangeModal();
+                window.location.reload();
+            })
+            .catch(err => {
+                console.error('Shift change error:', err);
+                alert('خطا در تغییر شیفت');
+            });
+        }
+
+        function changeShiftManual() {
+            // Manual trigger of shift change (from button click)
+            if (lastShiftStatus) {
+                showShiftChangeModal(lastShiftStatus);
+            } else {
+                fetch('{{ url_for("reception.get_shift_status") }}', { credentials: 'same-origin' })
+                    .then(r => r.json())
+                    .then(data => {
+                        lastShiftStatus = data;
+                        updateShiftUI(data);
+                        showShiftChangeModal(data);
+                    })
+                    .catch(err => console.error('Shift status check error:', err));
+            }
+        }
+
+        // Start shift status checking (every 60 seconds)
+        function startShiftMonitoring() {
+            checkShiftStatus(); // Initial check
+            shiftCheckInterval = setInterval(checkShiftStatus, 60000); // Every 60 seconds
+        }
+
+        // =====================================================
+        // Update datetime (Synced with Tehran Server Time)
+        // =====================================================
+        const serverTime = new Date("{{ server_time }}");
+        const clientTime = new Date();
+        const timeOffset = serverTime.getTime() - clientTime.getTime();
+
+        function updateDateTime() {
+            const now = new Date(new Date().getTime() + timeOffset);
+            const options = { 
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            };
+            // Use Intl.DateTimeFormat for Jalali if supported, or just display the time
+            // Since we want everything Jalali, we can use the toLocaleString with fa-IR
+            document.getElementById('datetime').textContent = now.toLocaleString('fa-IR', options);
+        }
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+
+        // Start manual shift badge/status polling
+        startShiftMonitoring();
+
+        // Theme toggle persistence
+        const themeToggle = document.getElementById('themeToggle');
+        function applyStoredTheme(){
+            const t = localStorage.getItem('receptionTheme') || 'light';
+            if(t==='dark') document.body.classList.add('theme-dark'); else document.body.classList.remove('theme-dark');
+            themeToggle.textContent = t==='dark' ? '☀️ تم روز' : '🌙 تم شب';
+        }
+        applyStoredTheme();
+        themeToggle.addEventListener('click',()=>{
+            const isDark = document.body.classList.toggle('theme-dark');
+            localStorage.setItem('receptionTheme', isDark? 'dark':'light');
+            applyStoredTheme();
+        });
+
+        // Staff Logic (Sidebar Widget)
+        function saveStaff() {
+            const doctorSelect = document.getElementById('doctor-select');
+            const nurseSelect = document.getElementById('nurse-select');
+            const invoiceSelect = document.getElementById('invoice-select');
+            
+            const doctor = doctorSelect ? doctorSelect.value : '';
+            const nurse = nurseSelect ? nurseSelect.value : '';
+            
+            console.log('saveStaff called:', { doctor, nurse });
+            
+            if (!doctor && !nurse) { alert('لطفاً حداقل پزشک یا پرستار را انتخاب کنید'); return; }
+
+            const formData = new FormData();
+            formData.append('doctor_id', doctor);
+            formData.append('nurse_id', nurse);
+            // Note: No invoice_id - staff is global for shift, not per-invoice
+
+            fetch('{{ url_for('reception.set_shift_staff_route') }}', {
+                method: 'POST', body: formData, credentials: 'same-origin'
+            }).then(r => r.json()).then(data => {
+                console.log('saveStaff response:', data);
+                if (data.error) { alert(data.error); return; }
+                // Reload page to show updated staff
+                const currentInvoice = invoiceSelect ? invoiceSelect.value : '';
+                window.location.href = '{{ url_for('reception.index') }}' + (currentInvoice ? '?invoice_id=' + currentInvoice : '');
+            }).catch(err => { 
+                console.error('saveStaff error:', err);
+                alert('خطا در ثبت کادر درمان'); 
+            });
+        }
+
+        function unlockStaff(){
+            document.getElementById('staff-form').style.display='flex';
+            document.getElementById('staff-locked-view').style.display='none';
+        }
+        
+        // Check if staff is set for current shift
+        function isStaffLocked() {
+            {% if shift_staff and shift_staff.doctor_id %}
+                return true;
+            {% else %}
+                return false;
+            {% endif %}
+        }
+
+        // Actions
+        function addVisit() {
+            const select = document.getElementById('invoice-select');
+            if (!select || !select.value) { alert('لطفاً ابتدا یک فاکتور باز انتخاب کنید'); return; }
+            if (!isStaffLocked()) { alert('لطفاً ابتدا کادر درمان (پزشک/پرستار) را انتخاب و ثبت کنید'); return; }
+            const formData = new FormData(); formData.append('invoice_id', select.value);
+            fetch('{{ url_for('reception.add_visit_to_invoice') }}', { method: 'POST', body: formData, credentials: 'same-origin' })
+            .then(r => r.json()).then(data => {
+                if (data.error) { alert(data.error); return; }
+                window.location.reload();
+            });
+        }
+
+        function openNursing(){
+            const select = document.getElementById('invoice-select');
+            if(!select || !select.value){ alert('ابتدا یک فاکتور فعال انتخاب کنید'); return; }
+            if (!isStaffLocked()) { alert('لطفاً ابتدا کادر درمان (پزشک/پرستار) را انتخاب و ثبت کنید'); return; }
+            window.location = '{{ url_for('reception.injections_new') }}?invoice_id=' + select.value;
+        }
+
+        function openProcedures(){
+            const select = document.getElementById('invoice-select');
+            if(!select || !select.value){ alert('ابتدا یک فاکتور فعال انتخاب کنید'); return; }
+            if (!isStaffLocked()) { alert('لطفاً ابتدا کادر درمان (پزشک/پرستار) را انتخاب و ثبت کنید'); return; }
+            window.location='{{ url_for('reception.procedures_new') }}?invoice_id='+select.value;
+        }
+
+        // Search Patient Logic
+        function showPatientSearch(){ document.getElementById('patient-search-modal').style.display='flex'; loadPatients(); }
+        function closePatientSearch(){ document.getElementById('patient-search-modal').style.display='none'; }
+        
+        let patientCache=[];
+        function loadPatients(query=''){
+            fetch(`/reception/patients/list?q=${encodeURIComponent(query)}`, {credentials:'same-origin'})
+            .then(r=>r.json()).then(data=>{ patientCache = data.patients || []; renderPatientRows(patientCache); })
+            .catch(()=>{ document.getElementById('patient-tbody').innerHTML='<tr><td colspan="5">خطا در دریافت</td></tr>'; });
+        }
+        function renderPatientRows(rows){
+            const tb = document.getElementById('patient-tbody');
+            if(!rows.length){ tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:1rem;">موردی یافت نشد</td></tr>'; return; }
+            tb.innerHTML = rows.map(r=>`<tr style="cursor:pointer" onclick="showPatientHistory(${r.id})">
+                <td>${r.full_name || '—'}</td><td>${r.national_id || '—'}</td><td>${r.phone_number || '—'}</td>
+                <td>${(r.insurance_type||'')? r.insurance_type : 'آزاد'}</td>
+                <td><button class='nav-btn primary' style="width:auto; padding:0.3rem 1rem; font-size:0.8rem;" onclick='showPatientHistory(${r.id});event.stopPropagation();'>انتخاب</button></td>
+            </tr>`).join('');
+        }
+        function filterPatients(){
+            const q = document.getElementById('patient-search-input').value.trim();
+            if(q.length<2){ renderPatientRows(patientCache); return; }
+            loadPatients(q);
+        }
+
+        // History Modal Logic
+        const historyModalId = 'patient-history-modal';
+                function ensureHistoryModal(){
+                        if(document.getElementById(historyModalId)) return;
+                        const div = document.createElement('div'); div.id = historyModalId; div.className='modal-overlay';
+                        // Larger width/height
+                        div.innerHTML = `<div class='modal-content' style='width:95%;max-width:1400px;height:88vh;padding:1.2rem;'>
+                                <div style='display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.8rem;'>
+                                    <h2 style='margin:0;font-size:1.1rem;'>پرونده بیمار</h2>
+                                    <div style='display:flex;gap:.5rem;'>
+                                        <button class='nav-btn secondary' id='history-print-btn' style='width:auto;padding:.4rem .9rem;font-size:.75rem;background:#fff;color:#4f46e5;border:1px solid #4f46e5;' onclick='printHistory()'>🖨 چاپ</button>
+                                        <button class='logout-btn' style='padding:.45rem .9rem;font-size:.75rem;' onclick='closeHistoryModal()'>✖ بستن</button>
+                                    </div>
+                                </div>
+                                <div id='history-content' style='flex:1;overflow:auto;margin-top:.4rem;'></div>
+                        </div>`;
+                        document.body.appendChild(div);
+                }
+        function showPatientHistory(pid){ ensureHistoryModal(); document.getElementById(historyModalId).style.display='flex'; loadPatientHistory(pid); }
+        function closeHistoryModal(){ const m = document.getElementById(historyModalId); if(m) m.style.display='none'; }
+        function loadPatientHistory(pid){
+            const target = document.getElementById('history-content'); target.innerHTML='درحال بارگذاری...';
+            fetch(`/reception/patients/${pid}/history`, {credentials:'same-origin'}).then(r=>r.json()).then(data=>{
+                 if(data.error){ target.innerHTML=data.error; return; }
+                 target.innerHTML = renderHistory(data); 
+            });
+        }
+
+        // Print helper: opens a clean window with only history content and print it
+        function printHistory(){
+            const contentEl = document.getElementById('history-content');
+            if(!contentEl) { window.print(); return; }
+            const html = contentEl.innerHTML;
+            const win = window.open('', '_blank', 'width=900,height=1100');
+            const fontHref = 'https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css';
+            const styles = `
+                body{font-family: 'Vazirmatn',sans-serif; direction:rtl; color:#111; margin:20px}
+                .patient-header{background:transparent;border:none;padding:0;margin-bottom:12px}
+                .custom-table{width:100%;border-collapse:collapse;font-size:14px}
+                .custom-table th{font-weight:800;padding:8px;text-align:right;border-bottom:1px solid #ddd}
+                .custom-table td{padding:10px;border-bottom:1px solid #eee}
+                .table-panel{overflow:visible !important}
+                @media print{ body{margin:6mm} }
+            `;
+
+            win.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>پرونده بیمار</title><link href="${fontHref}" rel="stylesheet"><style>${styles}</style></head><body>${html}</body></html>`);
+            win.document.close();
+            // Give browser a moment to render fonts/styles
+            setTimeout(()=>{ try{ win.focus(); win.print(); }catch(e){ console.error(e); } finally{ win.close(); } }, 600);
+        }
+        
+        // Your simplified renderHistory function adapted for new styles
+                function renderHistory(data){
+                        const p = data.patient || {}; 
+                        const safe = v=> (v===null||v===undefined||String(v).trim()==='')?'—':v;
+                        const num = v=> (v && !isNaN(v))? Number(v):0;
+                        // Aggregates
+                        const visits = data.visits||[];
+                        const injections = data.injections||[];
+                        const procedures = data.procedures||[];
+                        const consumables = data.consumables||[];
+                        const invoices = data.invoices||[];
+                        const sumField = (arr,f)=> arr.reduce((a,b)=> a + (num(b[f])||0),0);
+                        const totalCosts = sumField(injections,'total_price') + sumField(procedures,'price') + sumField(consumables,'total_cost') + sumField(visits,'amount');
+                        // Build tables helper
+                        const buildTable = (rows, cols, emptyLabel)=>{
+                                if(!rows.length) return `<div style='padding:0.8rem; font-size:0.75rem; color:#64748b;'>${emptyLabel}</div>`;
+                                return `<div class='table-panel'>
+                                        <table class='custom-table' style='min-width:100%;'>
+                                            <thead><tr>${cols.map(c=>`<th style='font-size:1rem;'>${c.title}</th>`).join('')}</tr></thead>
+                                            <tbody>
+                                                ${rows.map(r=>`<tr>${cols.map(c=>`<td style='font-size:1rem; white-space:nowrap;'>${safe(typeof c.render==='function'? c.render(r): r[c.key])}</td>`).join('')}</tr>`).join('')}
+                                            </tbody>
+                                        </table>
+                                </div>`;
+                        };
+                        // Columns definitions
+                        const invoiceCols = [
+                            {key:'id', title:'شناسه'},
+                            {key:'status', title:'وضعیت'},
+                            {key:'insurance_type', title:'بیمه'},
+                            {key:'supplementary_insurance', title:'تکمیلی'},
+                            {key:'total_amount', title:'مبلغ', render:r=> r.total_amount? new Intl.NumberFormat('fa-IR').format(r.total_amount):'—'},
+                            {key:'opened_at', title:'باز شدن'},
+                            {key:'closed_at', title:'بستن'}
+                        ];
+                        const visitCols = [
+                            {key:'visit_date', title:'زمان'},
+                            {key:'doctor_name', title:'پزشک'},
+                            {key:'amount', title:'مبلغ', render:r=> r.amount? new Intl.NumberFormat('fa-IR').format(r.amount):'—'},
+                            {key:'status', title:'وضعیت'},
+                            {key:'invoice_id', title:'فاکتور'}
+                        ];
+                        const injCols = [
+                            {key:'injection_date', title:'زمان'},
+                            {key:'injection_type', title:'نوع'},
+                            {key:'total_price', title:'مبلغ کل', render:r=> r.total_price? new Intl.NumberFormat('fa-IR').format(r.total_price):'—'},
+                            {key:'doctor_name', title:'پزشک'},
+                            {key:'nurse_name', title:'پرستار'},
+                            {key:'invoice_id', title:'فاکتور'}
+                        ];
+                        const procCols = [
+                            {key:'procedure_date', title:'زمان'},
+                            {key:'procedure_type', title:'نوع'},
+                            {key:'price', title:'قیمت', render:r=> r.price? new Intl.NumberFormat('fa-IR').format(r.price):'—'},
+                            {key:'performer_type', title:'انجام دهنده', render:r=> r.performer_type=='doctor'?'پزشک':(r.performer_type=='nurse'?'پرستار':'—')},
+                            {key:'doctor_name', title:'پزشک'},
+                            {key:'nurse_name', title:'پرستار'},
+                            {key:'invoice_id', title:'فاکتور'}
+                        ];
+                        const consCols = [
+                            {key:'usage_date', title:'زمان'},
+                            {key:'item_name', title:'نام'},
+                            {key:'category', title:'دسته'},
+                            {key:'quantity', title:'تعداد'},
+                            {key:'total_cost', title:'هزینه کل', render:r=> r.total_cost? new Intl.NumberFormat('fa-IR').format(r.total_cost):'—'},
+                            {key:'patient_provided', title:'از بیمار؟', render:r=> r.patient_provided? '✔':'✖'},
+                            {key:'invoice_id', title:'فاکتور'}
+                        ];
+                        // Summary boxes
+                        const summaryBoxes = `
+                            <div style='display:flex; flex-wrap:wrap; gap:0.8rem; margin:1rem 0;'>
+                                <div class='fin-card total' style='flex:1; min-width:160px; padding:1rem;'>
+                                    <span class='fin-label' style='font-size:0.7rem;'>کل آیتم‌ها</span>
+                                    <span class='fin-value' style='font-size:1.1rem;'>${visits.length + injections.length + procedures.length + consumables.length}</span>
+                                </div>
+                                <div class='fin-card paid' style='flex:1; min-width:160px; padding:1rem; background:linear-gradient(135deg,#6366f1,#4f46e5);'>
+                                    <span class='fin-label' style='font-size:0.7rem;'>مجموع هزینه ثبت‌شده</span>
+                                    <span class='fin-value' style='font-size:1.1rem;'>${new Intl.NumberFormat('fa-IR').format(totalCosts)} <small style='font-size:0.65rem;'>تومان</small></span>
+                                </div>
+                                <div class='fin-card remain' style='flex:1; min-width:160px; padding:1rem; background:linear-gradient(135deg,#10b981,#059669);'>
+                                    <span class='fin-label' style='font-size:0.7rem;'>تعداد فاکتور</span>
+                                    <span class='fin-value' style='font-size:1.1rem;'>${invoices.length}</span>
+                                </div>
+                            </div>`;
+                        // Tabs UI
+                        // Split consumables into supplies and drugs for separate tabs
+                        const supplies = consumables.filter(c => ((c.category||'').toLowerCase() !== 'drug'));
+                        const drugs = consumables.filter(c => ((c.category||'').toLowerCase() === 'drug'));
+
+                        const tabs = [
+                            {id:'tab-invoices', title:'فاکتورها', content: buildTable(invoices, invoiceCols, 'فاکتوری ثبت نشده')},
+                            {id:'tab-visits', title:'ویزیت‌ها', content: buildTable(visits, visitCols, 'ویزیتی ثبت نشده')},
+                            {id:'tab-injections', title:'خدمات پرستاری', content: buildTable(injections, injCols, 'خدمتی ثبت نشده')},
+                            {id:'tab-procedures', title:'کارهای عملی', content: buildTable(procedures, procCols, 'کاری ثبت نشده')},
+                            {id:'tab-consumables-supplies', title:'مصرفی‌ها', content: buildTable(supplies, consCols, 'مصرفی ثبت نشده')},
+                            {id:'tab-consumables-drugs', title:'داروها', content: buildTable(drugs, consCols, 'دارویی ثبت نشده')},
+                        ];
+                        const tabsHeader = `<div style='display:flex; gap:0.4rem; flex-wrap:wrap; margin:0.5rem 0;'>${tabs.map((t,i)=>`<button class='tab-btn ${i===0?'active':''}' data-history-tab='${t.id}' style='font-size:0.65rem; padding:0.4rem 0.8rem;'>${t.title}</button>`).join('')}</div>`;
+                        const tabsPanels = `<div>${tabs.map((t,i)=>`<div id='${t.id}' class='panel ${i===0?'active':''}' style='margin-top:0.5rem;'>
+                                <div style='background:var(--table-header-bg);color:var(--text-dark);font-size:.9rem;font-weight:700;display:inline-block;padding:.35rem .7rem;border-radius:6px;margin-bottom:.4rem;'>${t.title}</div>
+                            ${t.content}
+                        </div>`).join('')}</div>`;
+                        // Patient header
+                        const header = `
+                            <div class='patient-header'>
+                                <div style='display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;'>
+                                    <div style='min-width:220px; flex:1;'>
+                                        <h2 class='patient-name'>${safe(p.full_name)}</h2>
+                                        <div class='patient-meta'>
+                                            <span style='opacity:.95;'>کدملی: <strong>${safe(p.national_id)}</strong></span>
+                                            <span style='opacity:.85;'>تلفن: <strong>${safe(p.phone_number)}</strong></span>
+                                            <span style='opacity:.85;'>بیمه: <strong>${safe(p.effective_insurance_type || p.insurance_type || 'آزاد')}</strong>${p.effective_supplementary_insurance? ' — تکمیلی: ' + safe(p.effective_supplementary_insurance): ''}</span>
+                                        </div>
+                                    </div>
+                                    <div style='display:flex; gap:0.6rem; align-items:center;'>
+                                        <button class='nav-btn primary' style='width:auto; padding:0.5rem 1rem; font-size:0.95rem;' onclick='openInvoiceForPatient(${p.id})'>باز کردن فاکتور جدید</button>
+                                    </div>
+                                </div>
+                            </div>`;
+                        // Compose full content
+                        setTimeout(()=>{
+                            // Attach tab switching listeners (history modal scope)
+                            document.querySelectorAll('[data-history-tab]').forEach(btn=>{
+                                btn.addEventListener('click',()=>{
+                                    document.querySelectorAll('[data-history-tab]').forEach(b=>b.classList.remove('active'));
+                                    btn.classList.add('active');
+                                    tabs.forEach(t=>{
+                                        const el = document.getElementById(t.id); if(el) el.classList.remove('active');
+                                    });
+                                    const target = document.getElementById(btn.dataset.historyTab); if(target) target.classList.add('active');
+                                });
+                            });
+                        },50);
+                        return header + summaryBoxes + tabsHeader + tabsPanels;
+                }
+
+        function openInvoiceForPatient(pid){
+            const fd = new FormData(); fd.append('patient_id', pid);
+            fetch('/reception/invoice/open_existing', {method:'POST', body:fd, credentials:'same-origin'})
+                .then(r=>r.json()).then(data=>{
+                    if(data.error){ alert(data.error); return; }
+                    window.location = '/reception/?invoice_id=' + data.invoice_id;
+                });
+        }
+
+        // Payments
+        function applyPaymentAll(payType){
+            document.querySelectorAll('.custom-table tbody tr').forEach(r=>{
+                const sel = r.querySelector('select');
+                if(sel){ sel.value = payType; updatePayment(r.dataset.itemType, r.dataset.itemId, payType, r); }
+            });
+        }
+        function settleAll(){
+            const invoiceSelect = document.getElementById('invoice-select');
+            if(!invoiceSelect || !invoiceSelect.value){ alert('ابتدا یک فاکتور انتخاب کنید'); return; }
+            if(!confirm('آیا مطمئنید می‌خواهید تمام آیتم‌ها را تسویه کنید؟')) return;
+            const useCard = confirm('پرداخت با کارتخوان؟ OK = کارتخوان، Cancel = نقدی');
+            const paymentType = useCard ? 'card' : 'cash';
+            const fd = new FormData(); fd.append('invoice_id', invoiceSelect.value); fd.append('payment_type', paymentType);
+            fetch('{{ url_for('reception.settle_all_items') }}', { method:'POST', body:fd, credentials:'same-origin' })
+                .then(r=>r.json()).then(d=>{
+                    if(d.error){ alert(d.error); return; }
+                    window.location.reload();
+                }).catch(e=>{ console.error(e); alert('خطا در عملیات تسویه'); });
+        }
+        function updatePayment(itemType, itemId, paymentType, rowElem, isPaidOverride = null) {
+            const invoiceSelect = document.getElementById('invoice-select');
+            const checkbox = rowElem.querySelector('input[type="checkbox"]');
+            const isPaid = isPaidOverride !== null ? isPaidOverride : checkbox.checked;
+            
+            const fd = new FormData(); 
+            fd.append('invoice_id', invoiceSelect.value);
+            fd.append('item_type', itemType); 
+            fd.append('item_id', itemId); 
+            fd.append('payment_type', paymentType);
+            fd.append('is_paid', isPaid ? 'true' : 'false');
+            
+            fetch('{{ url_for('reception.set_item_payment') }}', { method:'POST', body:fd, credentials:'same-origin' })
+                .then(r => r.json())
+                .then(d => {
+                    if(d.error){ alert(d.error || 'خطا'); return; }
+                    // Update row UI
+                    try{
+                        if(isPaid){ checkbox.checked = true; } else { checkbox.checked = false; }
+                        // update select to reflect paymentType
+                        const sel = rowElem.querySelector('select.pay-select'); if(sel) sel.value = paymentType;
+                    }catch(e){/*ignore*/}
+                    // Update financial cards if returned
+                    if(d.financials){
+                        const f = d.financials;
+                        const setNum = (id, val)=>{ const el = document.getElementById(id); if(!el) return; el.innerHTML = (new Intl.NumberFormat('fa-IR').format(val || 0)) + ' <small style="font-size:1rem">تومان</small>'; };
+                        try{ setNum('fin-total', f.total); setNum('fin-paid-card', f.paid_card); setNum('fin-paid-cash', f.paid_cash); setNum('fin-remaining', f.remaining); }catch(e){}
+                    }
+                }).catch(e=>{ console.error(e); alert('خطا در تنظیم پرداخت'); });
+        }
+        function togglePaid(itemType, itemId, checked, rowElem){ 
+            updatePayment(itemType, itemId, rowElem.querySelector('select').value, rowElem, checked); 
+        }
+        function deleteItem(itemType, itemId){
+            if(!confirm('حذف؟')) return;
+            const fd = new FormData(); fd.append('invoice_id', document.getElementById('invoice-select').value);
+            fd.append('item_type', itemType); fd.append('item_id', itemId);
+            fetch('{{ url_for('reception.delete_item') }}', { method:'POST', body:fd, credentials:'same-origin' }).then(()=>window.location.reload());
+        }
+        function closeInvoice(){
+            if(!confirm('بستن فاکتور؟')) return;
+            const fd = new FormData(); fd.append('invoice_id', document.getElementById('invoice-select').value);
+            fetch('{{ url_for('reception.close_invoice') }}', { method:'POST', body:fd, credentials:'same-origin' })
+                .then(r => r.json())
+                .then(d => {
+                    if(d.error){
+                        if(d.unpaid_items && d.unpaid_items.length){
+                            showUnpaidItemsModal(d.unpaid_items);
+                            return;
+                        }
+                        alert(d.error || 'خطا');
+                        return;
+                    }
+                    // Redirect to reception page without invoice_id to get next open invoice
+                    window.location.href = '{{ url_for('reception.index') }}';
+                });
+        }
+        // Unpaid items modal helpers
+        function ensureUnpaidModal(){
+            if(document.getElementById('unpaid-items-modal')) return;
+        }
+        function showUnpaidItemsModal(items){
+            ensureUnpaidModal();
+            const modal = document.getElementById('unpaid-items-modal');
+            const content = document.getElementById('unpaid-items-content');
+            if(!modal || !content) return alert('تعداد آیتم‌های تسویه‌نشده: ' + (items.length || 0));
+            if(!items.length){ content.innerHTML = '<div style="padding:0.6rem;color:#555;">هیچ آیتمی پیدا نشد.</div>'; }
+            else{
+                const rows = items.map(it=>{
+                    const t = it.type || '';
+                    const desc = it.description || '';
+                    return `<div style="padding:0.6rem;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;gap:0.6rem;">
+                        <div style="flex:1;">${escapeHtml(desc)} <div style="font-size:0.8rem;color:#6b7280;">نوع: ${t} — شناسه: ${it.id}</div></div>
+                    </div>`;
+                }).join('');
+                content.innerHTML = `<div style="padding:0.2rem 0;">${rows}</div>`;
+            }
+            modal.style.display = 'flex';
+        }
+        function hideUnpaidItemsModal(){ const m = document.getElementById('unpaid-items-modal'); if(m) m.style.display='none'; }
+        function gotoInvoice(){ hideUnpaidItemsModal(); /* focus remains on same page — user can pay items */ }
+        function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>\"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]; }); }
+        // Auto-mark covered items (patient_share == 0) as paid by insurance on page load
+        function autoMarkCoveredItems(){
+            try{
+                const invoiceSelect = document.getElementById('invoice-select'); if(!invoiceSelect || !invoiceSelect.value) return;
+                    document.querySelectorAll('tr[data-covered="1"]').forEach(r=>{
+                    const checkbox = r.querySelector('input[type="checkbox"]');
+                    // If already checked, skip
+                    if(checkbox && checkbox.checked) return;
+                    const itemType = r.dataset.itemType; const itemId = r.dataset.itemId;
+                    // leave select blank for covered items
+                    const sel = r.querySelector('select.pay-select'); if(sel){ sel.value = ''; }
+                    // Call updatePayment with empty payment type and isPaidOverride true (do not reload)
+                    updatePayment(itemType, itemId, '', r, true);
+                });
+            }catch(e){ console.error('autoMarkCoveredItems', e); }
+        }
+        // Run after short delay to allow DOM to settle
+        setTimeout(autoMarkCoveredItems, 400);
+    </script>
+</body>
+</html>

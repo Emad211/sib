@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>دفاتر شیفت جاری</title>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+<style>
+ /* تم مینیمال و مدرن */
+ :root { --bg:#f3f4f6; --card:#fff; --text:#111827; --accent:#6366f1; --border:#d1d5db; --thead:#f9fafb; }
+ body.theme-dark { --bg:#030712; --card:#1f2937; --text:#f9fafb; --accent:#818cf8; --border:#374151; --thead:#111827; }
+ body.theme-dark tr:hover td{background:#1e1b4b !important;}
+ body{font-family:'Vazirmatn',Tahoma,sans-serif;background:var(--bg);margin:0;padding:1.2rem;color:var(--text);transition:.3s;}
+ .wrap{max-width:1500px;margin:0 auto;}
+ h1{margin:0 0 1rem;font-size:1.4rem;font-weight:800;}
+ .tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;}
+ .tab-btn{cursor:pointer;border:none;padding:.7rem 1.2rem;font-family:inherit;font-size:.85rem;font-weight:700;border-radius:8px;background:#e2e8f0;color:#334155;transition:.15s;}
+ .tab-btn.active{background:#4f46e5;color:#fff;box-shadow:0 3px 8px -2px rgba(79,70,229,.4);}
+ body.theme-dark .tab-btn{background:#334155;color:#cbd5e1;}
+ body.theme-dark .tab-btn.active{background:#6366f1;color:#fff;}
+ .sub-tabs{display:flex;gap:.4rem;margin:.4rem 0 .6rem;}
+ .sub-tab-btn{cursor:pointer;border:none;padding:.5rem 1rem;font-family:inherit;font-size:.8rem;font-weight:700;border-radius:7px;background:#e2e8f0;color:#334155;transition:.15s;}
+ .sub-tab-btn.active{background:#4f46e5;color:#fff;box-shadow:0 3px 6px -2px rgba(79,70,229,.45);}
+ body.theme-dark .sub-tab-btn{background:#334155;color:#cbd5e1;}
+ body.theme-dark .sub-tab-btn.active{background:#6366f1;color:#fff;}
+ .panel{display:none;animation:fade .25s ease;}
+ .panel.active{display:block;}
+ @keyframes fade{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);} }
+ table{width:100%;border-collapse:separate;border-spacing:0;}
+ th{background:var(--thead);font-weight:700;font-size:.9rem;padding:.7rem .6rem;text-align:right;border-bottom:2px solid var(--border);color:#64748b;white-space:nowrap;}
+ td{padding:.65rem .6rem;font-size:.95rem;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text);}
+ tr:hover td{background:#f1f5f9;}
+ .badge{padding:.3rem .65rem;border-radius:6px;background:#eef2ff;color:#4f46e5;font-size:.8rem;font-weight:700;}
+ body.theme-dark .badge{background:#3730a3;color:#c7d2fe;}
+ .summary{display:flex;gap:.8rem;flex-wrap:wrap;margin:.6rem 0 1rem;}
+ .sum-box{background:var(--card);border:1px solid var(--border);padding:.7rem .9rem;border-radius:10px;display:flex;flex-direction:column;gap:.2rem;min-width:130px;color:var(--text);}
+ .sum-box span:first-child{font-size:.75rem;color:#64748b;font-weight:600;}
+ .sum-val{font-size:1.1rem;font-weight:800;}
+ .empty{text-align:center;padding:2rem;color:#64748b;font-size:.9rem;}
+ .top-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.8rem;margin-bottom:.5rem;}
+ .btn{cursor:pointer;background:#4f46e5;color:#fff;border:none;padding:.6rem 1.1rem;font-family:inherit;font-size:.8rem;border-radius:8px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;}
+ .btn.outline{background:#fff;color:#4f46e5;border:1px solid #4f46e5;}
+ body.theme-dark .btn.outline{background:#1e293b;color:#a5b4fc;border-color:#6366f1;}
+ .btn-details{cursor:pointer;background:#10b981;color:#fff;border:none;padding:.4rem .7rem;font-family:inherit;font-size:.75rem;border-radius:6px;font-weight:600;}
+ .btn-details:hover{background:#059669;}
+ /* Modal Styles */
+ .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center;}
+ .modal-overlay.active{display:flex;}
+ .modal{background:var(--card);border-radius:12px;max-width:900px;width:95%;max-height:85vh;overflow:auto;box-shadow:0 20px 40px rgba(0,0,0,.3);}
+ .modal-header{display:flex;justify-content:space-between;align-items:center;padding:1rem 1.2rem;border-bottom:1px solid var(--border);background:var(--thead);border-radius:12px 12px 0 0;}
+ .modal-header h2{margin:0;font-size:1.1rem;font-weight:800;}
+ .modal-close{cursor:pointer;background:#ef4444;color:#fff;border:none;width:32px;height:32px;border-radius:50%;font-size:1.2rem;font-weight:700;display:flex;align-items:center;justify-content:center;}
+ .modal-body{padding:1.2rem;}
+ .detail-row{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border);}
+ .detail-item{min-width:140px;}
+ .detail-label{font-size:.75rem;color:#64748b;font-weight:600;margin-bottom:.2rem;}
+ .detail-value{font-size:.95rem;font-weight:700;color:var(--text);}
+ .items-section{margin-top:1rem;}
+ .items-section h3{font-size:.95rem;font-weight:700;margin:0 0 .6rem;color:#64748b;}
+ .item-card{background:var(--thead);border:1px solid var(--border);border-radius:8px;padding:.8rem;margin-bottom:.5rem;}
+ .item-type{font-size:.7rem;padding:.2rem .5rem;border-radius:4px;background:#4f46e5;color:#fff;font-weight:700;display:inline-block;margin-bottom:.4rem;}
+ .item-type.visit{background:#10b981;}
+ .item-type.injection{background:#f59e0b;}
+ .item-type.procedure{background:#8b5cf6;}
+ .item-type.consumable{background:#ec4899;}
+ .item-details{display:flex;flex-wrap:wrap;gap:1rem;font-size:.85rem;}
+ .item-details span{color:#64748b;}
+ .item-details strong{color:var(--text);}
+ .financials-box{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-radius:10px;padding:1rem;margin-top:1rem;}
+ .financials-box h4{margin:0 0 .6rem;font-size:.9rem;font-weight:700;}
+ .fin-row{display:flex;justify-content:space-between;padding:.3rem 0;font-size:.9rem;}
+ .fin-row.total{border-top:1px solid rgba(255,255,255,.3);margin-top:.5rem;padding-top:.5rem;font-weight:800;font-size:1rem;}
+</style>
+</head>
+<body>
+ <div class="wrap">
+  <div class="top-bar">
+    <h1>دفاتر شیفت جاری</h1>
+    <div style="display:flex;gap:.5rem;">
+      <a class="btn outline" href="{{ url_for('reception.index') }}">⬅ بازگشت</a>
+      <button class="btn" onclick="window.print()">🖨 چاپ صفحه</button>
+      <button id="themeToggleLedgers" class="btn outline" style="font-weight:700;">🌙 تم شب</button>
+    </div>
+  </div>
+  <div style="font-size:.85rem;color:#64748b;margin-bottom:.8rem;">شیفت: <strong style="color:var(--text);">{{ 'صبح' if shift=='morning' else ('عصر' if shift=='evening' else 'شب') }}</strong> | بازه: {{ start | jalali_local }} تا {{ end | jalali_local }}</div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="invoices">فاکتورها</button>
+    <button class="tab-btn" data-tab="visits">ویزیت‌ها</button>
+    <button class="tab-btn" data-tab="nursing">خدمات پرستاری</button>
+    <button class="tab-btn" data-tab="procedures">کارهای عملی</button>
+    <button class="tab-btn" data-tab="consumables">مصرفی‌ها</button>
+  </div>
+
+  <!-- Invoices Panel -->
+  <div id="panel-invoices" class="panel active">
+    {% if invoices %}
+    <div class="summary">
+      <div class="sum-box"><span>تعداد فاکتور</span><div class="sum-val">{{ invoices|length }}</div></div>
+      <div class="sum-box"><span>جمع کل (ت)</span><div class="sum-val">{{ invoices|sum(attribute='total_amount')|int | fa_num }}</div></div>
+    </div>
+    <div style="overflow:auto;max-height:60vh;">
+      <table>
+        <thead><tr><th>شماره</th><th>بیمار</th><th>بیمه اصلی</th><th>بیمه تکمیلی</th><th>پزشک</th><th>پرستاران</th><th>پذیرش</th><th>جمع کل</th><th>زمان باز کردن</th><th>زمان بستن</th><th>جزئیات</th></tr></thead>
+        <tbody>
+        {% for r in invoices %}
+          <tr>
+            <td style="font-weight:700;">#{{ r.id }}</td>
+            <td style="font-weight:600;">{{ r.patient_name }}</td>
+            <td><span class="badge">{{ r.insurance_type or 'آزاد' }}</span></td>
+            <td>{{ r.supplementary_insurance or '—' }}</td>
+            <td>{{ r.doctor_name or '—' }}</td>
+            <td style="max-width:200px; white-space:normal;">{{ r.all_nurses_names or r.nurse_name or '—' }}</td>
+            <td>{{ r.opened_by_name or r.opened_by or '—' }}</td>
+            <td style="font-weight:700;">{{ (r.total_amount or 0)|int | fa_num }}</td>
+            <td>{{ r.opened_at | jalali_datetime }}</td>
+            <td>{{ r.closed_at | jalali_datetime }}</td>
+            <td><button class="btn-details" onclick="showInvoiceDetails({{ r.id }})">مشاهده</button></td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+    </div>
+    {% else %}<div class="empty">فاکتور بسته‌شده‌ای در این شیفت وجود ندارد</div>{% endif %}
+  </div>
+
+  <!-- Visits Panel -->
+  <div id="panel-visits" class="panel">
+    {% if visits %}
+    <div class="summary">
+      <div class="sum-box"><span>تعداد ویزیت</span><div class="sum-val">{{ visits|length }}</div></div>
+      <div class="sum-box"><span>جمع مبالغ (ت)</span><div class="sum-val">{{ visits|sum(attribute='total_amount')|int | fa_num }}</div></div>
+    </div>
+    <div style="overflow:auto;max-height:60vh;">
+      <table>
+        <thead><tr><th>زمان</th><th>بیمار</th><th>بیمه اصلی</th><th>بیمه تکمیلی</th><th>پزشک</th><th>مبلغ</th><th>یادداشت</th></tr></thead>
+        <tbody>
+        {% for r in visits %}
+          <tr>
+            <td>{{ r.visit_date | jalali_datetime }}</td>
+            <td style="font-weight:600;">{{ r.patient_name }}</td>
+            <td><span class="badge">{{ r.insurance_type or 'آزاد' }}</span></td>
+            <td>{{ r.supplementary_insurance or '—' }}</td>
+            <td>{{ r.doctor_name or r.shift_doctor_name or '—' }}</td>
+            <td style="font-weight:700;">{{ (r.total_amount or 0)|int | fa_num }}</td>
+            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+    </div>
+    {% else %}<div class="empty">ویزیتی در فاکتورهای بسته‌شده این شیفت وجود ندارد</div>{% endif %}
+  </div>
+
+  <!-- Nursing Panel -->
+  <div id="panel-nursing" class="panel">
+    {% if injections %}
+    <div class="summary">
+      <div class="sum-box"><span>تعداد خدمات (همه)</span><div class="sum-val">{{ injections|length }}</div></div>
+      <div class="sum-box"><span>مجموع مبالغ (همه، ت)</span><div class="sum-val">{{ injections|sum(attribute='total_price')|int | fa_num }}</div></div>
+      <div class="sum-box"><span>تعداد خدمات مربوط به پزشک</span><div class="sum-val">{{ (injections_doctor or [])|length }}</div></div>
+      <div class="sum-box"><span>جمع مبالغ مربوط به پزشک (ت)</span><div class="sum-val">{{ (injections_doctor or [])|sum(attribute='total_price')|int | fa_num }}</div></div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active" data-sub="nursing-all">همه خدمات</button>
+      <button class="sub-tab-btn" data-sub="nursing-doctor">مربوط به پزشک</button>
+    </div>
+
+    <div id="sub-panel-nursing-all" class="sub-panel">
+      <div style="overflow:auto;max-height:60vh;">
+        <table>
+          <thead><tr><th>زمان</th><th>بیمار</th><th>نوع خدمت</th><th>تعداد</th><th>مبلغ واحد</th><th>مبلغ کل</th><th>پزشک</th><th>پرستار</th><th>یادداشت</th></tr></thead>
+          <tbody>
+          {% for r in injections %}
+            <tr>
+              <td>{{ r.injection_date | jalali_datetime }}</td>
+              <td style="font-weight:600;">{{ r.patient_name }}</td>
+              <td><span class="badge">{{ r.injection_type }}</span></td>
+              <td>{{ r.count }}</td>
+              <td>{{ (r.unit_price or 0)|int | fa_num }}</td>
+              <td style="font-weight:700;">{{ (r.total_price or 0)|int | fa_num }}</td>
+              <td>{{ r.doctor_name or '—' }}</td>
+              <td>{{ r.nurse_name or '—' }}</td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody></table>
+      </div>
+    </div>
+
+    <div id="sub-panel-nursing-doctor" class="sub-panel" style="display:none;">
+      {% if injections_doctor %}
+      <div style="overflow:auto;max-height:60vh;">
+        <table>
+          <thead><tr><th>زمان</th><th>بیمار</th><th>نوع خدمت</th><th>تعداد</th><th>مبلغ واحد</th><th>مبلغ کل</th><th>پزشک</th><th>پرستار</th><th>یادداشت</th></tr></thead>
+          <tbody>
+          {% for r in injections_doctor %}
+            <tr>
+              <td>{{ r.injection_date | jalali_datetime }}</td>
+              <td style="font-weight:600;">{{ r.patient_name }}</td>
+              <td><span class="badge">{{ r.injection_type }}</span></td>
+              <td>{{ r.count }}</td>
+              <td>{{ (r.unit_price or 0)|int | fa_num }}</td>
+              <td style="font-weight:700;">{{ (r.total_price or 0)|int | fa_num }}</td>
+              <td>{{ r.doctor_name or '—' }}</td>
+              <td>{{ r.nurse_name or '—' }}</td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody></table>
+      </div>
+      {% else %}<div class="empty">خدمتی که فاکتور آن ویزیت داشته باشد، در این شیفت ثبت نشده است</div>{% endif %}
+    </div>
+    {% else %}<div class="empty">خدمت پرستاری در فاکتورهای بسته‌شده این شیفت وجود ندارد</div>{% endif %}
+  </div>
+
+  <!-- Procedures Panel -->
+  <div id="panel-procedures" class="panel">
+    {% if procedures %}
+    <div class="summary">
+      <div class="sum-box"><span>تعداد کارهای عملی</span><div class="sum-val">{{ procedures|length }}</div></div>
+      <div class="sum-box"><span>جمع قیمت (ت)</span><div class="sum-val">{{ procedures|sum(attribute='price')|int | fa_num }}</div></div>
+    </div>
+    <div style="overflow:auto;max-height:60vh;">
+      <table>
+        <thead><tr><th>زمان</th><th>بیمار</th><th>نوع کار</th><th>انجام دهنده</th><th>پزشک شیفت</th><th>پرستار شیفت</th><th>قیمت</th><th>یادداشت</th></tr></thead>
+        <tbody>
+        {% for r in procedures %}
+          <tr>
+            <td>{{ r.procedure_date | jalali_datetime }}</td>
+            <td style="font-weight:600;">{{ r.patient_name }}</td>
+            <td><span class="badge">{{ r.procedure_type }}</span></td>
+            <td>{{ 'پزشک' if r.performer_type=='doctor' else ('پرستار' if r.performer_type=='nurse' else '—') }}</td>
+            <td>{{ r.doctor_name or '—' }}</td>
+            <td>{{ r.nurse_name or '—' }}</td>
+            <td style="font-weight:700;">{{ (r.price or 0)|int | fa_num }}</td>
+            <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+    </div>
+    {% else %}<div class="empty">کار عملی در فاکتورهای بسته‌شده این شیفت وجود ندارد</div>{% endif %}
+  </div>
+
+  <!-- Consumables Panel -->
+  <div id="panel-consumables" class="panel">
+    {% set supplies = consumables | selectattr('category','equalto','supply') | list %}
+    {% set drugs = consumables | selectattr('category','equalto','drug') | list %}
+    <div class="summary">
+      <div class="sum-box"><span>تعداد مصرفی عمومی</span><div class="sum-val">{{ supplies|length }}</div></div>
+      <div class="sum-box"><span>جمع مصرفی عمومی (ت)</span><div class="sum-val">{{ supplies|sum(attribute='total_cost')|int | fa_num }}</div></div>
+      <div class="sum-box"><span>تعداد دارو</span><div class="sum-val">{{ drugs|length }}</div></div>
+      <div class="sum-box"><span>جمع دارو (ت)</span><div class="sum-val">{{ drugs|sum(attribute='total_cost')|int | fa_num }}</div></div>
+      <div class="sum-box"><span>جمع کل (ت)</span><div class="sum-val">{{ ((supplies|sum(attribute='total_cost') + drugs|sum(attribute='total_cost'))|int) | fa_num }}</div></div>
+    </div>
+    <div class="sub-tabs">
+      <button class="sub-tab-btn active" data-sub="supply">مصرفی‌های عمومی</button>
+      <button class="sub-tab-btn" data-sub="drug">داروها</button>
+    </div>
+    <div id="sub-panel-supply" class="sub-panel">
+      {% if supplies %}
+      <div style="overflow:auto;max-height:60vh;">
+        <table>
+          <thead><tr><th>زمان</th><th>بیمار</th><th>نام قلم</th><th>تعداد</th><th>قیمت واحد</th><th>جمع کل</th><th>آورده بیمار؟</th><th>یادداشت</th></tr></thead>
+          <tbody>
+          {% for r in supplies %}
+            <tr>
+              <td>{{ r.usage_date | jalali_datetime }}</td>
+              <td style="font-weight:600;">{{ r.patient_name }}</td>
+              <td><span class="badge">{{ r.item_name }}</span></td>
+              <td>{{ r.quantity }}</td>
+              <td>{{ (r.unit_price or 0)|int | fa_num }}</td>
+              <td style="font-weight:700;">{{ (r.total_cost or 0)|int | fa_num }}</td>
+              <td>{% if r.patient_provided == 1 %}✅{% else %}❌{% endif %}</td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty">مصرفی عمومی در فاکتورهای بسته‌شده این شیفت وجود ندارد</div>{% endif %}
+    </div>
+    <div id="sub-panel-drug" class="sub-panel" style="display:none;">
+      {% if drugs %}
+      <div style="overflow:auto;max-height:60vh;">
+        <table>
+          <thead><tr><th>زمان</th><th>بیمار</th><th>نام دارو</th><th>تعداد</th><th>قیمت واحد</th><th>جمع کل</th><th>آورده بیمار؟</th><th>یادداشت</th></tr></thead>
+          <tbody>
+          {% for r in drugs %}
+            <tr>
+              <td>{{ r.usage_date | jalali_datetime }}</td>
+              <td style="font-weight:600;">{{ r.patient_name }}</td>
+              <td><span class="badge">{{ r.item_name }}</span></td>
+              <td>{{ r.quantity }}</td>
+              <td>{{ (r.unit_price or 0)|int | fa_num }}</td>
+              <td style="font-weight:700;">{{ (r.total_cost or 0)|int | fa_num }}</td>
+              <td>{% if r.patient_provided == 1 %}✅{% else %}❌{% endif %}</td>
+              <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty">دارویی در فاکتورهای بسته‌شده این شیفت وجود ندارد</div>{% endif %}
+    </div>
+  </div>
+ </div>
+ <script>
+  // Theme toggle (shared localStorage key)
+  function applyTheme(){ const t = localStorage.getItem('receptionTheme')||'light'; if(t==='dark'){ document.body.classList.add('theme-dark'); toggle.textContent='☀️ تم روز'; } else { document.body.classList.remove('theme-dark'); toggle.textContent='🌙 تم شب'; } }
+  const toggle = document.getElementById('themeToggleLedgers');
+  applyTheme();
+  toggle.addEventListener('click',()=>{ const isDark = document.body.classList.toggle('theme-dark'); localStorage.setItem('receptionTheme', isDark?'dark':'light'); applyTheme(); });
+  // Main ledger tabs (exclude sub-tabs)
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('.tab-btn[data-tab]').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      const id = 'panel-' + b.dataset.tab;
+      const panel = document.getElementById(id);
+      if(panel) panel.classList.add('active');
+    });
+  });
+  // Sub tab switching (مصرفی‌ها و خدمات پرستاری)
+  document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // گروه‌بندی بر اساس prefix
+      const sub = btn.dataset.sub;
+      const isNursing = sub.startsWith('nursing-');
+
+      // دکمه‌های هم‌گروه
+      document.querySelectorAll('.sub-tab-btn').forEach(x => {
+        const xs = x.dataset.sub;
+        if ((isNursing && xs.startsWith('nursing-')) || (!isNursing && !xs.startsWith('nursing-'))) {
+          x.classList.remove('active');
+        }
+      });
+      btn.classList.add('active');
+
+      if (isNursing) {
+        const allPanel = document.getElementById('sub-panel-nursing-all');
+        const docPanel = document.getElementById('sub-panel-nursing-doctor');
+        if(allPanel && docPanel){
+          allPanel.style.display = sub==='nursing-all' ? 'block' : 'none';
+          docPanel.style.display = sub==='nursing-doctor' ? 'block' : 'none';
+        }
+      } else {
+        const supplyPanel = document.getElementById('sub-panel-supply');
+        const drugPanel = document.getElementById('sub-panel-drug');
+        if(supplyPanel && drugPanel){
+          supplyPanel.style.display = sub==='supply' ? 'block' : 'none';
+          drugPanel.style.display = sub==='drug' ? 'block' : 'none';
+        }
+      }
+    });
+  });
+
+  // Invoice Details Modal
+  // تاریخ‌ها از سرور به صورت شمسی و با زمان محلی ایران می‌آیند
+  // این تابع فقط برای نمایش ایمن استفاده می‌شود
+  function displayDate(dateStr) {
+    if(!dateStr || dateStr === '—') return '—';
+    return dateStr;
+  }
+
+  async function showInvoiceDetails(invoiceId) {
+    const modal = document.getElementById('invoice-modal');
+    const modalBody = document.getElementById('modal-body-content');
+    modalBody.innerHTML = '<div style="text-align:center;padding:2rem;color:#64748b;">در حال بارگذاری...</div>';
+    modal.classList.add('active');
+    
+    try {
+      const resp = await fetch(`/reception/api/invoice/${invoiceId}/details`);
+      if(!resp.ok) throw new Error('خطا در دریافت اطلاعات');
+      const data = await resp.json();
+      const inv = data.invoice;
+      const items = data.items || [];
+      const fin = data.financials || {};
+      
+      const typeLabels = {visit:'ویزیت', injection:'خدمت پرستاری', procedure:'کار عملی', consumable:'مصرفی'};
+      const formatNum = n => new Intl.NumberFormat('fa-IR').format(n||0);
+      
+      let itemsHtml = items.map(it => {
+        const patientProvidedHtml = it.type === 'consumable' 
+          ? `<span>آورده بیمار:</span> <strong>${it.patient_provided == 1 ? '✅ بله' : '❌ خیر'}</strong>` 
+          : '';
+        // For visits, show recorded_price (base tariff) and patient_share (insurance tariff)
+        const priceDisplay = it.type === 'visit' 
+          ? `<span>تعرفه پایه:</span> <strong>${formatNum(it.recorded_price)} ت</strong>
+             <span>سهم بیمار:</span> <strong>${formatNum(it.patient_share)} ت</strong>`
+          : `<span>مبلغ:</span> <strong>${formatNum(it.recorded_price || it.amount)} ت</strong>
+             <span>سهم بیمار:</span> <strong>${formatNum(it.patient_share)} ت</strong>`;
+        const coveredBadge = it.covered_by_insurance ? '<span style="background:#10b981;color:#fff;padding:.2rem .5rem;border-radius:4px;font-size:.7rem;font-weight:700;margin-right:.5rem;">تحت پوشش بیمه</span>' : '';
+        return `
+        <div class="item-card">
+          <span class="item-type ${it.type}">${typeLabels[it.type]||it.type}</span>${coveredBadge}
+          <div class="item-details">
+            <span>توضیحات:</span> <strong>${it.description||'—'}</strong>
+            ${priceDisplay}
+            <span>پزشک:</span> <strong>${it.doctor_name||'—'}</strong>
+            <span>پرستار:</span> <strong>${it.nurse_name||'—'}</strong>
+            <span>تاریخ:</span> <strong>${displayDate(it.date)}</strong>
+            ${patientProvidedHtml}
+          </div>
+        </div>
+      `}).join('');
+      
+      modalBody.innerHTML = `
+        <div class="detail-row">
+          <div class="detail-item"><div class="detail-label">شماره فاکتور</div><div class="detail-value">#${inv.id}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمار</div><div class="detail-value">${inv.patient_name||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمه اصلی</div><div class="detail-value">${inv.insurance_type||'آزاد'}</div></div>
+          <div class="detail-item"><div class="detail-label">بیمه تکمیلی</div><div class="detail-value">${inv.supplementary_insurance||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">پذیرش</div><div class="detail-value">${inv.opened_by_name||inv.opened_by||'—'}</div></div>
+          <div class="detail-item"><div class="detail-label">وضعیت</div><div class="detail-value">${inv.status==='closed'?'بسته شده':'باز'}</div></div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-item"><div class="detail-label">زمان باز شدن</div><div class="detail-value">${displayDate(inv.opened_at)}</div></div>
+          <div class="detail-item"><div class="detail-label">زمان بسته شدن</div><div class="detail-value">${displayDate(inv.closed_at)}</div></div>
+        </div>
+        <div class="items-section">
+          <h3>آیتم‌های فاکتور (${items.length} مورد)</h3>
+          ${itemsHtml || '<div class="empty">آیتمی ثبت نشده</div>'}
+        </div>
+        <div class="financials-box">
+          <h4>خلاصه مالی</h4>
+          <div class="fin-row"><span>ویزیت‌ها:</span><span>${formatNum(fin.visits)} ت</span></div>
+          <div class="fin-row"><span>خدمات پرستاری:</span><span>${formatNum(fin.injections)} ت</span></div>
+          <div class="fin-row"><span>کارهای عملی:</span><span>${formatNum(fin.procedures)} ت</span></div>
+          <div class="fin-row" style="color:#f59e0b;"><span>مصرفی‌ها (غیر درآمدی):</span><span>${formatNum(fin.consumables)} ت</span></div>
+          <div class="fin-row" style="border-top:1px solid rgba(255,255,255,.3);margin-top:.4rem;padding-top:.4rem;"><span>💰 درآمد (بدون مصرفی):</span><span>${formatNum(fin.revenue)} ت</span></div>
+          <div class="fin-row total"><span>جمع کل فاکتور:</span><span>${formatNum(fin.total)} ت</span></div>
+          <div class="fin-row" style="color:#4ade80;"><span>💳 پرداخت کارتخوان:</span><span>${formatNum(fin.paid_card)} ت</span></div>
+          <div class="fin-row" style="color:#cbd5e1;"><span>💵 پرداخت نقدی:</span><span>${formatNum(fin.paid_cash)} ت</span></div>
+          <div class="fin-row" style="color:#fbbf24;"><span>مانده:</span><span>${formatNum(fin.remaining)} ت</span></div>
+        </div>
+      `;
+    } catch(e) {
+      modalBody.innerHTML = `<div class="empty" style="color:#ef4444;">${e.message}</div>`;
+    }
+  }
+  
+  function closeModal() {
+    document.getElementById('invoice-modal').classList.remove('active');
+  }
+  
+  // Close modal on overlay click
+  document.getElementById('invoice-modal')?.addEventListener('click', e => {
+    if(e.target.classList.contains('modal-overlay')) closeModal();
+  });
+ </script>
+
+ <!-- Invoice Details Modal -->
+ <div id="invoice-modal" class="modal-overlay">
+   <div class="modal">
+     <div class="modal-header">
+       <h2>جزئیات فاکتور</h2>
+       <button class="modal-close" onclick="closeModal()">×</button>
+     </div>
+     <div class="modal-body" id="modal-body-content"></div>
+   </div>
+ </div>
+</body>
+</html>

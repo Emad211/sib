@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>📊 عملکرد شیفت {{ shift_fa }}</title>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" />
+    <style>
+        /* تم مینیمال مدرن */
+        :root {
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --accent: #6366f1;
+            --accent-light: #eef2ff;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --danger: #ef4444;
+            --danger-light: #fee2e2;
+            --border: #e2e8f0;
+            --shadow: 0 4px 20px -4px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 40px -10px rgba(0,0,0,0.15);
+        }
+        body.theme-dark {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --accent: #818cf8;
+            --accent-light: #312e81;
+            --success-light: #064e3b;
+            --warning-light: #78350f;
+            --danger-light: #7f1d1d;
+            --border: #334155;
+            --shadow: 0 4px 20px -4px rgba(0,0,0,0.4);
+            --shadow-lg: 0 10px 40px -10px rgba(0,0,0,0.5);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Vazirmatn', Tahoma, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* Header */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: var(--accent);
+        }
+        .shift-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .shift-morning { background: linear-gradient(135deg, #fef3c7, #fde68a); color: #92400e; }
+        .shift-evening { background: linear-gradient(135deg, #fed7aa, #fdba74); color: #9a3412; }
+        .shift-night { background: linear-gradient(135deg, #c7d2fe, #a5b4fc); color: #3730a3; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.7rem 1.3rem;
+            border-radius: 10px;
+            border: none;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .btn-back { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+        .btn-back:hover { background: var(--accent-light); border-color: var(--accent); }
+        .btn-print { background: var(--accent); color: white; }
+        .btn-print:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+
+        /* Time Info Card */
+        .time-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            flex-wrap: wrap;
+        }
+        .time-item {
+            text-align: center;
+        }
+        .time-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.3rem;
+        }
+        .time-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            /* Fixed 3 columns for nicer two-row layout (3 up, 3 down) */
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            align-items: stretch;
+        }
+        @media (max-width: 900px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+        .stat-card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 1.5rem 1.75rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            opacity: 0.1;
+            transform: translate(30px, -30px);
+        }
+        .stat-card.visits::before { background: var(--accent); }
+        .stat-card.injections::before { background: var(--success); }
+        .stat-card.procedures::before { background: var(--warning); }
+        .stat-card.consumables::before { background: #8b5cf6; }
+        .stat-card.revenue::before { background: #ec4899; }
+        .stat-card.patients::before { background: #0ea5e9; }
+        
+        .stat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        .stat-card.visits .stat-icon { background: var(--accent-light); }
+        .stat-card.injections .stat-icon { background: var(--success-light); }
+        .stat-card.procedures .stat-icon { background: var(--warning-light); }
+        .stat-card.consumables .stat-icon { background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
+        .stat-card.revenue .stat-icon { background: linear-gradient(135deg, #fce7f3, #fbcfe8); }
+        .stat-card.patients .stat-icon { background: linear-gradient(135deg, #e0f2fe, #bae6fd); }
+
+        .stat-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--text-muted);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 900;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+        .stat-card.visits .stat-value { color: var(--accent); }
+        .stat-card.injections .stat-value { color: var(--success); }
+        .stat-card.procedures .stat-value { color: var(--warning); }
+        .stat-card.consumables .stat-value { color: #8b5cf6; }
+        .stat-card.revenue .stat-value { color: #ec4899; }
+        .stat-card.patients .stat-value { color: #0ea5e9; }
+
+        .stat-sub {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .stat-sub strong {
+            color: var(--text);
+        }
+
+        /* Financial Summary Card */
+        .fin-card {
+            background: var(--card);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+        }
+        .fin-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .fin-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        @media (max-width: 640px) {
+            .fin-grid { grid-template-columns: 1fr; }
+        }
+        .fin-box {
+            text-align: center;
+            padding: 1.25rem;
+            border-radius: 14px;
+        }
+        .fin-box.total { background: linear-gradient(135deg, #ede9fe, #ddd6fe); }
+        .fin-box.paid { background: var(--success-light); }
+        .fin-box.pending { background: var(--danger-light); }
+        .fin-box-value {
+            font-size: 1.75rem;
+            font-weight: 900;
+            margin-bottom: 0.3rem;
+        }
+        .fin-box.total .fin-box-value { color: #7c3aed; }
+        .fin-box.paid .fin-box-value { color: var(--success); }
+        .fin-box.pending .fin-box-value { color: var(--danger); }
+        .fin-box-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        /* Print styles */
+        @media print {
+            body { background: white; padding: 0; }
+            .btn { display: none !important; }
+            .stat-card, .fin-card { break-inside: avoid; }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .stat-card, .fin-card, .time-card {
+            animation: fadeIn 0.4s ease forwards;
+        }
+        .stat-card:nth-child(1) { animation-delay: 0.05s; }
+        .stat-card:nth-child(2) { animation-delay: 0.1s; }
+        .stat-card:nth-child(3) { animation-delay: 0.15s; }
+        .stat-card:nth-child(4) { animation-delay: 0.2s; }
+        .stat-card:nth-child(5) { animation-delay: 0.25s; }
+        .stat-card:nth-child(6) { animation-delay: 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="page-header">
+            <div class="header-right">
+                <h1 class="page-title">📊 عملکرد شیفت</h1>
+                <div class="shift-badge shift-{{ shift }}">
+                    {% if shift == 'morning' %}☀️{% elif shift == 'evening' %}🌅{% else %}🌙{% endif %}
+                    شیفت {{ shift_fa }}
+                </div>
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-print" onclick="window.print()">🖨️ چاپ</button>
+                <a href="{{ url_for('reception.index') }}" class="btn btn-back">⬅️ بازگشت</a>
+            </div>
+        </div>
+
+        <!-- Time Info -->
+        <div class="time-card">
+            <div class="time-item">
+                <div class="time-label">شروع شیفت</div>
+                <div class="time-value">{{ start_time }}</div>
+            </div>
+            <div class="time-item">
+                <div class="time-label">پایان شیفت</div>
+                <div class="time-value">{{ end_time }}</div>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card visits">
+                <div class="stat-header">
+                    <div class="stat-icon">👨‍⚕️</div>
+                    <div class="stat-title">ویزیت</div>
+                </div>
+                <div class="stat-value">{{ visits_count }}</div>
+                <div class="stat-sub">💰 مبلغ: <strong>{{ "{:,}".format(visits_total|int) }}</strong> تومان</div>
+            </div>
+
+            <div class="stat-card injections">
+                <div class="stat-header">
+                    <div class="stat-icon">💉</div>
+                    <div class="stat-title">خدمات پرستاری</div>
+                </div>
+                <div class="stat-value">{{ injections_count }}</div>
+                <div class="stat-sub">💰 مبلغ: <strong>{{ "{:,}".format(injections_total|int) }}</strong> تومان</div>
+            </div>
+
+            <div class="stat-card procedures">
+                <div class="stat-header">
+                    <div class="stat-icon">🏥</div>
+                    <div class="stat-title">کار عملی</div>
+                </div>
+                <div class="stat-value">{{ procedures_count }}</div>
+                <div class="stat-sub">💰 مبلغ: <strong>{{ "{:,}".format(procedures_total|int) }}</strong> تومان</div>
+            </div>
+
+            <div class="stat-card consumables">
+                <div class="stat-header">
+                    <div class="stat-icon">💊</div>
+                    <div class="stat-title">مصرفی</div>
+                </div>
+                <div class="stat-value">{{ consumables_count }}</div>
+                <div class="stat-sub">💰 مبلغ: <strong>{{ "{:,}".format(consumables_total|int) }}</strong> تومان</div>
+            </div>
+
+            <div class="stat-card patients">
+                <div class="stat-header">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-title">بیمار یکتا</div>
+                </div>
+                <div class="stat-value">{{ unique_patients }}</div>
+                <div class="stat-sub">🗂️ مراجعین این شیفت</div>
+            </div>
+
+            <div class="stat-card revenue">
+                <div class="stat-header">
+                    <div class="stat-icon">📄</div>
+                    <div class="stat-title">فاکتور</div>
+                </div>
+                <div class="stat-value">{{ invoice_count }}</div>
+                <div class="stat-sub">📋 فاکتور باز شده</div>
+            </div>
+        </div>
+
+        <!-- Financial Summary -->
+        <div class="fin-card">
+            <div class="fin-title">💰 خلاصه مالی شیفت</div>
+            <div class="fin-grid">
+                <div class="fin-box total">
+                    <div class="fin-box-value">{{ "{:,}".format(total_revenue|int) }}</div>
+                    <div class="fin-box-label">جمع کل (تومان)</div>
+                </div>
+                <div class="fin-box paid">
+                    <div class="fin-box-value">{{ "{:,}".format(settled_amount|int) }}</div>
+                    <div class="fin-box-label">تسویه شده</div>
+                </div>
+                <div class="fin-box pending">
+                    <div class="fin-box-value">{{ "{:,}".format(pending_amount|int) }}</div>
+                    <div class="fin-box-label">مانده</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load saved reception theme (use same key as other reception pages)
+        (function(){
+            const t = localStorage.getItem('receptionTheme') || 'light';
+            if(t === 'dark') document.body.classList.add('theme-dark');
+        })();
+    </script>
+</body>
+</html>

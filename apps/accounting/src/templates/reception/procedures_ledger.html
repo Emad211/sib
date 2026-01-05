@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>دفتر کارهای عملی شیفت جاری</title>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+<style>
+ /* تم مینیمال و مدرن */
+ :root { --bg:#f3f4f6; --card:#fff; --text:#111827; --accent:#6366f1; --border:#d1d5db; --thead:#f9fafb; }
+ body.theme-dark { --bg:#030712; --card:#1f2937; --text:#f9fafb; --accent:#818cf8; --border:#374151; --thead:#111827; }
+ body.theme-dark tr:hover td{background:#1e1b4b !important;}
+ body{font-family:'Vazirmatn',Tahoma,sans-serif;background:var(--bg);margin:0;padding:1.2rem;color:var(--text);}
+ .card{background:#fff;border-radius:14px;padding:1.1rem 1.3rem;box-shadow:0 4px 10px -2px rgba(0,0,0,.05);margin-bottom:1.1rem;}
+ h1{margin:0 0 .9rem;font-size:1.25rem;}
+ .top-actions{display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;gap:.6rem;}
+ .btn{cursor:pointer;background:#4f46e5;color:#fff;border:none;padding:.55rem 1rem;font-family:inherit;font-size:.75rem;border-radius:8px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;}
+ .btn.outline{background:#fff;color:#4f46e5;border:1px solid #4f46e5;}
+ .summary{display:flex;gap:.8rem;flex-wrap:wrap;margin-top:.4rem;}
+ .summary-box{background:#f8fafc;border:1px solid #e2e8f0;padding:.75rem .9rem;border-radius:10px;min-width:150px;display:flex;flex-direction:column;gap:.25rem;}
+ .summary-box span:first-child{font-size:.7rem;color:#64748b;font-weight:600;}
+ .summary-box .val{font-size:1.1rem;font-weight:800;}
+ table{width:100%;border-collapse:separate;border-spacing:0;}
+ th{background:#f8fafc;font-weight:700;font-size:.7rem;padding:.6rem .55rem;text-align:right;white-space:nowrap;border-bottom:2px solid #e2e8f0;color:#64748b;}
+ td{padding:.55rem .55rem;font-size:.72rem;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+ tr:hover td{background:#fafafa;}
+ .badge{padding:.25rem .55rem;border-radius:6px;background:#eef2ff;color:#4f46e5;font-size:.6rem;font-weight:700;}
+ .empty{text-align:center;padding:3rem 1rem;color:#64748b;}
+</style>
+</head>
+<body>
+ <div class="card">
+  <div class="top-actions">
+    <h1>دفتر کارهای عملی شیفت جاری</h1>
+    <div style="display:flex;gap:.45rem;">
+      <a class="btn outline" href="{{ url_for('reception.index') }}">⬅ بازگشت</a>
+      <button class="btn" onclick="window.print()">🖨 چاپ</button>
+    </div>
+  </div>
+  <div style="font-size:.72rem;color:#475569;margin-bottom:.6rem;">
+    شیفت: <strong>{{ 'صبح' if shift=='morning' else ('عصر' if shift=='evening' else 'شب') }}</strong>
+    | بازه زمانی: {{ start.strftime('%Y-%m-%d %H:%M') | jalali_datetime }} تا {{ end.strftime('%Y-%m-%d %H:%M') | jalali_datetime }}
+  </div>
+  <div class="summary">
+    <div class="summary-box"><span>تعداد کل</span><div class="val">{{ total_count }}</div></div>
+    <div class="summary-box"><span>جمع مبالغ (تومان)</span><div class="val">{{ '{:,}'.format(total_amount|int) }}</div></div>
+  </div>
+ </div>
+ <div class="card">
+  {% if procedures %}
+  <div style="overflow:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>زمان</th>
+          <th>بیمار</th>
+          <th>نوع کار عملی</th>
+          <th>انجام دهنده</th>
+          <th>پزشک شیفت</th>
+          <th>پرستار شیفت</th>
+          <th>مبلغ (ت)</th>
+          <th>یادداشت</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in procedures %}
+        <tr>
+          <td>{{ r.procedure_date | jalali_datetime }}</td>
+          <td style="font-weight:600;">{{ r.patient_name }}</td>
+          <td><span class="badge">{{ r.procedure_type }}</span></td>
+          <td>{{ 'پزشک' if r.performer_type=='doctor' else ('پرستار' if r.performer_type=='nurse' else '—') }}</td>
+          <td style="color:#334155;">{{ r.doctor_name or '—' }}</td>
+          <td style="color:#334155;">{{ r.nurse_name or '—' }}</td>
+          <td style="font-weight:700;">{{ '{:,}'.format((r.price or 0)|int) }}</td>
+          <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <h3 style="margin:0 0 .4rem;font-size:.95rem;">هیچ کار عملی در این شیفت ثبت نشده است</h3>
+    <p style="margin:0;font-size:.7rem;">از منوی پذیرش می‌توانید ثبت کنید.</p>
+  </div>
+  {% endif %}
+ </div>
+</body>
+</html>

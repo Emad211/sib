@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>مدیریت کاربران و کادر درمان</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Vazirmatn', sans-serif; 
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+      color: #e5e7eb; 
+      min-height: 100vh;
+      padding: 1.5rem; 
+    }
+    
+    .container { max-width: 1300px; margin: 0 auto; }
+    
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .header-title { display: flex; align-items: center; gap: 1rem; }
+    .header-icon {
+      width: 56px; height: 56px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4);
+    }
+    .header h1 { font-size: 1.5rem; font-weight: 900; color: #fff; margin: 0; }
+    .header p { font-size: 0.85rem; color: #9ca3af; margin-top: 0.3rem; }
+    .btn-back {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.7rem 1.2rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      color: #9ca3af; text-decoration: none;
+      font-size: 0.85rem; font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    .btn-back:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      background: rgba(0,0,0,0.2);
+      padding: 0.4rem;
+      border-radius: 14px;
+      width: fit-content;
+    }
+    .tab {
+      padding: 0.7rem 1.5rem;
+      border-radius: 10px;
+      background: transparent;
+      color: #9ca3af;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 700;
+      font-family: inherit;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .tab:hover { color: #fff; }
+    .tab.active {
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Cards Grid */
+    .section-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+    }
+    @media (max-width: 900px) { .section-grid { grid-template-columns: 1fr; } }
+
+    /* Section Card */
+    .section-card {
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%);
+      border-radius: 20px;
+      padding: 1.5rem;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.8rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-title .icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .section-title .icon.manager { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .section-title .icon.reception { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+    .section-title .icon.doctor { background: linear-gradient(135deg, #10b981, #047857); }
+    .section-title .icon.nurse { background: linear-gradient(135deg, #ec4899, #be185d); }
+    
+    .count-badge {
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+      padding: 0.3rem 0.7rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    /* Add Form */
+    .add-form {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: rgba(0,0,0,0.2);
+      border-radius: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field label { font-size: 0.7rem; color: #9ca3af; font-weight: 600; }
+    .field input, .field select {
+      background: #0f172a;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+      color: #f3f4f6;
+      font-size: 0.85rem;
+      font-family: inherit;
+      direction: rtl;
+    }
+    .field input:focus, .field select:focus { outline: none; border-color: #6366f1; }
+    .btn-add {
+      background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+      color: white;
+      border: none;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 700;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .btn-add:hover { opacity: 0.9; }
+
+    /* Table - larger, more readable */
+    .table-wrap {
+      max-height: 520px; /* taller so table fills more of page */
+      overflow-y: auto;
+      margin-top: 0.6rem;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 1rem 0.9rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    th { color: #9ca3af; font-size: 1rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; position: sticky; top: 0; background: #16202b; }
+    td { color: #f3f4f6; font-size: 1rem; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    
+    .status-active { color: #10b981; font-weight: 700; }
+    .status-inactive { color: #ef4444; font-weight: 700; }
+    
+    .actions { display: flex; gap: 0.4rem; }
+    .btn-edit, .btn-delete {
+      padding: 0.5rem 0.8rem;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+      font-weight: 700;
+    }
+    .btn-edit { background: #3b82f6; color: white; }
+    .btn-delete { background: #ef4444; color: white; }
+    .btn-edit:hover { background: #2563eb; }
+    .btn-delete:hover { background: #dc2626; }
+    
+    .empty-state { text-align: center; padding: 1.5rem; color: #6b7280; font-size: 0.85rem; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+      border-radius: 20px;
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 420px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .modal-title { font-size: 1.1rem; font-weight: 800; color: #f1f5f9; margin-bottom: 1.2rem; }
+    .modal-form { display: flex; flex-direction: column; gap: 1rem; }
+    .modal-form .field { width: 100%; }
+    .modal-form .field input, .modal-form .field select { width: 100%; }
+    .modal-actions { display: flex; gap: 0.8rem; margin-top: 1rem; }
+    .btn-cancel {
+      background: #374151;
+      color: #f3f4f6;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-family: inherit;
+    }
+    .btn-save {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 700;
+      font-family: inherit;
+    }
+    .checkbox-field { flex-direction: row !important; align-items: center; gap: 0.5rem !important; }
+    .checkbox-field input[type="checkbox"] { width: 18px; height: 18px; }
+    
+    .flash-messages { margin-bottom: 1rem; }
+    .flash {
+      padding: 0.8rem 1rem;
+      border-radius: 10px;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .flash.success { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .flash.error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+  </style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-title">
+        <div class="header-icon">👥</div>
+        <div>
+          <h1>مدیریت کاربران</h1>
+          <p>کاربران سیستم و کادر درمان</p>
+        </div>
+      </div>
+      <a href="{{ url_for('manager.index') }}" class="btn-back">← بازگشت به داشبورد</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('users')">
+        <span>🔐</span> کاربران سیستم
+      </button>
+      <button class="tab" onclick="showTab('staff')">
+        <span>🩺</span> کادر درمان
+      </button>
+    </div>
+
+    <!-- Tab: Users -->
+    <div class="tab-content active" id="tab-users">
+      <div class="section-grid">
+        <!-- مدیران -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <div class="icon manager">👔</div>
+              مدیران
+            </div>
+            <span class="count-badge">{{ managers|length }} نفر</span>
+          </div>
+          
+          <form method="post" class="add-form">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="entity_type" value="user">
+            <input type="hidden" name="role" value="manager">
+            <div class="field">
+              <label>نام کامل</label>
+              <input type="text" name="full_name" placeholder="مثال: علی احمدی" required style="width:120px;">
+            </div>
+            <div class="field">
+              <label>نام کاربری</label>
+              <input type="text" name="username" placeholder="مثال: ali" required style="width:100px;">
+            </div>
+            <div class="field">
+              <label>رمز عبور</label>
+              <input type="password" name="password" placeholder="****" required style="width:100px;">
+            </div>
+            <button type="submit" class="btn-add">➕ افزودن</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>عملیات</th></tr>
+              </thead>
+              <tbody>
+                {% for u in managers %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ u.full_name }}</td>
+                  <td>{{ u.username }}</td>
+                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td class="actions">
+                    <button type="button" class="btn-edit" onclick="openUserModal({{ u.id }}, '{{ u.username }}', '{{ u.full_name }}', '{{ u.role }}', {{ u.is_active }})">ویرایش</button>
+                    {% if u.id != g.user.id %}
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="entity_type" value="user">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <button type="submit" class="btn-delete">حذف</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not managers %}
+                <tr><td colspan="5" class="empty-state">هیچ مدیری تعریف نشده</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- پذیرش‌ها -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <div class="icon reception">🖥️</div>
+              پذیرش‌ها
+            </div>
+            <span class="count-badge">{{ receptions|length }} نفر</span>
+          </div>
+          
+          <form method="post" class="add-form">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="entity_type" value="user">
+            <input type="hidden" name="role" value="reception">
+            <div class="field">
+              <label>نام کامل</label>
+              <input type="text" name="full_name" placeholder="مثال: سارا محمدی" required style="width:120px;">
+            </div>
+            <div class="field">
+              <label>نام کاربری</label>
+              <input type="text" name="username" placeholder="مثال: sara" required style="width:100px;">
+            </div>
+            <div class="field">
+              <label>رمز عبور</label>
+              <input type="password" name="password" placeholder="****" required style="width:100px;">
+            </div>
+            <button type="submit" class="btn-add">➕ افزودن</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>عملیات</th></tr>
+              </thead>
+              <tbody>
+                {% for u in receptions %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ u.full_name }}</td>
+                  <td>{{ u.username }}</td>
+                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td class="actions">
+                    <button type="button" class="btn-edit" onclick="openUserModal({{ u.id }}, '{{ u.username }}', '{{ u.full_name }}', '{{ u.role }}', {{ u.is_active }})">ویرایش</button>
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="entity_type" value="user">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <button type="submit" class="btn-delete">حذف</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not receptions %}
+                <tr><td colspan="5" class="empty-state">هیچ پذیرشی تعریف نشده</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Staff -->
+    <div class="tab-content" id="tab-staff">
+      <div class="section-grid">
+        <!-- پزشکان -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <div class="icon doctor">🩺</div>
+              پزشکان
+            </div>
+            <span class="count-badge">{{ doctors|length }} نفر</span>
+          </div>
+          
+          <form method="post" class="add-form">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="entity_type" value="staff">
+            <input type="hidden" name="staff_type" value="doctor">
+            <div class="field">
+              <label>نام کامل پزشک</label>
+              <input type="text" name="full_name" placeholder="مثال: دکتر احمد رضایی" required style="width:200px;">
+            </div>
+            <button type="submit" class="btn-add">➕ افزودن پزشک</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>نام پزشک</th><th>وضعیت</th><th>عملیات</th></tr>
+              </thead>
+              <tbody>
+                {% for s in doctors %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ s.full_name }}</td>
+                  <td>{% if s.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td class="actions">
+                    <button type="button" class="btn-edit" onclick="openStaffModal({{ s.id }}, '{{ s.full_name }}', '{{ s.staff_type }}', {{ s.is_active }})">ویرایش</button>
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="entity_type" value="staff">
+                      <input type="hidden" name="staff_id" value="{{ s.id }}">
+                      <button type="submit" class="btn-delete">حذف</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not doctors %}
+                <tr><td colspan="4" class="empty-state">هیچ پزشکی تعریف نشده</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- پرستاران -->
+        <div class="section-card">
+          <div class="section-header">
+            <div class="section-title">
+              <div class="icon nurse">💉</div>
+              پرستاران
+            </div>
+            <span class="count-badge">{{ nurses|length }} نفر</span>
+          </div>
+          
+          <form method="post" class="add-form">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="entity_type" value="staff">
+            <input type="hidden" name="staff_type" value="nurse">
+            <div class="field">
+              <label>نام کامل پرستار</label>
+              <input type="text" name="full_name" placeholder="مثال: فاطمه کریمی" required style="width:200px;">
+            </div>
+            <button type="submit" class="btn-add">➕ افزودن پرستار</button>
+          </form>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>نام پرستار</th><th>وضعیت</th><th>عملیات</th></tr>
+              </thead>
+              <tbody>
+                {% for s in nurses %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>{{ s.full_name }}</td>
+                  <td>{% if s.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td class="actions">
+                    <button type="button" class="btn-edit" onclick="openStaffModal({{ s.id }}, '{{ s.full_name }}', '{{ s.staff_type }}', {{ s.is_active }})">ویرایش</button>
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="entity_type" value="staff">
+                      <input type="hidden" name="staff_id" value="{{ s.id }}">
+                      <button type="submit" class="btn-delete">حذف</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+                {% if not nurses %}
+                <tr><td colspan="4" class="empty-state">هیچ پرستاری تعریف نشده</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Edit Modal -->
+  <div class="modal-overlay" id="userModal">
+    <div class="modal">
+      <div class="modal-title">✏️ ویرایش کاربر</div>
+      <form method="post" class="modal-form">
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="entity_type" value="user">
+        <input type="hidden" name="user_id" id="user-edit-id">
+        <div class="field">
+          <label>نام کامل</label>
+          <input type="text" name="full_name" id="user-edit-name" required>
+        </div>
+        <div class="field">
+          <label>نام کاربری</label>
+          <input type="text" name="username" id="user-edit-username" required>
+        </div>
+        <div class="field">
+          <label>نقش</label>
+          <select name="role" id="user-edit-role">
+            <option value="manager">مدیر</option>
+            <option value="reception">پذیرش</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>رمز عبور جدید (خالی بگذارید اگر نمی‌خواهید تغییر کند)</label>
+          <input type="password" name="new_password" placeholder="رمز جدید...">
+        </div>
+        <div class="field checkbox-field">
+          <input type="checkbox" name="is_active" id="user-edit-active" value="1">
+          <label for="user-edit-active">فعال</label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" onclick="closeUserModal()">انصراف</button>
+          <button type="submit" class="btn-save">💾 ذخیره</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Staff Edit Modal -->
+  <div class="modal-overlay" id="staffModal">
+    <div class="modal">
+      <div class="modal-title">✏️ ویرایش کادر درمان</div>
+      <form method="post" class="modal-form">
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="entity_type" value="staff">
+        <input type="hidden" name="staff_id" id="staff-edit-id">
+        <div class="field">
+          <label>نام کامل</label>
+          <input type="text" name="full_name" id="staff-edit-name" required>
+        </div>
+        <div class="field">
+          <label>نوع</label>
+          <select name="staff_type" id="staff-edit-type">
+            <option value="doctor">پزشک</option>
+            <option value="nurse">پرستار</option>
+          </select>
+        </div>
+        <div class="field checkbox-field">
+          <input type="checkbox" name="is_active" id="staff-edit-active" value="1">
+          <label for="staff-edit-active">فعال</label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" onclick="closeStaffModal()">انصراف</button>
+          <button type="submit" class="btn-save">💾 ذخیره</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function showTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      event.target.closest('.tab').classList.add('active');
+      document.getElementById('tab-' + tabName).classList.add('active');
+    }
+
+    function openUserModal(id, username, fullName, role, isActive) {
+      document.getElementById('user-edit-id').value = id;
+      document.getElementById('user-edit-username').value = username;
+      document.getElementById('user-edit-name').value = fullName;
+      document.getElementById('user-edit-role').value = role;
+      document.getElementById('user-edit-active').checked = isActive == 1;
+      document.getElementById('userModal').classList.add('active');
+    }
+    function closeUserModal() {
+      document.getElementById('userModal').classList.remove('active');
+    }
+
+    function openStaffModal(id, fullName, staffType, isActive) {
+      document.getElementById('staff-edit-id').value = id;
+      document.getElementById('staff-edit-name').value = fullName;
+      document.getElementById('staff-edit-type').value = staffType;
+      document.getElementById('staff-edit-active').checked = isActive == 1;
+      document.getElementById('staffModal').classList.add('active');
+    }
+    function closeStaffModal() {
+      document.getElementById('staffModal').classList.remove('active');
+    }
+
+    document.getElementById('userModal').addEventListener('click', function(e) { if (e.target === this) closeUserModal(); });
+    document.getElementById('staffModal').addEventListener('click', function(e) { if (e.target === this) closeStaffModal(); });
+  </script>
+</body>
+</html>

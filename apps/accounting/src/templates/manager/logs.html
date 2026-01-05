@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>لاگ فعالیت‌ها</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    *{box-sizing:border-box;}
+    body{font-family:'Vazirmatn',sans-serif;background:#0f172a;color:#e5e7eb;margin:0;padding:1.5rem;}
+    .wrap{max-width:1600px;margin:0 auto;}
+    h1{margin:0 0 1rem;font-size:1.3rem;font-weight:900;display:flex;align-items:center;gap:.5rem;}
+    .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
+    .link-back{color:#9ca3af;font-size:.8rem;text-decoration:none;display:inline-flex;align-items:center;gap:.25rem;}
+    .link-back:hover{color:#e5e7eb;}
+
+    /* فیلتر */
+    .filter-card{background:#020617;border-radius:14px;border:1px solid #1f2937;padding:1rem;margin-bottom:1rem;}
+    .filter-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;}
+    .filter-group{display:flex;flex-direction:column;gap:.25rem;}
+    .filter-group label{font-size:.75rem;color:#9ca3af;}
+    .filter-group select,.filter-group input{background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e5e7eb;padding:.4rem .6rem;font-family:inherit;font-size:.85rem;min-width:100px;}
+    .filter-group select:focus,.filter-group input:focus{outline:none;border-color:#6366f1;}
+    .btn{background:#6366f1;color:#fff;border:none;border-radius:8px;padding:.5rem 1rem;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:700;}
+    .btn:hover{background:#4f46e5;}
+    .btn-outline{background:transparent;border:1px solid #334155;color:#9ca3af;}
+    .btn-outline:hover{border-color:#6366f1;color:#e5e7eb;}
+    .btn-export{background:#10b981;margin-right:.5rem;}
+    .btn-export:hover{background:#059669;}
+
+    /* quick chips */
+    .quick-chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.5rem;}
+    .chip{background:#1e293b;border:1px solid #334155;border-radius:20px;padding:.25rem .7rem;font-size:.75rem;cursor:pointer;transition:.15s;}
+    .chip:hover,.chip.active{background:#6366f1;border-color:#6366f1;color:#fff;}
+
+    /* summary */
+    .summary-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;}
+    .summary-card{background:#020617;border-radius:12px;border:1px solid #1f2937;padding:.75rem 1rem;min-width:140px;}
+    .summary-card .label{font-size:.7rem;color:#9ca3af;margin-bottom:.2rem;}
+    .summary-card .value{font-size:1.1rem;font-weight:800;color:#a5b4fc;}
+
+    /* table */
+    .table-wrap{overflow-x:auto;background:#020617;border-radius:14px;border:1px solid #1f2937;}
+    table{width:100%;border-collapse:collapse;font-size:.8rem;}
+    th,td{padding:.6rem .5rem;text-align:right;border-bottom:1px solid #1f2937;}
+    th{background:#1e293b;color:#9ca3af;font-weight:700;position:sticky;top:0;}
+    tr:hover{background:#1e293b55;}
+    
+    .badge{display:inline-block;padding:.15rem .5rem;border-radius:6px;font-size:.7rem;font-weight:700;}
+    .badge-auth{background:#10b98120;color:#34d399;}
+    .badge-patient{background:#3b82f620;color:#60a5fa;}
+    .badge-invoice{background:#f59e0b20;color:#fbbf24;}
+    .badge-visit{background:#6366f120;color:#a5b4fc;}
+    .badge-injection{background:#ec489920;color:#f472b6;}
+    .badge-procedure{background:#8b5cf620;color:#c4b5fd;}
+    .badge-consumable{background:#14b8a620;color:#2dd4bf;}
+    .badge-shift{background:#84cc1620;color:#a3e635;}
+    .badge-print{background:#64748b20;color:#94a3b8;}
+    .badge-report{background:#06b6d420;color:#22d3ee;}
+    
+    .action-login{color:#34d399;}
+    .action-logout{color:#f87171;}
+    .action-create{color:#60a5fa;}
+    .action-delete{color:#f87171;}
+    .action-update{color:#fbbf24;}
+    .action-view{color:#94a3b8;}
+    
+    .num{direction:ltr;text-align:left;font-family:monospace;}
+    .text-muted{color:#6b7280;}
+    
+    /* pagination */
+    .pagination{display:flex;justify-content:center;gap:.5rem;margin-top:1rem;flex-wrap:wrap;}
+    .pagination a,.pagination span{padding:.4rem .8rem;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e5e7eb;text-decoration:none;font-size:.8rem;}
+    .pagination a:hover{background:#6366f1;border-color:#6366f1;}
+    .pagination .active{background:#6366f1;border-color:#6366f1;}
+    .pagination .disabled{opacity:.5;cursor:not-allowed;}
+    
+    /* stats modal */
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.75rem;margin-top:1rem;}
+    .stat-item{background:#1e293b;border-radius:8px;padding:.75rem;text-align:center;}
+    .stat-item .label{font-size:.7rem;color:#9ca3af;}
+    .stat-item .value{font-size:1.2rem;font-weight:800;color:#a5b4fc;}
+  </style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <h1>📋 لاگ فعالیت‌ها</h1>
+    <a href="{{ url_for('manager.index') }}" class="link-back">⬅ بازگشت به داشبورد</a>
+  </div>
+
+  <!-- فیلترها -->
+  <form class="filter-card" method="get" id="filterForm">
+    <div class="filter-row">
+      <!-- تاریخ از -->
+      <div class="filter-group">
+        <label>از تاریخ (سال)</label>
+        <select id="fromY"></select>
+      </div>
+      <div class="filter-group">
+        <label>ماه</label>
+        <select id="fromM"></select>
+      </div>
+      <div class="filter-group">
+        <label>روز</label>
+        <select id="fromD"></select>
+      </div>
+      <!-- تاریخ تا -->
+      <div class="filter-group">
+        <label>تا تاریخ (سال)</label>
+        <select id="toY"></select>
+      </div>
+      <div class="filter-group">
+        <label>ماه</label>
+        <select id="toM"></select>
+      </div>
+      <div class="filter-group">
+        <label>روز</label>
+        <select id="toD"></select>
+      </div>
+      <input type="hidden" name="date_from" id="hiddenFrom" value="{{ filters.get('date_from', '') }}">
+      <input type="hidden" name="date_to" id="hiddenTo" value="{{ filters.get('date_to', '') }}">
+
+      <!-- کاربر -->
+      <div class="filter-group">
+        <label>کاربر</label>
+        <select name="user_id">
+          <option value="">همه</option>
+          {% for user in users %}
+          <option value="{{ user.id }}" {% if filters.get('user_id') == user.id %}selected{% endif %}>{{ user.username }} ({{ user.full_name }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- نوع عملیات -->
+      <div class="filter-group">
+        <label>نوع عملیات</label>
+        <select name="action_type">
+          <option value="">همه</option>
+          {% for key, label in action_types %}
+          <option value="{{ key }}" {% if filters.get('action_type') == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- دسته‌بندی -->
+      <div class="filter-group">
+        <label>دسته‌بندی</label>
+        <select name="action_category">
+          <option value="">همه</option>
+          {% for key, label in action_categories %}
+          <option value="{{ key }}" {% if filters.get('action_category') == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <!-- نام بیمار -->
+      <div class="filter-group">
+        <label>نام بیمار</label>
+        <input type="text" name="patient_name" placeholder="جستجو..." value="{{ filters.get('patient_name', '') }}" style="width:120px;">
+      </div>
+      
+      <!-- شماره فاکتور -->
+      <div class="filter-group">
+        <label>شماره فاکتور</label>
+        <input type="number" name="invoice_id" placeholder="شماره" value="{{ filters.get('invoice_id', '') or '' }}" style="width:80px;">
+      </div>
+
+      <button type="submit" class="btn">🔍 فیلتر</button>
+      <a href="{{ url_for('manager.activity_logs') }}" class="btn btn-outline">پاک کردن فیلتر</a>
+    </div>
+    
+    <!-- دکمه‌های سریع -->
+    <div class="quick-chips">
+      <span class="chip" data-range="today">امروز</span>
+      <span class="chip" data-range="yesterday">دیروز</span>
+      <span class="chip" data-range="week">هفته اخیر</span>
+      <span class="chip" data-range="month">ماه اخیر</span>
+    </div>
+  </form>
+
+  <!-- خلاصه -->
+  <div class="summary-row">
+    <div class="summary-card">
+      <div class="label">تعداد کل لاگ‌ها</div>
+      <div class="value">{{ total }}</div>
+    </div>
+    <a href="{{ url_for('manager.export_logs', **filters) }}" class="btn btn-export" style="align-self:center;">📥 خروجی CSV</a>
+  </div>
+
+  <!-- جدول لاگ‌ها -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>تاریخ و ساعت</th>
+          <th>کاربر</th>
+          <th>دسته</th>
+          <th>نوع عملیات</th>
+          <th>توضیحات</th>
+          <th>بیمار</th>
+          <th>فاکتور</th>
+          <th>مبلغ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="num">{{ log.id }}</td>
+          <td class="num" style="font-size:.75rem;">{{ log.created_at | jalali_datetime }}</td>
+          <td>{{ log.username }}</td>
+          <td>
+            <span class="badge badge-{{ log.action_category }}">
+              {% if log.action_category == 'auth' %}احراز هویت
+              {% elif log.action_category == 'patient' %}بیمار
+              {% elif log.action_category == 'invoice' %}فاکتور
+              {% elif log.action_category == 'visit' %}ویزیت
+              {% elif log.action_category == 'injection' %}تزریق
+              {% elif log.action_category == 'procedure' %}کار عملی
+              {% elif log.action_category == 'consumable' %}مصرفی
+              {% elif log.action_category == 'shift' %}شیفت
+              {% elif log.action_category == 'print' %}چاپ
+              {% elif log.action_category == 'report' %}گزارش
+              {% else %}{{ log.action_category }}{% endif %}
+            </span>
+          </td>
+          <td>
+            <span class="{% if 'login' in log.action_type %}action-login{% elif 'logout' in log.action_type %}action-logout{% elif 'delete' in log.action_type %}action-delete{% elif 'create' in log.action_type or 'add' in log.action_type %}action-create{% elif 'update' in log.action_type or 'set' in log.action_type %}action-update{% else %}action-view{% endif %}">
+              {% if log.action_type == 'login' %}ورود
+              {% elif log.action_type == 'logout' %}خروج
+              {% elif log.action_type == 'patient_create' %}ایجاد بیمار
+              {% elif log.action_type == 'patient_update' %}ویرایش بیمار
+              {% elif log.action_type == 'patient_search' %}جستجوی بیمار
+              {% elif log.action_type == 'patient_history' %}مشاهده سابقه
+              {% elif log.action_type == 'invoice_create' %}ایجاد فاکتور
+              {% elif log.action_type == 'invoice_open' %}باز کردن فاکتور
+              {% elif log.action_type == 'invoice_close' %}بستن فاکتور
+              {% elif log.action_type == 'invoice_view' %}مشاهده فاکتور
+              {% elif log.action_type == 'visit_add' %}ثبت ویزیت
+              {% elif log.action_type == 'visit_delete' %}حذف ویزیت
+              {% elif log.action_type == 'injection_add' %}ثبت تزریق
+              {% elif log.action_type == 'injection_delete' %}حذف تزریق
+              {% elif log.action_type == 'procedure_add' %}ثبت کار عملی
+              {% elif log.action_type == 'procedure_delete' %}حذف کار عملی
+              {% elif log.action_type == 'consumable_use' %}ثبت مصرفی
+              {% elif log.action_type == 'consumable_delete' %}حذف مصرفی
+              {% elif log.action_type == 'item_payment_set' %}تغییر پرداخت
+              {% elif log.action_type == 'shift_staff_set' %}تنظیم کادر درمان
+              {% elif log.action_type == 'print_invoice' %}چاپ فاکتور
+              {% elif log.action_type == 'print_receipt' %}چاپ رسید
+              {% elif log.action_type == 'print_report' %}چاپ گزارش
+              {% else %}{{ log.action_type }}{% endif %}
+            </span>
+          </td>
+          <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;" title="{{ log.description }}">{{ log.description }}</td>
+          <td>{% if log.patient_name %}{{ log.patient_name }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+          <td class="num">{% if log.invoice_id %}{{ log.invoice_id }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+          <td class="num">{% if log.amount %}{{ '{:,.0f}'.format(log.amount|float) }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" style="text-align:center;padding:2rem;color:#6b7280;">هیچ لاگی یافت نشد</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- صفحه‌بندی -->
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}{% for k, v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">قبلی</a>
+    {% else %}
+    <span class="disabled">قبلی</span>
+    {% endif %}
+    
+    {% for p in range(1, total_pages + 1) %}
+      {% if p == page %}
+      <span class="active">{{ p }}</span>
+      {% elif p <= 3 or p > total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+      <a href="?page={{ p }}{% for k, v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">{{ p }}</a>
+      {% elif p == 4 or p == total_pages - 2 %}
+      <span>...</span>
+      {% endif %}
+    {% endfor %}
+    
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}{% for k, v in filters.items() %}&{{ k }}={{ v }}{% endfor %}">بعدی</a>
+    {% else %}
+    <span class="disabled">بعدی</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jalaali-js@1.2.6/dist/jalaali.min.js"></script>
+<script>
+// تاریخ شمسی
+const jToday = { jy: {{ j_today.year }}, jm: {{ j_today.month }}, jd: {{ j_today.day }} };
+const jCurrentYear = jToday.jy;
+const jCurrentMonth = jToday.jm;
+const jCurrentDay = jToday.jd;
+
+function addDaysGregorian(g, deltaDays) {
+  const d = new Date(Date.UTC(g.gy, g.gm - 1, g.gd));
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return { gy: d.getUTCFullYear(), gm: d.getUTCMonth() + 1, gd: d.getUTCDate() };
+}
+
+function addMonthsGregorian(g, deltaMonths) {
+  const d = new Date(Date.UTC(g.gy, g.gm - 1, g.gd));
+  d.setUTCMonth(d.getUTCMonth() + deltaMonths);
+  return { gy: d.getUTCFullYear(), gm: d.getUTCMonth() + 1, gd: d.getUTCDate() };
+}
+
+function fillSelects(prefix, defaultY, defaultM, defaultD) {
+  const yEl = document.getElementById(prefix + 'Y');
+  const mEl = document.getElementById(prefix + 'M');
+  const dEl = document.getElementById(prefix + 'D');
+  
+  // سال
+  for(let y = jCurrentYear; y >= jCurrentYear - 5; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if(y === defaultY) opt.selected = true;
+    yEl.appendChild(opt);
+  }
+  
+  // ماه
+  for(let m = 1; m <= 12; m++) {
+    const opt = document.createElement('option');
+    opt.value = m; opt.textContent = m;
+    if(m === defaultM) opt.selected = true;
+    mEl.appendChild(opt);
+  }
+  
+  // روز
+  for(let d = 1; d <= 31; d++) {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    if(d === defaultD) opt.selected = true;
+    dEl.appendChild(opt);
+  }
+}
+
+// پارس تاریخ از فیلتر
+function parseJalali(dateStr) {
+  if(!dateStr) return null;
+  const parts = dateStr.split('-');
+  if(parts.length === 3) {
+    return {jy: parseInt(parts[0]), jm: parseInt(parts[1]), jd: parseInt(parts[2])};
+  }
+  return null;
+}
+
+const fromDate = parseJalali('{{ filters.get("date_from", "") }}');
+const toDate = parseJalali('{{ filters.get("date_to", "") }}');
+
+fillSelects('from', fromDate ? fromDate.jy : jCurrentYear, fromDate ? fromDate.jm : jCurrentMonth, fromDate ? fromDate.jd : 1);
+fillSelects('to', toDate ? toDate.jy : jCurrentYear, toDate ? toDate.jm : jCurrentMonth, toDate ? toDate.jd : jCurrentDay);
+
+// به‌روزرسانی hidden fields
+function updateHiddenDates() {
+  const fromY = document.getElementById('fromY').value;
+  const fromM = document.getElementById('fromM').value.padStart(2, '0');
+  const fromD = document.getElementById('fromD').value.padStart(2, '0');
+  const toY = document.getElementById('toY').value;
+  const toM = document.getElementById('toM').value.padStart(2, '0');
+  const toD = document.getElementById('toD').value.padStart(2, '0');
+  
+  document.getElementById('hiddenFrom').value = `${fromY}-${fromM}-${fromD}`;
+  document.getElementById('hiddenTo').value = `${toY}-${toM}-${toD}`;
+}
+
+document.querySelectorAll('#fromY, #fromM, #fromD, #toY, #toM, #toD').forEach(el => {
+  el.addEventListener('change', updateHiddenDates);
+});
+
+document.getElementById('filterForm').addEventListener('submit', function(e) {
+  updateHiddenDates();
+});
+
+// دکمه‌های سریع
+document.querySelectorAll('.chip[data-range]').forEach(chip => {
+  chip.addEventListener('click', function() {
+    const range = this.dataset.range;
+    let fromDate, toDate;
+
+    const gToday = jalaali.toGregorian(jToday.jy, jToday.jm, jToday.jd);
+    
+    if(range === 'today') {
+      fromDate = toDate = jToday;
+    } else if(range === 'yesterday') {
+      const gPrev = addDaysGregorian(gToday, -1);
+      fromDate = toDate = jalaali.toJalaali(gPrev.gy, gPrev.gm, gPrev.gd);
+    } else if(range === 'week') {
+      toDate = jToday;
+      const gFrom = addDaysGregorian(gToday, -7);
+      fromDate = jalaali.toJalaali(gFrom.gy, gFrom.gm, gFrom.gd);
+    } else if(range === 'month') {
+      toDate = jToday;
+      const gFrom = addMonthsGregorian(gToday, -1);
+      fromDate = jalaali.toJalaali(gFrom.gy, gFrom.gm, gFrom.gd);
+    }
+    
+    if(fromDate && toDate) {
+      document.getElementById('fromY').value = fromDate.jy;
+      document.getElementById('fromM').value = fromDate.jm;
+      document.getElementById('fromD').value = fromDate.jd;
+      document.getElementById('toY').value = toDate.jy;
+      document.getElementById('toM').value = toDate.jm;
+      document.getElementById('toD').value = toDate.jd;
+      updateHiddenDates();
+      document.getElementById('filterForm').submit();
+    }
+  });
+});
+</script>
+</body>
+</html>

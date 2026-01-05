@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>قیمت مصرفی‌ها</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    font-family: 'Vazirmatn', sans-serif; 
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #e5e7eb; 
+    padding: 2rem; 
+    min-height: 100vh; 
+  }
+  .tariffs-page { max-width: 1200px; margin: 0 auto; }
+  .page-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 2rem; 
+    flex-wrap: wrap; 
+    gap: 1rem; 
+  }
+  .page-header h1 { 
+    font-size: 1.6rem; 
+    font-weight: 900; 
+    color: #f1f5f9; 
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .btn-back { 
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(16,185,129,0.3);
+    color: #6ee7b7; 
+    padding: 0.7rem 1.2rem; 
+    border-radius: 12px; 
+    text-decoration: none; 
+    font-size: 0.9rem;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  .btn-back:hover { 
+    background: rgba(16,185,129,0.2);
+    border-color: #10b981;
+    color: #f1f5f9;
+    transform: translateX(4px);
+  }
+  .btn-back svg { width: 18px; height: 18px; }
+  .card { 
+    background: rgba(15,23,42,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 18px; 
+    padding: 1.5rem 1.8rem; 
+    border: 1px solid rgba(255,255,255,0.08); 
+    margin-bottom: 1.5rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+  }
+  .card-title { 
+    font-size: 1.1rem; 
+    font-weight: 800; 
+    color: #6ee7b7; 
+    margin-bottom: 1.2rem; 
+    display: flex; 
+    align-items: center; 
+    gap: 0.6rem; 
+  }
+  .add-form { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .field label { font-size: 0.85rem; color: #6ee7b7; font-weight: 600; }
+  .field input, .field select { 
+    background: rgba(30,41,59,0.8); 
+    border: 1px solid rgba(16,185,129,0.3); 
+    border-radius: 10px; 
+    padding: 0.7rem 0.9rem; 
+    color: #f1f5f9; 
+    font-size: 0.95rem; 
+    direction: rtl;
+    transition: all 0.2s;
+  }
+  .field input:focus, .field select:focus { 
+    outline: none; 
+    border-color: #10b981;
+    box-shadow: 0 0 12px rgba(16,185,129,0.3);
+  }
+  .btn-add { 
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%); 
+    color: white; 
+    border: none; 
+    padding: 0.7rem 1.4rem; 
+    border-radius: 12px; 
+    cursor: pointer; 
+    font-size: 0.95rem; 
+    font-weight: 700;
+    box-shadow: 0 10px 30px rgba(16,185,129,0.4);
+    transition: all 0.2s;
+  }
+  .btn-add:hover { 
+    transform: translateY(-2px);
+    box-shadow: 0 14px 35px rgba(16,185,129,0.5);
+  }
+  .tabs { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .tab { 
+    padding: 0.7rem 1.3rem; 
+    border-radius: 12px; 
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8; 
+    text-decoration: none; 
+    font-size: 0.9rem; 
+    font-weight: 700; 
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .tab:hover { 
+    background: rgba(99,102,241,0.2); 
+    border-color: rgba(99,102,241,0.4);
+    color: #f1f5f9; 
+  }
+  .tab.active { 
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); 
+    border-color: transparent;
+    color: white;
+    box-shadow: 0 8px 20px rgba(99,102,241,0.4);
+  }
+  .count-badge { 
+    background: rgba(255,255,255,0.2); 
+    color: inherit; 
+    padding: 0.2rem 0.6rem; 
+    border-radius: 6px; 
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 0.8rem; }
+  th, td { padding: 0.9rem 1rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  th { color: #6ee7b7; font-size: 0.9rem; font-weight: 700; background: rgba(30,41,59,0.5); }
+  td { color: #f1f5f9; font-size: 1rem; }
+  tbody tr { transition: background 0.15s; }
+  tbody tr:nth-child(even) { background: rgba(15,23,42,0.5); }
+  tbody tr:hover { background: rgba(16,185,129,0.12); }
+  .price { font-family: monospace; direction: ltr; text-align: left; color: #34d399; font-weight: 700; }
+  .status-active { color: #34d399; font-weight: 600; }
+  .status-inactive { color: #f87171; font-weight: 600; }
+  .badge { padding: 0.3rem 0.7rem; border-radius: 8px; font-size: 0.8rem; font-weight: 700; }
+  .badge-drug { background: rgba(239, 68, 68, 0.25); color: #fca5a5; }
+  .badge-supply { background: rgba(59, 130, 246, 0.25); color: #93c5fd; }
+  .actions { display: flex; gap: 0.6rem; }
+  .btn-edit, .btn-delete { 
+    padding: 0.5rem 0.9rem; 
+    border-radius: 8px; 
+    border: none; 
+    cursor: pointer; 
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .btn-edit { background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; }
+  .btn-delete { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+  .btn-edit:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.4); }
+  .btn-delete:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239,68,68,0.4); }
+  .modal-overlay { 
+    display: none; 
+    position: fixed; 
+    top: 0; left: 0; right: 0; bottom: 0; 
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(4px);
+    z-index: 1000; 
+    align-items: center; 
+    justify-content: center; 
+  }
+  .modal-overlay.active { display: flex; }
+  .modal { 
+    background: rgba(15,23,42,0.95);
+    backdrop-filter: blur(16px);
+    border-radius: 20px; 
+    padding: 2rem; 
+    width: 90%; 
+    max-width: 420px; 
+    border: 1px solid rgba(16,185,129,0.2);
+    box-shadow: 0 25px 60px rgba(0,0,0,.5);
+  }
+  .modal-title { font-size: 1.2rem; font-weight: 800; color: #6ee7b7; margin-bottom: 1.5rem; }
+  .modal-form { display: flex; flex-direction: column; gap: 1.2rem; }
+  .modal-form .field { width: 100%; }
+  .modal-form .field input, .modal-form .field select { width: 100%; }
+  .modal-actions { display: flex; gap: 1rem; margin-top: 1.2rem; }
+  .btn-cancel { 
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8; 
+    padding: 0.7rem 1.4rem; 
+    border-radius: 10px; 
+    cursor: pointer; 
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .btn-cancel:hover { background: rgba(51,65,85,0.8); color: #f1f5f9; }
+  .btn-save { 
+    background: linear-gradient(135deg, #10b981, #047857); 
+    color: white; 
+    border: none; 
+    padding: 0.7rem 1.4rem; 
+    border-radius: 10px; 
+    cursor: pointer; 
+    font-size: 0.9rem; 
+    font-weight: 700;
+    box-shadow: 0 8px 20px rgba(16,185,129,0.4);
+    transition: all 0.2s;
+  }
+  .btn-save:hover { transform: translateY(-1px); box-shadow: 0 12px 25px rgba(16,185,129,0.5); }
+  .empty-state { text-align: center; padding: 3rem; color: #64748b; font-size: 1rem; }
+  .checkbox-field { flex-direction: row; align-items: center; gap: 0.6rem; }
+  .checkbox-field input[type="checkbox"] { 
+    width: 20px; 
+    height: 20px;
+    accent-color: #10b981;
+  }
+</style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+<div class="tariffs-page">
+  <div class="page-header">
+    <h1>💊 قیمت مصرفی‌ها</h1>
+    <a href="{{ url_for('manager.tariffs_index') }}" class="btn-back">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+      بازگشت به تعرفه‌ها
+    </a>
+  </div>
+
+  <div class="card">
+    <div class="card-title">➕ افزودن مصرفی جدید</div>
+    <form method="post" class="add-form">
+      <input type="hidden" name="action" value="add">
+      <div class="field">
+        <label>نام مصرفی</label>
+        <input type="text" name="name" placeholder="مثال: سرم نرمال سالین" required style="width:200px;">
+      </div>
+      <div class="field">
+        <label>قیمت پیش‌فرض (تومان)</label>
+        <input type="text" name="default_price" placeholder="مثال: 40000" required style="width:140px;">
+      </div>
+      <div class="field">
+        <label>دسته‌بندی</label>
+        <select name="category" style="width:120px;">
+          <option value="drug">دارو</option>
+          <option value="supply">عمومی</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-add">➕ افزودن</button>
+    </form>
+  </div>
+
+  <div class="tabs">
+    <a href="{{ url_for('manager.consumables_tariffs') }}" class="tab {% if not category_filter %}active{% endif %}">همه <span class="count-badge">{{ items|length }}</span></a>
+    <a href="{{ url_for('manager.consumables_tariffs', category='drug') }}" class="tab {% if category_filter == 'drug' %}active{% endif %}">💊 داروها <span class="count-badge">{{ drugs|length }}</span></a>
+    <a href="{{ url_for('manager.consumables_tariffs', category='supply') }}" class="tab {% if category_filter == 'supply' %}active{% endif %}">🩹 عمومی <span class="count-badge">{{ supplies|length }}</span></a>
+  </div>
+
+  <div class="card">
+    {% if items %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>نام مصرفی</th>
+          <th>دسته</th>
+          <th>قیمت (تومان)</th>
+          <th>وضعیت</th>
+          <th>عملیات</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.name }}</td>
+          <td>
+            {% if item.category == 'drug' %}
+            <span class="badge badge-drug">دارو</span>
+            {% else %}
+            <span class="badge badge-supply">عمومی</span>
+            {% endif %}
+          </td>
+          <td class="price">{{ '{:,}'.format(item.default_price|int) }}</td>
+          <td>
+            {% if item.is_active %}
+            <span class="status-active">✓ فعال</span>
+            {% else %}
+            <span class="status-inactive">✗ غیرفعال</span>
+            {% endif %}
+          </td>
+          <td class="actions">
+            <button type="button" class="btn-edit" onclick="openEditModal({{ item.id }}, '{{ item.name }}', {{ item.default_price }}, '{{ item.category }}', {{ item.is_active }})">ویرایش</button>
+            <form method="post" style="display:inline;" onsubmit="return confirm('آیا از حذف این مصرفی مطمئن هستید؟');">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="item_id" value="{{ item.id }}">
+              <button type="submit" class="btn-delete">حذف</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">هیچ مصرفی تعریف نشده است.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-title">✏️ ویرایش مصرفی</div>
+    <form method="post" class="modal-form">
+      <input type="hidden" name="action" value="update">
+      <input type="hidden" name="item_id" id="edit-id">
+      <div class="field">
+        <label>نام مصرفی</label>
+        <input type="text" name="name" id="edit-name" required>
+      </div>
+      <div class="field">
+        <label>قیمت پیش‌فرض (تومان)</label>
+        <input type="text" name="default_price" id="edit-price" required>
+      </div>
+      <div class="field">
+        <label>دسته‌بندی</label>
+        <select name="category" id="edit-category">
+          <option value="drug">دارو</option>
+          <option value="supply">عمومی</option>
+        </select>
+      </div>
+      <div class="field checkbox-field">
+        <input type="checkbox" name="is_active" id="edit-active" value="1">
+        <label for="edit-active">فعال</label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeEditModal()">انصراف</button>
+        <button type="submit" class="btn-save">💾 ذخیره</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEditModal(id, name, price, category, isActive) {
+  document.getElementById('edit-id').value = id;
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-price').value = price;
+  document.getElementById('edit-category').value = category;
+  document.getElementById('edit-active').checked = isActive == 1;
+  document.getElementById('editModal').classList.add('active');
+}
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('active');
+}
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
+});
+</script>
+</body>
+</html>

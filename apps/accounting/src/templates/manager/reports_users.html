@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>گزارش عملکرد کاربران</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    *{box-sizing:border-box;}
+    body{font-family:'Vazirmatn',sans-serif;background:linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);color:#e5e7eb;margin:0;padding:2rem;min-height:100vh;}
+    .wrap{max-width:1500px;margin:0 auto;}
+    h1{margin:0;font-size:1.6rem;font-weight:900;display:flex;align-items:center;gap:.6rem;color:#f1f5f9;}
+    .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;}
+    .btn-back{display:inline-flex;align-items:center;gap:.5rem;padding:.7rem 1.2rem;border-radius:12px;background:rgba(30,41,59,0.8);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;font-size:.9rem;font-weight:700;text-decoration:none;transition:all 0.2s;}
+    .btn-back:hover{background:rgba(99,102,241,0.2);border-color:#6366f1;color:#f1f5f9;transform:translateX(4px);}
+    .btn-back svg{width:18px;height:18px;}
+
+    /* فیلتر */
+    .filter-card{background:rgba(15,23,42,0.85);backdrop-filter:blur(16px);border-radius:18px;border:1px solid rgba(255,255,255,0.08);padding:1.4rem 1.6rem;margin-bottom:1.2rem;box-shadow:0 20px 50px rgba(0,0,0,.4);}
+    .filter-row{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;}
+    .filter-group{display:flex;flex-direction:column;gap:.3rem;}
+    .filter-group label{font-size:.85rem;color:#a5b4fc;font-weight:700;}
+    .filter-group select,.filter-group input{background:rgba(30,41,59,0.8);border:1px solid rgba(99,102,241,0.3);border-radius:10px;color:#e5e7eb;padding:.55rem .7rem;font-family:inherit;font-size:.95rem;min-width:80px;transition:all 0.2s;}
+    .filter-group select:focus,.filter-group input:focus{outline:none;border-color:#6366f1;box-shadow:0 0 12px rgba(99,102,241,0.3);}
+    .btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:12px;padding:.7rem 1.4rem;cursor:pointer;font-family:inherit;font-size:.95rem;font-weight:800;transition:all 0.2s;box-shadow:0 10px 30px rgba(99,102,241,.4);}
+    .btn:hover{transform:translateY(-2px);box-shadow:0 14px 35px rgba(99,102,241,.5);}
+    .btn-outline{background:rgba(30,41,59,0.8);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;box-shadow:none;}
+    .btn-outline:hover{border-color:#6366f1;color:#f1f5f9;background:rgba(99,102,241,0.2);}
+
+    /* quick chips */
+    .quick-chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.8rem;}
+    .chip{background:rgba(30,41,59,0.7);border:1px solid rgba(99,102,241,0.4);border-radius:999px;padding:.5rem .9rem;font-size:.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;}
+    .chip:hover,.chip.active{background:linear-gradient(135deg,#6366f1,#8b5cf6);border-color:#a78bfa;color:#fff;box-shadow:0 4px 15px rgba(99,102,241,0.4);}
+
+    /* summary */
+    .summary-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem;}
+    .summary-card{background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1));border-radius:14px;border:1px solid rgba(99,102,241,0.2);padding:.9rem 1.1rem;min-width:160px;flex:1;}
+    .summary-card .label{font-size:.85rem;color:#a5b4fc;margin-bottom:.3rem;font-weight:600;}
+    .summary-card .value{font-size:1.3rem;font-weight:900;color:#f1f5f9;}
+
+    /* export btns */
+    .export-btns{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1.2rem;}
+    .export-btns a{text-decoration:none;}
+
+    /* table */
+    .table-wrap{overflow-x:auto;background:rgba(15,23,42,0.85);backdrop-filter:blur(16px);border-radius:18px;border:1px solid rgba(255,255,255,0.08);padding:1rem;box-shadow:0 20px 50px rgba(0,0,0,.4);}
+    table{width:100%;border-collapse:separate;border-spacing:0;font-size:1rem;}
+    th,td{padding:.75rem .8rem;text-align:right;border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap;}
+    th{background:rgba(30,41,59,0.9);color:#a5b4fc;font-weight:700;position:sticky;top:0;font-size:.95rem;}
+    tbody tr{transition:background 0.15s;}
+    tbody tr:nth-child(even){background:rgba(15,23,42,0.5);}
+    tbody tr:hover{background:rgba(99,102,241,0.12);}
+    .badge{display:inline-block;padding:.25rem .65rem;border-radius:999px;font-size:.85rem;font-weight:700;}
+    .badge-reception{background:rgba(16,185,129,0.2);color:#6ee7b7;}
+    .badge-doctor{background:rgba(99,102,241,0.2);color:#a5b4fc;}
+    .badge-nurse{background:rgba(245,158,11,0.2);color:#fbbf24;}
+    .num{direction:ltr;text-align:left;font-family:monospace;}
+  </style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <h1>👤 گزارش عملکرد کاربران</h1>
+    <a href="{{ url_for('manager.reports') }}" class="btn-back">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+      بازگشت به مرکز گزارشات
+    </a>
+  </div>
+
+  <!-- فیلترها -->
+  <form class="filter-card" method="get">
+    <div class="filter-row">
+      <!-- تاریخ از -->
+      <div class="filter-group">
+        <label>از (سال)</label>
+        <select id="fromY"></select>
+      </div>
+      <div class="filter-group">
+        <label>ماه</label>
+        <select id="fromM"></select>
+      </div>
+      <div class="filter-group">
+        <label>روز</label>
+        <select id="fromD"></select>
+      </div>
+      <!-- تاریخ تا -->
+      <div class="filter-group">
+        <label>تا (سال)</label>
+        <select id="toY"></select>
+      </div>
+      <div class="filter-group">
+        <label>ماه</label>
+        <select id="toM"></select>
+      </div>
+      <div class="filter-group">
+        <label>روز</label>
+        <select id="toD"></select>
+      </div>
+      <input type="hidden" name="from" id="hiddenFrom" value="{{ active_filters.from or '' }}">
+      <input type="hidden" name="to" id="hiddenTo" value="{{ active_filters.to or '' }}">
+
+      <!-- کاربر -->
+      <div class="filter-group">
+        <label>کاربر</label>
+        <input type="text" name="user" placeholder="نام کاربری یا id" value="{{ active_filters.user or '' }}" style="width:120px;">
+      </div>
+
+      <!-- نقش -->
+      <div class="filter-group">
+        <label>نقش</label>
+        <select name="role">
+          <option value="">همه</option>
+          <option value="reception" {% if active_filters.role == 'reception' %}selected{% endif %}>پذیرش</option>
+          <option value="doctor" {% if active_filters.role == 'doctor' %}selected{% endif %}>پزشک</option>
+          <option value="nurse" {% if active_filters.role == 'nurse' %}selected{% endif %}>پرستار</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn">اعمال فیلترها</button>
+      <a href="{{ url_for('manager.users_report') }}" class="btn btn-outline">پاکسازی</a>
+    </div>
+    <div class="quick-chips">
+      <span class="chip" data-range="today">امروز</span>
+      <span class="chip" data-range="r7">۷ روز اخیر</span>
+      <span class="chip" data-range="r30">۳۰ روز اخیر</span>
+      <span class="chip" data-range="r90">۹۰ روز اخیر</span>
+    </div>
+  </form>
+
+  <!-- export -->
+  <div class="export-btns">
+    <a href="{{ url_for('manager.export_users_csv', **active_filters) }}" class="btn btn-outline">📥 دانلود CSV</a>
+    <button type="button" class="btn btn-outline" onclick="printReport()">🖨 چاپ / PDF</button>
+  </div>
+
+  <!-- جدول -->
+  <div class="table-wrap" id="printArea">
+    <table>
+      <thead>
+        <tr>
+          <th>کاربر</th>
+          <th>نام کامل</th>
+          <th>نقش</th>
+          <th>فاکتورهای بازشده</th>
+          <th>ویزیت‌ها</th>
+          <th>خدمات پرستاری</th>
+          <th>کارهای عملی</th>
+          <th>مصرفی‌ها (عمومی)</th>
+          <th>داروها</th>
+          <th>درآمد کل (تومان)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr>
+          <td>{{ r.user }}</td>
+          <td>{{ r.full_name }}</td>
+          <td>
+            <span class="badge badge-{{ r.role }}">{{ r.role_fa }}</span>
+          </td>
+          <td class="num">{{ r.invoices }}</td>
+          <td class="num">{{ r.visits }}</td>
+          <td class="num">{{ r.nursing }}</td>
+          <td class="num">{{ r.procedures }}</td>
+          <td class="num">{{ r.consumables_supply }}</td>
+          <td class="num">{{ r.consumables_drug }}</td>
+          <td class="num">{{ "{:,}".format(r.revenue|int) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" style="text-align:center;color:#9ca3af;">داده‌ای یافت نشد</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const JALALI_RANGES = {{ jalali_ranges|tojson }};
+
+function pad(n){ return n < 10 ? '0'+n : ''+n; }
+
+function populateDateSelects(){
+  const today = JALALI_RANGES.today;
+  const years = [];
+  for(let y = today.y - 5; y <= today.y + 1; y++) years.push(y);
+  const months = Array.from({length:12},(_,i)=>i+1);
+  const days = Array.from({length:31},(_,i)=>i+1);
+
+  ['from','to'].forEach(prefix => {
+    const yEl = document.getElementById(prefix+'Y');
+    const mEl = document.getElementById(prefix+'M');
+    const dEl = document.getElementById(prefix+'D');
+    yEl.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+    mEl.innerHTML = months.map(m=>`<option value="${m}">${pad(m)}</option>`).join('');
+    dEl.innerHTML = days.map(d=>`<option value="${d}">${pad(d)}</option>`).join('');
+  });
+}
+
+function applyHiddenToSelects(){
+  const fromVal = document.getElementById('hiddenFrom').value;
+  const toVal = document.getElementById('hiddenTo').value;
+  if(fromVal){
+    const p = fromVal.split('/');
+    document.getElementById('fromY').value = p[0];
+    document.getElementById('fromM').value = parseInt(p[1]);
+    document.getElementById('fromD').value = parseInt(p[2]);
+  } else {
+    const r = JALALI_RANGES.r7;
+    document.getElementById('fromY').value = r.from.y;
+    document.getElementById('fromM').value = r.from.m;
+    document.getElementById('fromD').value = r.from.d;
+  }
+  if(toVal){
+    const p = toVal.split('/');
+    document.getElementById('toY').value = p[0];
+    document.getElementById('toM').value = parseInt(p[1]);
+    document.getElementById('toD').value = parseInt(p[2]);
+  } else {
+    const t = JALALI_RANGES.today;
+    document.getElementById('toY').value = t.y;
+    document.getElementById('toM').value = t.m;
+    document.getElementById('toD').value = t.d;
+  }
+}
+
+function syncHiddenDates(){
+  const fy = document.getElementById('fromY').value;
+  const fm = pad(parseInt(document.getElementById('fromM').value));
+  const fd = pad(parseInt(document.getElementById('fromD').value));
+  const ty = document.getElementById('toY').value;
+  const tm = pad(parseInt(document.getElementById('toM').value));
+  const td = pad(parseInt(document.getElementById('toD').value));
+  document.getElementById('hiddenFrom').value = `${fy}/${fm}/${fd}`;
+  document.getElementById('hiddenTo').value = `${ty}/${tm}/${td}`;
+}
+
+function setQuickRange(key){
+  if(key === 'today'){
+    const t = JALALI_RANGES.today;
+    document.getElementById('fromY').value = t.y;
+    document.getElementById('fromM').value = t.m;
+    document.getElementById('fromD').value = t.d;
+    document.getElementById('toY').value = t.y;
+    document.getElementById('toM').value = t.m;
+    document.getElementById('toD').value = t.d;
+  } else {
+    const r = JALALI_RANGES[key];
+    document.getElementById('fromY').value = r.from.y;
+    document.getElementById('fromM').value = r.from.m;
+    document.getElementById('fromD').value = r.from.d;
+    document.getElementById('toY').value = r.to.y;
+    document.getElementById('toM').value = r.to.m;
+    document.getElementById('toD').value = r.to.d;
+  }
+  syncHiddenDates();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  populateDateSelects();
+  applyHiddenToSelects();
+
+  ['fromY','fromM','fromD','toY','toM','toD'].forEach(id => {
+    document.getElementById(id).addEventListener('change', syncHiddenDates);
+  });
+
+  document.querySelectorAll('.chip[data-range]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      setQuickRange(chip.dataset.range);
+    });
+  });
+});
+
+function printReport(){
+  const content = document.getElementById('printArea').innerHTML;
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <!doctype html>
+    <html lang="fa" dir="rtl">
+    <head>
+      <meta charset="utf-8">
+      <title>گزارش عملکرد کاربران</title>
+      <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+      <style>
+        *{box-sizing:border-box;}
+        body{font-family:'Vazirmatn',sans-serif;padding:1rem;direction:rtl;}
+        table{width:100%;border-collapse:collapse;font-size:11px;}
+        th,td{border:1px solid #333;padding:6px;text-align:right;}
+        th{background:#eee;}
+        h2{text-align:center;margin-bottom:1rem;}
+        .badge{padding:2px 6px;border-radius:4px;font-size:10px;}
+        .badge-reception{background:#d1fae5;color:#065f46;}
+        .badge-doctor{background:#e0e7ff;color:#3730a3;}
+        .badge-nurse{background:#fef3c7;color:#92400e;}
+        .num{direction:ltr;text-align:left;font-family:monospace;}
+        @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+      </style>
+    </head>
+    <body>
+      <h2>گزارش عملکرد کاربران</h2>
+      ${content}
+      <script>window.onload=()=>{window.print();}<\/script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+</script>
+</body>
+</html>

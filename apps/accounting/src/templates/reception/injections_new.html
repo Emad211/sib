@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>خدمات پرستاری - سیستم درمانگاه</title>
+    
+    <!-- فونت وزیرمتن -->
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+
+    <style>
+        /* تم مینیمال و مدرن */
+        :root {
+            --sidebar-bg: #111827;
+            --sidebar-text: #e5e7eb;
+            --main-bg: #f3f4f6;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --card-bg: #ffffff;
+            --text-dark: #111827;
+            --border-color: #d1d5db;
+            --table-header-bg: #f9fafb;
+            --table-row-hover: #eef2ff;
+            --success: #10b981; --danger:#ef4444; --warning:#f59e0b;
+        }
+
+        /* Exception row highlight */
+        .exception-row { background: #fff7f7; border-left: 4px solid #ef4444; }
+        body.theme-dark .exception-row { background: rgba(239,68,68,0.06); }
+        .exception-legend { display:inline-flex; align-items:center; gap:8px; color:#ef4444; font-weight:700; font-size:0.85rem; }
+        .exception-legend .box { width:12px; height:12px; background:#ef4444; border-radius:2px; display:inline-block; }
+        body.theme-dark {
+            --sidebar-bg: #0d1117;
+            --sidebar-text: #cbd5e1;
+            --main-bg: #030712;
+            --accent: #818cf8;
+            --accent-hover: #6366f1;
+            --card-bg: #1f2937;
+            --text-dark: #f9fafb;
+            --border-color: #374151;
+            --table-header-bg: #111827;
+            --table-row-hover: #1e1b4b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+
+        body { font-family:'Vazirmatn', sans-serif; background:linear-gradient(135deg,var(--main-bg) 0%, #1e3a8a22 100%); color:var(--text-dark); height:100vh; display:flex; overflow:hidden; font-size:15px; }
+
+        /* --- Sidebar Styles (Copy of Dashboard) --- */
+        .sidebar { width:260px; background-color:var(--sidebar-bg); color:var(--sidebar-text); display:flex; flex-direction:column; padding:1.4rem 1.2rem; flex-shrink:0; overflow-y:auto; box-shadow:5px 0 15px rgba(0,0,0,0.25); }
+
+        .app-brand { font-size:1.25rem; font-weight:900; color:white; margin-bottom:1.6rem; text-align:center; padding-bottom:.9rem; border-bottom:1px solid rgba(255,255,255,0.08); letter-spacing:-0.5px; }
+
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            padding: 0.8rem 1rem;
+            margin-bottom: 0.8rem;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            color: #cbd5e1;
+            background: rgba(255,255,255,0.05);
+            transition: all 0.2s;
+        }
+        .nav-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .nav-btn.active { background:linear-gradient(90deg,#6366f1,#8b5cf6); color:white; box-shadow:0 4px 12px rgba(99,102,241,0.35); }
+        body.theme-dark .nav-btn { background:rgba(255,255,255,0.08); color:#cbd5e1; }
+        body.theme-dark .nav-btn:hover { background:rgba(255,255,255,0.15); }
+
+        /* --- Main Content --- */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            overflow-y: hidden; /* اسکرول داخلی کارت */
+        }
+
+        /* Header */
+        .topbar { display:flex; justify-content:space-between; align-items:stretch; background:var(--card-bg); padding:.9rem 1.4rem; border-radius:18px; margin-bottom:1.4rem; box-shadow:0 6px 15px -4px rgba(0,0,0,0.35); border:1px solid var(--border-color); backdrop-filter:blur(10px); }
+        .patient-card { background:var(--table-header-bg); border:1px solid var(--border-color); border-radius:16px; padding:.95rem 1.15rem; display:flex; flex-direction:column; min-width:240px; }
+        .patient-card h2 { margin:0; font-size:1.35rem; font-weight:900; color:var(--text-dark); letter-spacing:-0.5px; }
+        .patient-meta { margin-top:.55rem; display:flex; flex-wrap:wrap; gap:.8rem; font-size:.75rem; color:#475569; }
+        body.theme-dark .patient-meta { color:#94a3b8; }
+        .back-btn { background:#eef2ff; color:#1e293b; border:1px solid var(--border-color); padding:.65rem 1.25rem; font-weight:700; font-size:.8rem; border-radius:10px; cursor:pointer; }
+        .back-btn:hover { background:#e0e7ff; }
+        body.theme-dark .back-btn { background:#334155; color:#f1f5f9; }
+        body.theme-dark .back-btn:hover { background:#475569; }
+
+        /* --- Workspace Card (The Main Area) --- */
+        .workspace { flex:1; background:var(--card-bg); border-radius:20px; box-shadow:0 10px 25px -6px rgba(0,0,0,0.35); padding:0; border:1px solid var(--border-color); display:flex; flex-direction:column; overflow:hidden; backdrop-filter:blur(8px); }
+
+        /* Tabs Styling */
+        .tabs-header { display:flex; padding:1rem 1.4rem 0; border-bottom:1px solid var(--border-color); background:var(--table-header-bg); gap:.5rem; }
+        .tab-btn {
+            padding: 1rem 2rem;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: var(--text-muted);
+            font-weight: 700;
+            font-size: 1rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: 0.2s;
+            border-radius: 8px 8px 0 0;
+        }
+        .tab-btn:hover { background: var(--hover-bg); }
+        .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); background:var(--card-bg); }
+        body.theme-dark .tab-btn { color:#94a3b8; }
+        body.theme-dark .tab-btn.active { color:var(--accent); }
+
+        /* Panel Content */
+        .panel-content {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+            display: none; /* Hidden by default */
+        }
+        .panel-content.active { display: block; }
+
+        /* Search Box */
+        .search-box { width:100%; padding:.9rem 1rem; background:var(--card-bg); border:2px solid var(--border-color); border-radius:12px; color:var(--text-dark); font-size:1rem; font-family:inherit; margin-bottom:1rem; }
+        .search-box:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(99,102,241,0.35); }
+
+        /* Two Column Grid Layout */
+        .two-col-grid {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 20px;
+            height: 350px;
+        }
+
+        /* Selection List (Scrollable) */
+        .selection-list { height:100%; overflow-y:auto; border:1px solid var(--border-color); border-radius:12px; background:var(--card-bg); }
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .list-item:hover { background-color: var(--table-row-hover); }
+        .list-item:last-child { border-bottom: none; }
+        .item-name { font-weight: 600; font-size: 0.95rem; color: var(--text-dark); }
+        .item-name small { color: #888; font-weight: normal; margin-right: 4px; }
+        .item-price { background:rgba(99,102,241,0.12); color:var(--accent); font-size:.8rem; font-weight:700; padding:5px 12px; border-radius:8px; min-width:80px; text-align:center; }
+        body.theme-dark .item-price { background:rgba(99,102,241,0.25); }
+
+        /* Table wrapper for right column */
+        .table-wrapper { overflow-y: auto; height: 100%; }
+
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .data-table th { background:var(--table-header-bg); color:#64748b; font-weight:700; padding:.8rem; text-align:center; border-bottom:1px solid var(--border-color); }
+        body.theme-dark .data-table th { color:#94a3b8; }
+        .data-table td {
+            padding: 0.6rem;
+            border-bottom: 1px solid var(--border-color);
+            text-align: center;
+            vertical-align: middle;
+        }
+        .data-table tr:last-child td { border-bottom: none; }
+        
+        /* Inputs in table */
+        .qty-input { width:70px; padding:.4rem; text-align:center; border-radius:6px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-dark); }
+        .qty-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(99,102,241,0.35); }
+        .checkbox-input {
+            width: 26px; height: 26px; cursor: pointer; accent-color: #10b981;
+        }
+        .btn-remove {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: none;
+            width: 30px; height: 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-remove:hover { background: var(--danger); color: white; }
+
+        /* Footer Area */
+        .footer-area {
+            border-top: 1px solid var(--border-color);
+            padding: 1.5rem;
+            background: var(--bg-card);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .notes-area {
+            width: 100%;
+            padding: 0.8rem;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-main);
+            font-family: inherit;
+            min-height: 60px;
+        }
+
+        .footer-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .totals-badges {
+            display: flex;
+            gap: 0.8rem;
+        }
+        .badge {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 100px;
+        }
+        .badge span:first-child { font-size: 0.7rem; opacity: 0.8; margin-bottom: 2px; }
+        .badge-blue { background: rgba(99, 102, 241, 0.15); color: var(--primary); border: 1px solid rgba(99, 102, 241, 0.3); }
+        .badge-orange { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-green { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .badge-total { background: var(--text-main); color: var(--bg-card); border: 1px solid var(--text-main); }
+
+        .btn-primary { background:linear-gradient(90deg,#6366f1,#8b5cf6); color:white; border:none; padding:.8rem 2rem; border-radius:12px; font-weight:800; font-size:1rem; cursor:pointer; box-shadow:0 4px 10px rgba(99,102,241,0.4); }
+        .btn-secondary {
+            background: transparent;
+            border: 2px solid var(--border-color);
+            color: #64748b;
+            padding: 0.8rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-primary:hover { transform: translateY(-2px); }
+        .btn-secondary:hover { background: var(--table-row-hover); color: var(--text-dark); }
+        body.theme-dark .btn-secondary { color:#94a3b8; }
+        body.theme-dark .btn-secondary:hover { color:var(--text-dark); }
+
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="app-brand">🏥 درمانگاه سیب</div>
+        
+        <div style="margin-bottom: 2rem; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 12px; border:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#9ca3af; font-size:0.85rem; margin-bottom:0.5rem;">بیمار فعال:</div>
+            <div style="font-weight:800; color:white; font-size:1.1rem; margin-bottom:0.2rem;">{% if invoice %}{{ invoice.patient_name }}{% else %}---{% endif %}</div>
+            <div style="color:#6366f1; font-size:0.8rem;">{{ g.user['username'] }}</div>
+        </div>
+
+        <!-- حذف دکمه داشبورد اصلی طبق درخواست -->
+        <a href="#" class="nav-btn active">💉 ثبت خدمات پرستاری</a>
+        {% if invoice %}
+        <a href="{{ url_for('reception.index', invoice_id=invoice.id) }}" class="nav-btn">🔙 بازگشت به فاکتور</a>
+        {% endif %}
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        
+
+        <!-- Workspace (Logic Area) -->
+        <div class="workspace">
+            {% if not invoice %}
+                <div style="text-align:center; padding:5rem; color:var(--text-muted);">
+                    <h2>هیچ بیماری انتخاب نشده است</h2>
+                    <p>لطفاً از داشبورد یک فاکتور را انتخاب کنید.</p>
+                    <br>
+                    <button class="btn-secondary" onclick="window.location='{{ url_for('reception.index') }}'">بازگشت به داشبورد</button>
+                </div>
+            {% else %}
+                
+                <!-- Data Injection for JS -->
+                <div id="data-root"
+                     data-services='{{ services|tojson|safe }}'
+                     data-supplies='{{ supplies|tojson|safe }}'
+                     data-drugs='{{ drugs|tojson|safe }}'
+                     data-invoice-id='{{ invoice.id }}'></div>
+
+                <!-- Insurance coverage note: displayed when insurance covers nursing -->
+                <div style="margin:0.75rem 1.25rem; padding:0.8rem 1rem; border-radius:10px; background: #f1f5f9; border:1px solid var(--border-color); color:var(--text-muted);">
+                    توجه: اگر بیمه بیمار خدمات پرستاری را پوشش دهد، سهم پرداختی بیمار برای خدمات پرستاری به صورت خودکار صفر خواهد شد.
+                </div>
+
+                <!-- Tabs Header -->
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchTab('services')">💉 خدمات</button>
+                    <button class="tab-btn" onclick="switchTab('supplies')">🩹 مصرفی‌ها</button>
+                    <button class="tab-btn" onclick="switchTab('drugs')">💊 داروها</button>
+                </div>
+
+                <!-- PANEL: SERVICES -->
+                <div id="panel-services" class="panel-content active">
+                    <input type="text" id="svcSearch" class="search-box" placeholder="🔍 جستجو در نام خدمات ...">
+                    <div class="two-col-grid">
+                        <!-- لیست آیتم‌ها (چپ) -->
+                        <div id="svcList" class="selection-list"></div>
+                        
+                        <!-- جدول انتخاب شده‌ها (راست) -->
+                        <div class="table-wrapper">
+                            <table class="data-table" id="svcTable">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:right;">نام خدمت</th>
+                                        <th width="80">تعداد</th>
+                                        <th width="100">قیمت واحد</th>
+                                        <th width="100">جمع کل</th>
+                                        <th width="50">حذف</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL: SUPPLIES -->
+                <div id="panel-supplies" class="panel-content">
+                    <input type="text" id="supSearch" class="search-box" placeholder="🔍 جستجو در مصرفی‌ها ...">
+                    <div class="two-col-grid">
+                        <!-- لیست آیتم‌ها (چپ) -->
+                        <div id="supList" class="selection-list"></div>
+                        
+                        <!-- جدول انتخاب شده‌ها (راست) -->
+                        <div class="table-wrapper">
+                            <table class="data-table" id="supTable">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:right;">نام مصرفی</th>
+                                        <th width="80">تعداد</th>
+                                        <th width="100">قیمت واحد</th>
+                                        <th width="100">جمع کل</th>
+                                        <th width="80">آورده بیمار؟</th>
+                                        <th width="50">حذف</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL: DRUGS -->
+                <div id="panel-drugs" class="panel-content">
+                    <input type="text" id="drugSearch" class="search-box" placeholder="🔍 جستجو در داروها ...">
+                    <div style="margin:0.6rem 0 0.8rem 0; display:flex; gap:0.6rem; justify-content:flex-end;">
+                        <button class="btn-secondary" id="addUndefinedDrugBtn">➕ داروی تعریف‌نشده</button>
+                    </div>
+                    <div class="two-col-grid">
+                        <!-- لیست آیتم‌ها (چپ) -->
+                        <div id="drugList" class="selection-list"></div>
+                        
+                        <!-- جدول انتخاب شده‌ها (راست) -->
+                        <div class="table-wrapper">
+                            <table class="data-table" id="drugTable">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:right;">نام دارو</th>
+                                        <th width="80">تعداد</th>
+                                        <th width="100">قیمت واحد</th>
+                                        <th width="100">جمع کل</th>
+                                        <th width="80">آورده بیمار؟</th>
+                                        <th width="50">حذف</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="footer-area">
+                    <textarea id="notes" class="notes-area" placeholder="یادداشت یا توضیحات اضافی برای این فاکتور (اختیاری)..."></textarea>
+                    
+                    <div class="footer-actions">
+                        <div class="totals-badges">
+                            <div class="badge badge-blue">
+                                <span>خدمات</span>
+                                <b id="svcTotalBadge">0</b>
+                            </div>
+                            <div class="badge badge-orange">
+                                <span>مصرفی</span>
+                                <b id="supTotalBadge">0</b>
+                            </div>
+                            <div class="badge badge-green">
+                                <span>دارو</span>
+                                <b id="drugTotalBadge">0</b>
+                            </div>
+                            <div class="badge badge-total">
+                                <span>جمع نهایی</span>
+                                <b id="grandTotalBadge">0</b>
+                            </div>
+                        </div>
+                                <div style="display:flex; gap:1rem; align-items:center;">
+                                    <div class="exception-legend" title="آیتم‌های استثنا در گزارش مدیریت نشان داده می‌شوند.">
+                                        <span class="box"></span>
+                                        <span>استثنا: نمایش در گزارش مدیر</span>
+                                    </div>
+                        
+                                <div style="display:flex; gap:1rem;">
+                            <button class="btn-secondary" onclick="window.location='{{ url_for('reception.index', invoice_id=invoice.id) }}'">لغو و بازگشت</button>
+                            <button class="btn-primary" id="submitAll">✅ ثبت نهایی و ذخیره</button>
+                        </div>
+                    </div>
+                </div>
+
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // اعمال تم سراسری (عدم استفاده از تم اختصاصی صفحه)
+        (function(){
+            const t = localStorage.getItem('receptionTheme') || 'light';
+            if(t==='dark') document.body.classList.add('theme-dark');
+        })();
+
+        // --- Logic for Tabs ---
+        function switchTab(tabName) {
+            // Hide all panels
+            document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+            // Deactivate buttons
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            
+            // Activate requested
+            document.getElementById('panel-' + tabName).classList.add('active');
+            // Find button (simplified approximation)
+            event.target.classList.add('active');
+        }
+
+        // --- Main Business Logic (Adapted from your provided code) ---
+        const dataRoot = document.getElementById('data-root');
+        if (dataRoot) {
+            const SERVICES = JSON.parse(dataRoot.dataset.services || '[]');
+            const SUPPLIES = JSON.parse(dataRoot.dataset.supplies || '[]');
+            const DRUGS = JSON.parse(dataRoot.dataset.drugs || '[]');
+            const invoiceId = parseInt(dataRoot.dataset.invoiceId);
+
+            // Helper: Build scrollable list
+            function buildList(container, items, type) {
+                container.innerHTML = '';
+                items.forEach(it => {
+                    const el = document.createElement('div');
+                    el.className = 'list-item';
+                    const name = it.service_name || it.name;
+                    const price = (it.unit_price || it.default_price || 0).toLocaleString();
+                    
+                    el.innerHTML = `
+                        <span class="item-name">${name}</span>
+                        <span class="item-price">${price}</span>
+                    `;
+                    el.addEventListener('click', () => addItem(type, it));
+                    container.appendChild(el);
+                });
+            }
+
+            // Init Lists
+            const svcList = document.getElementById('svcList');
+            const supList = document.getElementById('supList');
+            const drugList = document.getElementById('drugList');
+
+            buildList(svcList, SERVICES, 'service');
+            buildList(supList, SUPPLIES, 'supply');
+            buildList(drugList, DRUGS, 'drug');
+
+            // Add Undefined Drug Modal
+            const addUndefinedBtn = document.getElementById('addUndefinedDrugBtn');
+            addUndefinedBtn.addEventListener('click', () => {
+                const name = prompt('نام داروی تعریف‌نشده را وارد کنید:');
+                if (!name) return;
+                const qtyStr = prompt('تعداد (پیش‌فرض 1):','1');
+                const qty = parseFloat(qtyStr) || 1;
+                const priceStr = prompt('قیمت واحد (در صورت تمایل، خالی بگذارید تا 0):','0');
+                const price = parseFloat(priceStr) || 0;
+                // Insert directly into drug table as an exception and patient-provided
+                const tbody = drugTbody;
+                const tr = document.createElement('tr');
+                tr.dataset.name = name;
+                tr.dataset.price = price;
+                tr.dataset.category = 'drug';
+                tr.dataset.is_exception = '1';
+                tr.innerHTML = `
+                    <td style="text-align:right;">${name} <span style='color:#ef4444; font-weight:700; margin-right:6px;'>[استثنا]</span></td>
+                    <td><input type="number" class="qty-input" min="1" value="${qty}"></td>
+                    <td>${price.toLocaleString()}</td>
+                    <td class="row-total">${(qty*price).toLocaleString()}</td>
+                    <td><input type="checkbox" class="checkbox-input patient-provided" checked></td>
+                    <td><button class="btn-remove">×</button></td>
+                `;
+                tbody.appendChild(tr);
+                // visually mark exception rows
+                if (tr.dataset.is_exception == '1') tr.classList.add('exception-row');
+                recalcTotals();
+            });
+
+            // Search Logic
+            function setupSearch(inputId, data, container, type) {
+                document.getElementById(inputId).addEventListener('input', (e) => {
+                    const val = e.target.value.trim();
+                    const filtered = data.filter(it => (it.service_name || it.name).includes(val));
+                    buildList(container, filtered, type);
+                });
+            }
+            setupSearch('svcSearch', SERVICES, svcList, 'service');
+            setupSearch('supSearch', SUPPLIES, supList, 'supply');
+            setupSearch('drugSearch', DRUGS, drugList, 'drug');
+
+            // Table Bodies
+            const svcTbody = document.querySelector('#svcTable tbody');
+            const supTbody = document.querySelector('#supTable tbody');
+            const drugTbody = document.querySelector('#drugTable tbody');
+
+            // Add Item Logic
+            function addItem(type, data) {
+                let tr;
+                if (type === 'service') {
+                    // Check dup
+                    const existing = [...svcTbody.querySelectorAll('tr')].find(r => r.dataset.id == data.id);
+                    if (existing) {
+                        const inp = existing.querySelector('.qty-input');
+                        inp.value = parseInt(inp.value) + 1;
+                        updateRow(existing, type);
+                        return;
+                    }
+                    tr = document.createElement('tr');
+                    tr.dataset.id = data.id;
+                    tr.dataset.price = data.unit_price;
+                    // catalog service rows are not exceptions by default
+                    tr.dataset.is_exception = '0';
+                    tr.innerHTML = `
+                        <td style="text-align:right;">${data.service_name}</td>
+                        <td><input type="number" class="qty-input" min="1" value="1"></td>
+                        <td>${data.unit_price.toLocaleString()}</td>
+                        <td class="row-total">${data.unit_price.toLocaleString()}</td>
+                        <td><button class="btn-remove">×</button></td>
+                    `;
+                    svcTbody.appendChild(tr);
+                    if (tr.dataset.is_exception == '1') tr.classList.add('exception-row');
+                } else {
+                    // Supply/Drug
+                    const tbody = (type === 'supply' ? supTbody : drugTbody);
+                    const existing = [...tbody.querySelectorAll('tr')].find(r => r.dataset.name == data.name);
+                    if (existing) {
+                        const inp = existing.querySelector('.qty-input');
+                        inp.value = parseInt(inp.value) + 1;
+                        updateRow(existing, type);
+                        return;
+                    }
+                    tr = document.createElement('tr');
+                    tr.dataset.name = data.name;
+                    tr.dataset.price = data.default_price;
+                    tr.dataset.category = (type === 'drug' ? 'drug' : 'supply');
+                    // catalog consumable rows default to not-exception
+                    tr.dataset.is_exception = '0';
+                    tr.innerHTML = `
+                        <td style="text-align:right;">${data.name}</td>
+                        <td><input type="number" class="qty-input" min="1" value="1"></td>
+                        <td>${data.default_price.toLocaleString()}</td>
+                        <td class="row-total">${data.default_price.toLocaleString()}</td>
+                        <td><input type="checkbox" class="checkbox-input patient-provided"></td>
+                        <td><button class="btn-remove">×</button></td>
+                    `;
+                    tbody.appendChild(tr);
+                    if (tr.dataset.is_exception == '1') tr.classList.add('exception-row');
+                }
+                recalcTotals();
+            }
+
+            // Update Row Calculations
+            function updateRow(tr, type) {
+                const qty = parseFloat(tr.querySelector('.qty-input').value) || 0;
+                const unit = parseFloat(tr.dataset.price) || 0;
+                let total = qty * unit;
+                
+                // If provided by patient (consumables)
+                if (type !== 'service') {
+                    const chk = tr.querySelector('.patient-provided');
+                    if (chk && chk.checked) total = 0;
+                }
+                
+                tr.querySelector('.row-total').textContent = total.toLocaleString();
+                recalcTotals();
+            }
+
+            // Global Listeners for Inputs inside tables
+            [svcTbody, supTbody, drugTbody].forEach(tb => {
+                tb.addEventListener('input', e => {
+                    if (e.target.classList.contains('qty-input')) {
+                         // Determine type based on table parent
+                         const isSvc = (tb === svcTbody);
+                         updateRow(e.target.closest('tr'), isSvc ? 'service' : 'other');
+                    }
+                });
+                tb.addEventListener('change', e => {
+                    if (e.target.classList.contains('patient-provided')) {
+                        updateRow(e.target.closest('tr'), 'other');
+                    }
+                });
+                tb.addEventListener('click', e => {
+                    if (e.target.classList.contains('btn-remove')) {
+                        e.target.closest('tr').remove();
+                        recalcTotals();
+                    }
+                });
+            });
+
+            // Recalculate All Totals
+            function recalcTotals() {
+                let sTotal = 0, supTotal = 0, dTotal = 0;
+
+                svcTbody.querySelectorAll('tr').forEach(r => {
+                    sTotal += (parseFloat(r.dataset.price) * parseFloat(r.querySelector('.qty-input').value));
+                });
+                
+                supTbody.querySelectorAll('tr').forEach(r => {
+                    if (!r.querySelector('.patient-provided').checked) {
+                        supTotal += (parseFloat(r.dataset.price) * parseFloat(r.querySelector('.qty-input').value));
+                    }
+                });
+
+                drugTbody.querySelectorAll('tr').forEach(r => {
+                    if (!r.querySelector('.patient-provided').checked) {
+                        dTotal += (parseFloat(r.dataset.price) * parseFloat(r.querySelector('.qty-input').value));
+                    }
+                });
+
+                document.getElementById('svcTotalBadge').textContent = sTotal.toLocaleString();
+                document.getElementById('supTotalBadge').textContent = supTotal.toLocaleString();
+                document.getElementById('drugTotalBadge').textContent = dTotal.toLocaleString();
+                document.getElementById('grandTotalBadge').textContent = (sTotal + supTotal + dTotal).toLocaleString();
+            }
+
+            // Submit
+            document.getElementById('submitAll').addEventListener('click', () => {
+                if (!invoiceId) return;
+                
+                // Collect Data
+                const services = [];
+                svcTbody.querySelectorAll('tr').forEach(r => {
+                    services.push({ id: parseInt(r.dataset.id), qty: parseFloat(r.querySelector('.qty-input').value) });
+                });
+
+                const consumables = [];
+                [supTbody, drugTbody].forEach(tb => {
+                    tb.querySelectorAll('tr').forEach(r => {
+                        consumables.push({
+                            name: r.dataset.name,
+                            qty: parseFloat(r.querySelector('.qty-input').value),
+                            unit_price: parseFloat(r.dataset.price),
+                            patient_provided: r.querySelector('.patient-provided').checked,
+                            is_exception: r.dataset.is_exception == '1',
+                            category: r.dataset.category
+                        });
+                    });
+                });
+
+                const payload = {
+                    invoice_id: invoiceId,
+                    services: services,
+                    consumables: consumables,
+                    notes: document.getElementById('notes').value.trim()
+                };
+
+                // Submit Button Loading State
+                const btn = document.getElementById('submitAll');
+                const oldText = btn.textContent;
+                btn.textContent = '⏳ در حال ثبت...';
+                btn.disabled = true;
+
+                fetch('{{ url_for('reception.injections_submit') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        // Redirect back to dashboard
+                        window.location = '{{ url_for('reception.index') }}?invoice_id=' + invoiceId;
+                    } else {
+                        alert('خطا: ' + (data.error || 'نامشخص'));
+                        btn.textContent = oldText;
+                        btn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    alert('خطا در برقراری ارتباط');
+                    btn.textContent = oldText;
+                    btn.disabled = false;
+                });
+            });
+        }
+    </script>
+</body>
+</html>

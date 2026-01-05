@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>گزارشات مدیریت</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: 'Vazirmatn', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    
+    .header-icon {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+    }
+    
+    .header h1 {
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: #fff;
+      margin: 0;
+    }
+    
+    .header p {
+      font-size: 0.9rem;
+      color: #9ca3af;
+      margin-top: 0.3rem;
+    }
+    
+    .btn-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1.2rem;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      color: #9ca3af;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    
+    .btn-back:hover {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border-color: rgba(255,255,255,0.2);
+    }
+    
+    /* Grid */
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+    
+    @media (max-width: 900px) {
+      .reports-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    
+    @media (max-width: 600px) {
+      .reports-grid { grid-template-columns: 1fr; }
+    }
+    
+    /* Cards */
+    .report-card {
+      position: relative;
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.95) 100%);
+      border-radius: 20px;
+      padding: 1.8rem;
+      text-decoration: none;
+      color: inherit;
+      border: 1px solid rgba(255,255,255,0.06);
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+    }
+    
+    .report-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--card-color), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .report-card:hover {
+      transform: translateY(-8px);
+      border-color: var(--card-color);
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5), 0 0 40px rgba(var(--card-rgb), 0.15);
+    }
+    
+    .report-card:hover::before {
+      opacity: 1;
+    }
+    
+    .card-icon-wrap {
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      margin-bottom: 1.2rem;
+      background: linear-gradient(135deg, var(--card-color) 0%, var(--card-color-dark) 100%);
+      box-shadow: 0 8px 20px rgba(var(--card-rgb), 0.3);
+    }
+    
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      margin-bottom: 0.6rem;
+    }
+    
+    .card-desc {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      line-height: 1.7;
+      margin-bottom: 1rem;
+    }
+    
+    .card-arrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      color: var(--card-color);
+      font-weight: 700;
+      opacity: 0;
+      transform: translateX(10px);
+      transition: all 0.3s;
+    }
+    
+    .report-card:hover .card-arrow {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    
+    /* Card Colors */
+    .card-visits {
+      --card-color: #3b82f6;
+      --card-color-dark: #1d4ed8;
+      --card-rgb: 59, 130, 246;
+    }
+    
+    .card-nursing {
+      --card-color: #ec4899;
+      --card-color-dark: #be185d;
+      --card-rgb: 236, 72, 153;
+    }
+    
+    .card-procedures {
+      --card-color: #f59e0b;
+      --card-color-dark: #b45309;
+      --card-rgb: 245, 158, 11;
+    }
+    
+    .card-users {
+      --card-color: #8b5cf6;
+      --card-color-dark: #6d28d9;
+      --card-rgb: 139, 92, 246;
+    }
+    
+    .card-consumables {
+      --card-color: #10b981;
+      --card-color-dark: #047857;
+      --card-rgb: 16, 185, 129;
+    }
+    
+    .card-patients {
+      --card-color: #06b6d4;
+      --card-color-dark: #0891b2;
+      --card-rgb: 6, 182, 212;
+    }
+
+    /* Quick Stats */
+    .quick-stats {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    
+    .stat-chip {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.8rem 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    
+    .stat-icon {
+      font-size: 1.2rem;
+    }
+    
+    .stat-text {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+    
+    .stat-value {
+      font-weight: 800;
+      color: #f1f5f9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-title">
+        <div class="header-icon">📊</div>
+        <div>
+          <h1>مرکز گزارشات</h1>
+          <p>تحلیل و بررسی عملکرد کلینیک</p>
+        </div>
+      </div>
+      <a href="{{ url_for('manager.index') }}" class="btn-back">
+        <span>←</span>
+        بازگشت به داشبورد
+      </a>
+    </div>
+
+    <div class="quick-stats">
+      <div class="stat-chip">
+        <span class="stat-icon">📈</span>
+        <div class="stat-text"><span class="stat-value">۷</span> گزارش موجود</div>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-icon">🔍</span>
+        <div class="stat-text">فیلترهای پیشرفته</div>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-icon">📥</span>
+        <div class="stat-text">خروجی CSV و PDF</div>
+      </div>
+    </div>
+
+    <div class="reports-grid">
+      <a href="{{ url_for('manager.visits_report') }}" class="report-card card-visits">
+        <div class="card-icon-wrap">📋</div>
+        <div class="card-title">گزارش ویزیت‌ها</div>
+        <div class="card-desc">
+          تحلیل ویزیت‌ها با فیلتر تاریخ، پزشک، نوع بیمه، کاربر پذیرش و شیفت کاری
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.nursing_report') }}" class="report-card card-nursing">
+        <div class="card-icon-wrap">💉</div>
+        <div class="card-title">گزارش خدمات پرستاری</div>
+        <div class="card-desc">
+          بررسی تزریقات، سرم‌تراپی و خدمات پرستاری بر اساس پزشک، پرستار و نوع خدمت
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.procedures_report') }}" class="report-card card-procedures">
+        <div class="card-icon-wrap">🛠️</div>
+        <div class="card-title">گزارش کارهای عملی</div>
+        <div class="card-desc">
+          آمار کامل اقدامات عملی با فیلتر نوع کار، انجام‌دهنده و شیفت کاری
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.invoices_report') }}" class="report-card card-visits" style="--card-color:#0ea5e9; --card-color-dark:#0369a1; --card-rgb:14,165,233;">
+        <div class="card-icon-wrap">🧾</div>
+        <div class="card-title">گزارش فاکتورها</div>
+        <div class="card-desc">فهرست فاکتورها با فیلتر وضعیت، بیمه، پذیرش و تاریخ شمسی</div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.users_report') }}" class="report-card card-users">
+        <div class="card-icon-wrap">👤</div>
+        <div class="card-title">گزارش عملکرد کاربران</div>
+        <div class="card-desc">
+          تحلیل عملکرد پزشکان، پرستاران و پذیرش با ریز فعالیت‌ها و درآمد
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.consumables_report') }}" class="report-card card-consumables">
+        <div class="card-icon-wrap">💊</div>
+        <div class="card-title">گزارش مصرفی‌ها</div>
+        <div class="card-desc">
+          داروها و مصرفی‌های عمومی با فیلتر دسته‌بندی، آورده بیمار و شیفت
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+
+      <a href="{{ url_for('manager.patients_report') }}" class="report-card card-patients">
+        <div class="card-icon-wrap">🧑‍🤝‍🧑</div>
+        <div class="card-title">گزارش بیماران</div>
+        <div class="card-desc">
+          لیست بیماران با تعداد مراجعات، جمع پرداخت‌ها و آخرین مراجعه
+        </div>
+        <div class="card-arrow">مشاهده گزارش ←</div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

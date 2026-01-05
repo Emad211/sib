@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>گزارش کارهای عملی</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <style>
+    *{box-sizing:border-box;}
+    body{font-family:'Vazirmatn',sans-serif;background:linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);color:#e5e7eb;margin:0;padding:2rem;min-height:100vh;}
+    .wrap{max-width:1500px;margin:0 auto;}
+    h1{margin:0;font-size:1.6rem;font-weight:900;display:flex;align-items:center;gap:.6rem;color:#f1f5f9;}
+    .card{background:rgba(15,23,42,0.85);backdrop-filter:blur(16px);border-radius:18px;border:1px solid rgba(255,255,255,0.08);padding:1.4rem 1.6rem;margin-bottom:1.2rem;box-shadow:0 20px 50px rgba(0,0,0,.4);}
+    .filters{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;}
+    .field{display:flex;flex-direction:column;gap:.3rem;min-width:150px;}
+    label{font-size:.85rem;font-weight:700;color:#7dd3fc;}
+    select,input{padding:.55rem .7rem;border-radius:10px;border:1px solid rgba(56,189,248,0.3);background:rgba(30,41,59,0.8);color:#e5e7eb;font-family:inherit;font-size:.95rem;transition:all 0.2s;}
+    select:focus,input:focus{outline:none;border-color:#38bdf8;box-shadow:0 0 12px rgba(56,189,248,0.3);}
+    .date-row{display:flex;gap:.3rem;align-items:center;}
+    .date-select{padding:.45rem .5rem;border-radius:8px;border:1px solid rgba(56,189,248,0.3);background:rgba(30,41,59,0.8);color:#e5e7eb;font-family:inherit;font-size:.9rem;}
+    .year-select{min-width:85px;}
+    .quick-range{display:flex;gap:.5rem;flex-wrap:wrap;}
+    .chip{padding:.5rem .9rem;border-radius:999px;border:1px solid rgba(56,189,248,0.4);background:rgba(30,41,59,0.7);color:#e5e7eb;font-size:.85rem;font-weight:700;cursor:pointer;transition:all 0.2s;}
+    .chip:hover{border-color:#7dd3fc;background:rgba(56,189,248,0.2);}
+    .chip.active{background:linear-gradient(135deg,#38bdf8,#0ea5e9);border-color:#7dd3fc;box-shadow:0 4px 15px rgba(56,189,248,0.4);}
+    .btn-main{padding:.7rem 1.4rem;border-radius:12px;border:none;background:linear-gradient(135deg,#38bdf8,#0ea5e9);color:#fff;font-weight:800;font-size:.95rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;box-shadow:0 10px 30px rgba(56,189,248,.4);transition:all 0.2s;}
+    .btn-main:hover{transform:translateY(-2px);box-shadow:0 14px 35px rgba(56,189,248,.5);}
+    .summary{display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem;}
+    .sum-box{flex:1 1 180px;background:linear-gradient(135deg,rgba(56,189,248,0.15),rgba(14,165,233,0.1));border-radius:14px;border:1px solid rgba(56,189,248,0.2);padding:.9rem 1.1rem;}
+    .sum-label{font-size:.85rem;color:#7dd3fc;font-weight:600;margin-bottom:.3rem;}
+    .sum-value{font-size:1.3rem;font-weight:900;color:#f1f5f9;}
+    table{width:100%;border-collapse:separate;border-spacing:0;margin-top:.6rem;}
+    th,td{padding:.75rem .8rem;font-size:1rem;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;}
+    th{background:rgba(30,41,59,0.9);color:#7dd3fc;font-weight:700;position:sticky;top:0;z-index:1;font-size:.95rem;}
+    tbody tr{transition:background 0.15s;}
+    tbody tr:nth-child(even){background:rgba(15,23,42,0.5);}
+    tbody tr:hover{background:rgba(56,189,248,0.12);}
+    .badge{display:inline-block;padding:.25rem .65rem;border-radius:999px;font-size:.85rem;font-weight:700;}
+    .badge-type{background:rgba(99,102,241,0.3);color:#c7d2fe;}
+    .badge-shift{background:rgba(15,118,110,0.3);color:#5eead4;}
+    .badge-doc{background:rgba(124,45,18,0.3);color:#fdba74;}
+    .badge-nurse{background:rgba(76,29,149,0.3);color:#c4b5fd;}
+    .note-cell{max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;}
+    .btn-back{display:inline-flex;align-items:center;gap:.5rem;padding:.7rem 1.2rem;border-radius:12px;background:rgba(30,41,59,0.8);border:1px solid rgba(56,189,248,0.3);color:#7dd3fc;font-size:.9rem;font-weight:700;text-decoration:none;transition:all 0.2s;}
+    .btn-back:hover{background:rgba(56,189,248,0.2);border-color:#38bdf8;color:#f1f5f9;transform:translateX(4px);}
+    .btn-back svg{width:18px;height:18px;}
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+  <style>
+    /* Center table headers and cells for manager reports */
+    table th, table td { text-align: center !important; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top-bar">
+    <h1>🛠 گزارش کارهای عملی</h1>
+    <a href="{{ url_for('manager.reports') }}" class="btn-back">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+      بازگشت به مرکز گزارشات
+    </a>
+  </div>
+
+  <div class="card">
+    <form method="get" class="filters">
+      <div class="field">
+        <label>از تاریخ (شمسی)</label>
+        <div class="date-row">
+          <select id="from-day" class="date-select"></select>
+          <span>/</span>
+          <select id="from-month" class="date-select"></select>
+          <span>/</span>
+          <select id="from-year" class="date-select year-select"></select>
+        </div>
+        <input type="hidden" name="from" id="from-date-hidden" value="{{ active_filters.from or '' }}">
+      </div>
+      <div class="field">
+        <label>تا تاریخ (شمسی)</label>
+        <div class="date-row">
+          <select id="to-day" class="date-select"></select>
+          <span>/</span>
+          <select id="to-month" class="date-select"></select>
+          <span>/</span>
+          <select id="to-year" class="date-select year-select"></select>
+        </div>
+        <input type="hidden" name="to" id="to-date-hidden" value="{{ active_filters.to or '' }}">
+      </div>
+      <div class="field">
+        <label>پزشک</label>
+        <select name="doctor_id">
+          <option value="">همه</option>
+          {% for d in doctors %}
+          <option value="{{ d.id }}" {% if active_filters.doctor_id == d.id %}selected{% endif %}>{{ d.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>پرستار</label>
+        <select name="nurse_id">
+          <option value="">همه</option>
+          {% for n in nurses %}
+          <option value="{{ n.id }}" {% if active_filters.nurse_id == n.id %}selected{% endif %}>{{ n.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>نوع کار</label>
+        <select name="procedure_type">
+          <option value="">همه</option>
+          {% for p in procedure_types %}
+          <option value="{{ p.procedure_type }}" {% if active_filters.procedure_type == p.procedure_type %}selected{% endif %}>{{ p.procedure_type }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label>انجام‌دهنده</label>
+        <select name="performer_type">
+          <option value="">همه</option>
+          <option value="doctor" {% if active_filters.performer_type == 'doctor' %}selected{% endif %}>پزشک</option>
+          <option value="nurse" {% if active_filters.performer_type == 'nurse' %}selected{% endif %}>پرستار</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>شیفت</label>
+        <select name="shift">
+          <option value="">همه</option>
+          <option value="morning" {% if active_filters.shift == 'morning' %}selected{% endif %}>صبح</option>
+          <option value="evening" {% if active_filters.shift == 'evening' %}selected{% endif %}>عصر</option>
+          <option value="night" {% if active_filters.shift == 'night' %}selected{% endif %}>شب</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>بازه‌های سریع</label>
+        <div class="quick-range">
+          <span class="chip" onclick="setQuickRange('today', this)">امروز</span>
+          <span class="chip" onclick="setQuickRange('r7', this)">۷ روزه</span>
+          <span class="chip" onclick="setQuickRange('r30', this)">۳۰ روزه</span>
+          <span class="chip" onclick="setQuickRange('r90', this)">۹۰ روزه</span>
+        </div>
+      </div>
+      <div class="field" style="margin-inline-start:auto;">
+        <button type="submit" class="btn-main">🔎 اعمال فیلتر</button>
+      </div>
+    </form>
+
+    <div class="summary">
+      <div class="sum-box">
+        <div class="sum-label">تعداد کارهای عملی</div>
+        <div class="sum-value">{{ total_count }}</div>
+      </div>
+      <div class="sum-box">
+        <div class="sum-label">جمع مبالغ (تومان)</div>
+        <div class="sum-value">{{ '{:,}'.format((total_amount or 0)|int) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:1.2rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem;">
+      <div style="font-size:.95rem;font-weight:800;">لیست کارهای عملی</div>
+      <div style="display:flex;gap:.5rem;align-items:center;">
+        <a href="{{ url_for('manager.export_procedures_csv', **active_filters) }}" class="btn-main" style="background:#059669;box-shadow:none;font-size:.75rem;padding:.4rem .8rem;">📥 CSV</a>
+        <button type="button" onclick="printReport()" class="btn-main" style="background:#6366f1;box-shadow:none;font-size:.75rem;padding:.4rem .8rem;">🖨 چاپ/PDF</button>
+        <span style="font-size:.75rem;color:#9ca3af;">{{ procedures|length }} رکورد</span>
+      </div>
+    </div>
+    <div style="max-height:60vh;overflow:auto;" id="printArea">
+      <table>
+        <thead>
+          <tr>
+            <th>زمان</th>
+            <th>بیمار</th>
+            <th>نوع کار</th>
+            <th>انجام‌دهنده</th>
+            <th>پزشک</th>
+            <th>پرستار</th>
+            <th>شیفت</th>
+            <th>مبلغ</th>
+            <th>یادداشت</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in procedures %}
+          <tr>
+            <td>{{ r.procedure_date | jalali_datetime }}</td>
+            <td>{{ r.patient_name }}</td>
+            <td><span class="badge badge-type">{{ r.procedure_type }}</span></td>
+            <td>{{ 'پزشک' if r.performer_type=='doctor' else ('پرستار' if r.performer_type=='nurse' else 'نامشخص') }}</td>
+            <td><span class="badge badge-doc">{{ r.doctor_name or '—' }}</span></td>
+            <td><span class="badge badge-nurse">{{ r.nurse_name or '—' }}</span></td>
+            <td><span class="badge badge-shift">{{ 'صبح' if r.shift=='morning' else ('عصر' if r.shift=='evening' else 'شب' if r.shift=='night' else '—') }}</span></td>
+            <td>{{ '{:,}'.format((r.price or 0)|int) }}</td>
+            <td class="note-cell" title="{{ r.notes }}">{{ r.notes or '—' }}</td>
+          </tr>
+        {% endfor %}
+        {% if not procedures %}
+          <tr><td colspan="9" style="text-align:center;color:#6b7280;padding:1.5rem;">هیچ کار عملی برای این فیلترها یافت نشد</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+  const JALALI_RANGES = {{ jalali_ranges | tojson | safe }};
+  function toPersianNum(num){const d=['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];return String(num).replace(/\d/g,x=>d[x]);}
+  const BASE_JALALI_YEAR = JALALI_RANGES.today.y;
+  function populateDateSelects(){
+    const y=BASE_JALALI_YEAR;
+    ['from-day','to-day'].forEach(id=>{const s=document.getElementById(id);if(!s)return;s.innerHTML='';for(let i=1;i<=31;i++){const o=document.createElement('option');o.value=i;o.textContent=toPersianNum(i);s.appendChild(o);}});
+    const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+    ['from-month','to-month'].forEach(id=>{const s=document.getElementById(id);if(!s)return;s.innerHTML='';months.forEach((n,idx)=>{const o=document.createElement('option');o.value=idx+1;o.textContent=n;s.appendChild(o);});});
+    ['from-year','to-year'].forEach(id=>{const s=document.getElementById(id);if(!s)return;s.innerHTML='';for(let yy=y;yy>=y-10;yy--){const o=document.createElement('option');o.value=yy;o.textContent=toPersianNum(yy);s.appendChild(o);}});
+    const fH=document.getElementById('from-date-hidden').value;
+    const tH=document.getElementById('to-date-hidden').value;
+    if(fH&&tH){applyHiddenToSelects(fH,'from');applyHiddenToSelects(tH,'to');}else{setQuickRange('r7');}
+  }
+  function applyHiddenToSelects(val,p){const parts=val.split('/');if(parts.length!==3)return;document.getElementById(p+'-year').value=parseInt(parts[0],10);document.getElementById(p+'-month').value=parseInt(parts[1],10);document.getElementById(p+'-day').value=parseInt(parts[2],10);}
+  function syncHiddenDates(){const yF=document.getElementById('from-year').value;const mF=String(document.getElementById('from-month').value).padStart(2,'0');const dF=String(document.getElementById('from-day').value).padStart(2,'0');const yT=document.getElementById('to-year').value;const mT=String(document.getElementById('to-month').value).padStart(2,'0');const dT=String(document.getElementById('to-day').value).padStart(2,'0');document.getElementById('from-date-hidden').value=`${yF}/${mF}/${dF}`;document.getElementById('to-date-hidden').value=`${yT}/${mT}/${dT}`;}
+  function setQuickRange(key,chip){const r=JALALI_RANGES[key];if(!r)return;const f=r.from,t=r.to;document.getElementById('from-year').value=f.y;document.getElementById('from-month').value=f.m;document.getElementById('from-day').value=f.d;document.getElementById('to-year').value=t.y;document.getElementById('to-month').value=t.m;document.getElementById('to-day').value=t.d;syncHiddenDates();if(chip){document.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));chip.classList.add('active');}}
+  window.addEventListener('DOMContentLoaded',()=>{populateDateSelects();['from-day','from-month','from-year','to-day','to-month','to-year'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',syncHiddenDates);});});
+
+  function printReport(){
+    const content = document.getElementById('printArea').innerHTML;
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <!doctype html>
+      <html lang="fa" dir="rtl">
+      <head>
+        <meta charset="utf-8">
+        <title>گزارش کارهای عملی</title>
+        <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+        <style>
+          *{box-sizing:border-box;}
+          body{font-family:'Vazirmatn',sans-serif;padding:1rem;direction:rtl;}
+          table{width:100%;border-collapse:collapse;font-size:11px;}
+          th,td{border:1px solid #333;padding:6px;text-align:right;}
+          th{background:#eee;}
+          h2{text-align:center;margin-bottom:1rem;}
+          @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+        </style>
+      </head>
+      <body>
+        <h2>گزارش کارهای عملی</h2>
+        \${content}
+        <script>window.onload=()=>{window.print();}<\/script>
+      </body>
+      </html>
+    `);
+    win.document.close();
+  }
+</script>
+</body>
+</html>
