@@ -20,13 +20,13 @@ def create_app(test_config=None):
     if getattr(sys, "frozen", False):
         # وقتی exe هستیم: فایل‌ها در پوشه موقت _MEIPASS اکسترکت می‌شوند
         base_dir = sys._MEIPASS
+        template_folder = os.path.join(base_dir, "src", "templates")
+        static_folder = os.path.join(base_dir, "src", "static")
     else:
         # وقتی از روی سورس اجرا می‌شود
         base_dir = os.path.abspath(os.path.dirname(__file__))
-
-    template_folder = os.path.join(base_dir, "templates")
-    # اگر static نداری مشکلی نیست، ولی این خط هم ضرری ندارد:
-    static_folder = os.path.join(base_dir, "static")
+        template_folder = os.path.join(base_dir, "templates")
+        static_folder = os.path.join(base_dir, "static")
 
     app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
 
@@ -197,19 +197,37 @@ def open_browser():
 
 # Expose a WSGI application callable for production servers (Gunicorn, uWSGI, etc.)
 # The server can set FLASK_ENV=production or APP_ENV=production to force production mode.
-app = create_app()
+# Note: این خط فقط برای WSGI سرورها استفاده می‌شود - برای PyInstaller نباید اینجا create_app صدا زده شود
+def get_wsgi_app():
+    """Get WSGI app for production servers like Gunicorn."""
+    return create_app()
+
+
+# برای سازگاری با WSGI سرورها
+app = None
+
+
+def _ensure_app():
+    global app
+    if app is None:
+        app = create_app()
+    return app
+
 
 if __name__ == "__main__":
-    # Only run the built-in server for local development.
-    if app.config.get('ENV') != 'production':
-        # Open browser after a short delay in development to ease local testing
-        threading.Timer(1.5, open_browser).start()
-        port = int(os.environ.get('PORT', 8080))
-        app.run(
-            debug=app.config.get('DEBUG', False),
-            host="0.0.0.0",
-            port=port,
-            use_reloader=app.config.get('DEBUG', False),
-        )
-    else:
-        print('Running in production mode; use a WSGI server (gunicorn/uWSGI) to serve the `app` callable.')
+    # Only run the built-in server for local development or PyInstaller.
+    application = create_app()
+    
+    # In PyInstaller builds, never enable reloader/debug (prevents double-run -> double tab)
+    is_frozen = bool(getattr(sys, 'frozen', False))
+
+    # Open browser after a short delay (once)
+    threading.Timer(1.5, open_browser).start()
+
+    port = int(os.environ.get('PORT', 8080))
+    application.run(
+        debug=False,
+        host="0.0.0.0",
+        port=port,
+        use_reloader=False,
+    )

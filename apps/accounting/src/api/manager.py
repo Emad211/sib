@@ -1,5 +1,5 @@
 from flask import (
-    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response
+    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response, session, current_app
 )
 from src.api.auth import login_required
 from src.adapters.sqlite.core import get_db
@@ -519,9 +519,10 @@ def settings():
     import os
     import shutil
     from pathlib import Path
+    from flask import current_app
     
     db = get_db()
-    backup_dir = Path(__file__).parent.parent.parent / 'backups'
+    backup_dir = Path(current_app.config.get('BACKUP_FOLDER'))
     backup_dir.mkdir(exist_ok=True)
     
     if request.method == 'POST':
@@ -530,7 +531,7 @@ def settings():
         if action == 'create_backup':
             # ایجاد بکاپ دستی
             try:
-                db_path = Path(__file__).parent.parent.parent / 'clinic_new.db'
+                db_path = Path(current_app.config.get('DATABASE_PATH'))
                 timestamp = iran_now().strftime('%Y%m%d_%H%M%S')
                 backup_name = f"backup_{timestamp}.db"
                 backup_path = backup_dir / backup_name
@@ -546,7 +547,7 @@ def settings():
             if backup_name:
                 try:
                     backup_path = backup_dir / backup_name
-                    db_path = Path(__file__).parent.parent.parent / 'clinic_new.db'
+                    db_path = Path(current_app.config.get('DATABASE_PATH'))
                     
                     if backup_path.exists():
                         # ابتدا از دیتابیس فعلی بکاپ می‌گیریم
@@ -631,7 +632,7 @@ def settings():
     }
     
     # اندازه دیتابیس
-    db_path = Path(__file__).parent.parent.parent / 'clinic_new.db'
+    db_path = Path(current_app.config.get('DATABASE_PATH'))
     db_size = round(db_path.stat().st_size / (1024 * 1024), 2) if db_path.exists() else 0
     
     # اطلاعات شبکه
@@ -645,6 +646,78 @@ def settings():
         db_size=db_size,
         network_info=network_info
     )
+
+
+@bp.route('/settings/reset-database', methods=['POST'])
+@login_required
+def reset_database():
+    """ریست کامل دیتابیس - حذف همه داده‌ها و ایجاد دیتابیس جدید با کاربر admin"""
+    if g.user['role'] != 'manager':
+        return jsonify({'success': False, 'error': 'دسترسی غیرمجاز'}), 403
+    
+    import os
+    import sys
+    from pathlib import Path
+    import bcrypt
+    
+    # تایید نهایی از request
+    confirm_code = request.form.get('confirm_code', '')
+    if confirm_code != 'DELETE_ALL_DATA':
+        return jsonify({'success': False, 'error': 'کد تایید نامعتبر است'}), 400
+    
+    try:
+        db_path = Path(current_app.config.get('DATABASE_PATH'))
+        
+        # پیدا کردن مسیر schema.sql در حالت‌های مختلف
+        if getattr(sys, 'frozen', False):
+            # حالت PyInstaller
+            meipass = getattr(sys, '_MEIPASS', None)
+            if meipass:
+                schema_path = Path(meipass) / 'src' / 'adapters' / 'sqlite' / 'schema.sql'
+                if not schema_path.exists():
+                    schema_path = Path(meipass) / 'schema.sql'
+            else:
+                schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
+        else:
+            # حالت سورس
+            schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
+        
+        # بستن کانکشن فعلی
+        db = get_db()
+        db.close()
+        
+        # حذف فایل دیتابیس قدیمی
+        if db_path.exists():
+            os.remove(db_path)
+        
+        # ایجاد دیتابیس جدید
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        
+        # اجرای schema
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            schema_sql = f.read()
+        conn.executescript(schema_sql)
+        
+        # ایجاد کاربر admin با رمز admin - استفاده از bcrypt مثل سیستم اصلی
+        salt = bcrypt.gensalt()
+        password_hash = bcrypt.hashpw('admin'.encode('utf-8'), salt)
+        conn.execute("""
+            INSERT INTO users (username, password_hash, role, full_name, is_active)
+            VALUES (?, ?, ?, ?, ?)
+        """, ('admin', password_hash, 'manager', 'مدیر سیستم', 1))
+        
+        conn.commit()
+        conn.close()
+        
+        # لاگ اوت کردن کاربر فعلی
+        session.clear()
+        
+        return jsonify({'success': True, 'message': 'دیتابیس با موفقیت ریست شد. لطفاً دوباره وارد شوید.'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @bp.route('/settings/download/<backup_name>')
@@ -1320,51 +1393,46 @@ def users_report():
                 SELECT COUNT(*) as cnt FROM invoices
                 WHERE opened_by = ? AND work_date BETWEEN ? AND ?
             """, (uname, start_date, end_date)).fetchone()['cnt']
-            # ویزیت‌ها (از طریق invoice opened_by)
+            # ویزیت‌ها - بر اساس reception_user (کسی که ویزیت را ثبت کرده)
             visits_count = db.execute("""
                 SELECT COUNT(*) as cnt FROM visits v
-                JOIN invoices i ON i.id = v.invoice_id
-                WHERE i.opened_by = ? AND v.work_date BETWEEN ? AND ?
+                WHERE v.reception_user = ? AND v.work_date BETWEEN ? AND ?
             """, (uname, start_date, end_date)).fetchone()['cnt']
-            # خدمات پرستاری
+            # خدمات پرستاری - بر اساس reception_user (کسی که تزریق را ثبت کرده)
             nursing_count = db.execute("""
                 SELECT COUNT(*) as cnt FROM injections inj
-                JOIN invoices i ON i.id = inj.invoice_id
-                WHERE i.opened_by = ? AND inj.work_date BETWEEN ? AND ?
+                WHERE inj.reception_user = ? AND inj.work_date BETWEEN ? AND ?
             """, (uname, start_date, end_date)).fetchone()['cnt']
-            # کارهای عملی
+            # کارهای عملی - بر اساس reception_user
             proc_count = db.execute("""
                 SELECT COUNT(*) as cnt FROM procedures pr
-                JOIN invoices i ON i.id = pr.invoice_id
-                WHERE i.opened_by = ? AND pr.work_date BETWEEN ? AND ?
+                WHERE pr.reception_user = ? AND pr.work_date BETWEEN ? AND ?
             """, (uname, start_date, end_date)).fetchone()['cnt']
-            # مصرفی‌ها - جدا محاسبه کن: عمومی (supply) و دارو (drug)
+            # مصرفی‌ها - بر اساس reception_user - جدا محاسبه کن: عمومی (supply) و دارو (drug)
             cons_supply_count = db.execute("""
                 SELECT COUNT(*) as cnt FROM consumables_ledger cl
-                JOIN invoices i ON i.id = cl.invoice_id
-                WHERE i.opened_by = ? AND cl.work_date BETWEEN ? AND ? AND cl.category = 'supply' AND (cl.patient_provided = 0 OR COALESCE(cl.is_exception,0) = 1)
+                WHERE cl.reception_user = ? AND cl.work_date BETWEEN ? AND ? AND cl.category = 'supply' AND (cl.patient_provided = 0 OR COALESCE(cl.is_exception,0) = 1)
             """, (uname, start_date, end_date)).fetchone()['cnt']
             cons_drug_count = db.execute("""
                 SELECT COUNT(*) as cnt FROM consumables_ledger cl
-                JOIN invoices i ON i.id = cl.invoice_id
-                WHERE i.opened_by = ? AND cl.work_date BETWEEN ? AND ? AND cl.category = 'drug' AND (cl.patient_provided = 0 OR COALESCE(cl.is_exception,0) = 1)
+                WHERE cl.reception_user = ? AND cl.work_date BETWEEN ? AND ? AND cl.category = 'drug' AND (cl.patient_provided = 0 OR COALESCE(cl.is_exception,0) = 1)
             """, (uname, start_date, end_date)).fetchone()['cnt']
-            # درآمد کل (فاکتورهای بسته) - بدون مصرفی
+            # درآمد کل (فاکتورهای بسته) - بر اساس reception_user - بدون مصرفی
             # Revenue = visits + injections + procedures (NOT consumables)
             visits_rev = db.execute("""
                 SELECT COALESCE(SUM(v.price), 0) as total FROM visits v
                 JOIN invoices i ON i.id = v.invoice_id
-                WHERE i.opened_by = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
+                WHERE v.reception_user = ? AND v.work_date BETWEEN ? AND ? AND i.status = 'closed'
             """, (uname, start_date, end_date)).fetchone()['total']
             injections_rev = db.execute("""
                 SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj
                 JOIN invoices i ON i.id = inj.invoice_id
-                WHERE i.opened_by = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
+                WHERE inj.reception_user = ? AND inj.work_date BETWEEN ? AND ? AND i.status = 'closed'
             """, (uname, start_date, end_date)).fetchone()['total']
             procedures_rev = db.execute("""
                 SELECT COALESCE(SUM(pr.price), 0) as total FROM procedures pr
                 JOIN invoices i ON i.id = pr.invoice_id
-                WHERE i.opened_by = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
+                WHERE pr.reception_user = ? AND pr.work_date BETWEEN ? AND ? AND i.status = 'closed'
             """, (uname, start_date, end_date)).fetchone()['total']
             revenue = visits_rev + injections_rev + procedures_rev
 
@@ -1399,15 +1467,17 @@ def users_report():
                 JOIN invoices i ON i.id = v.invoice_id AND i.status = 'closed'
                 WHERE v.doctor_id = ? AND v.work_date BETWEEN ? AND ?
             """, (doc_id, start_date, end_date)).fetchone()['total']
-            # خدمات پرستاری تحت نظر این پزشک
+            # خدمات پرستاری تحت نظر این پزشک - فقط زمانی که در همان فاکتور ویزیت هم وجود دارد
             nursing_count = db.execute("""
-                SELECT COUNT(*) as cnt FROM injections
-                WHERE doctor_id = ? AND work_date BETWEEN ? AND ?
+                SELECT COUNT(*) as cnt FROM injections inj
+                WHERE inj.doctor_id = ? AND inj.work_date BETWEEN ? AND ?
+                AND EXISTS (SELECT 1 FROM visits v WHERE v.invoice_id = inj.invoice_id AND v.doctor_id = inj.doctor_id)
             """, (doc_id, start_date, end_date)).fetchone()['cnt']
             nursing_revenue = db.execute("""
-                SELECT COALESCE(SUM(total_price), 0) as total FROM injections inj
+                SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj
                 JOIN invoices i ON i.id = inj.invoice_id AND i.status = 'closed'
                 WHERE inj.doctor_id = ? AND inj.work_date BETWEEN ? AND ?
+                AND EXISTS (SELECT 1 FROM visits v WHERE v.invoice_id = inj.invoice_id AND v.doctor_id = inj.doctor_id)
             """, (doc_id, start_date, end_date)).fetchone()['total']
             # کارهای عملی - فقط کارهایی که پزشک انجام‌دهنده بوده (performer_type='doctor')
             proc_count = db.execute("""
@@ -3459,29 +3529,30 @@ def calculate_payroll():
         # در نسخه جدید، تاریخ کاری از ساعت/شیفت مشتق نمی‌شود؛ از work_date استفاده می‌کنیم.
         
         if person_type == 'doctor':
-            # شیفت‌های پزشک از تزریقات و ویزیت‌ها
+            # شیفت‌های پزشک - فقط از ویزیت‌ها (شیفت اصلی حضور پزشک)
+            # تزریقات و کارهای عملی تحت نظر پزشک در محاسبه شیفت لحاظ نمی‌شوند
+            # چون ممکن است توسط پذیرش دیگر در شیفت دیگر ثبت شوند
             shift_query = f"""
                 SELECT shift, COUNT(*) as cnt FROM (
-                    SELECT DISTINCT work_date as work_date, shift
-                    FROM injections WHERE doctor_id = ?
-                    UNION
                     SELECT DISTINCT work_date as work_date, shift
                     FROM visits WHERE doctor_id = ?
-                    UNION
-                    SELECT DISTINCT work_date as work_date, shift
-                    FROM procedures WHERE doctor_id = ?
                 ) AS actual_shifts
             """
-            shift_params = [person_id, person_id, person_id]
+            shift_params = [person_id]
         else:
-            # شیفت‌های پرستار از تزریقات و کار عملی
+            # شیفت‌های پرستار - بر اساس شیفت ویزیت در فاکتور
+            # منطق: پرستار حقوق پایه را فقط برای شیفتی دریافت می‌کند که ویزیت در آن شیفت ثبت شده
+            # نه شیفتی که تزریق یا کار عملی ثبت شده (چون ممکن است پذیرش دیگری در شیفت دیگر ثبت کرده باشد)
             shift_query = f"""
                 SELECT shift, COUNT(*) as cnt FROM (
-                    SELECT DISTINCT work_date as work_date, shift
-                    FROM injections WHERE nurse_id = ?
-                    UNION
-                    SELECT DISTINCT work_date as work_date, shift
-                    FROM procedures WHERE nurse_id = ?
+                    SELECT DISTINCT v.work_date as work_date, v.shift
+                    FROM visits v
+                    JOIN invoices inv ON inv.id = v.invoice_id
+                    WHERE EXISTS (
+                        SELECT 1 FROM injections i WHERE i.invoice_id = inv.id AND i.nurse_id = ?
+                    ) OR EXISTS (
+                        SELECT 1 FROM procedures p WHERE p.invoice_id = inv.id AND p.nurse_id = ?
+                    )
                 ) AS actual_shifts
             """
             shift_params = [person_id, person_id]
@@ -3565,10 +3636,16 @@ def calculate_payroll():
             total_salary += visit_total
             
             # ========== تزریقات پزشک ==========
+            # فقط تزریقاتی که در همان فاکتور ویزیت پزشک هم وجود دارد
             injection_percent = person['injection_percent'] or 30
             inj_query = """SELECT SUM(i.total_price) as total FROM injections i
                            JOIN invoices inv ON i.invoice_id = inv.id
-                           WHERE inv.status = 'closed' AND i.doctor_id = ?"""
+                           WHERE inv.status = 'closed' AND i.doctor_id = ?
+                           AND EXISTS (
+                               SELECT 1 FROM visits v 
+                               WHERE v.invoice_id = i.invoice_id 
+                               AND v.doctor_id = i.doctor_id
+                           )"""
             inj_params = [person_id]
             
             if work_date_from and work_date_to:
@@ -3576,7 +3653,7 @@ def calculate_payroll():
                 inj_params.extend([work_date_from, work_date_to])
             
             if shift_filter and shift_filter != 'all':
-                inj_query += " AND shift = ?"
+                inj_query += " AND i.shift = ?"
                 inj_params.append(shift_filter)
             
             inj_result = db.execute(inj_query, inj_params).fetchone()
@@ -3599,11 +3676,11 @@ def calculate_payroll():
             proc_params = [person_id]
             
             if work_date_from and work_date_to:
-                proc_query += " AND pr.work_date BETWEEN ? AND ?"
+                proc_query += " AND p.work_date BETWEEN ? AND ?"
                 proc_params.extend([work_date_from, work_date_to])
             
             if shift_filter and shift_filter != 'all':
-                proc_query += " AND shift = ?"
+                proc_query += " AND p.shift = ?"
                 proc_params.append(shift_filter)
             
             proc_result = db.execute(proc_query, proc_params).fetchone()
@@ -3646,7 +3723,7 @@ def calculate_payroll():
                 nurse_inj_params.extend([work_date_from, work_date_to])
             
             if shift_filter and shift_filter != 'all':
-                nurse_inj_query += " AND shift = ?"
+                nurse_inj_query += " AND i.shift = ?"
                 nurse_inj_params.append(shift_filter)
             
             nurse_inj_result = db.execute(nurse_inj_query, nurse_inj_params).fetchone()
@@ -3669,11 +3746,11 @@ def calculate_payroll():
             nurse_proc_params = [person_id]
             
             if work_date_from and work_date_to:
-                nurse_proc_query += " AND pr.work_date BETWEEN ? AND ?"
+                nurse_proc_query += " AND p.work_date BETWEEN ? AND ?"
                 nurse_proc_params.extend([work_date_from, work_date_to])
             
             if shift_filter and shift_filter != 'all':
-                nurse_proc_query += " AND shift = ?"
+                nurse_proc_query += " AND p.shift = ?"
                 nurse_proc_params.append(shift_filter)
             
             nurse_proc_result = db.execute(nurse_proc_query, nurse_proc_params).fetchone()

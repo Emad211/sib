@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>گزارش بیماران - مدیریت</title>
-  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
   <style>
     *{box-sizing:border-box;}
     body{font-family:'Vazirmatn',sans-serif;background:linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);color:#e5e7eb;margin:0;padding:2rem;min-height:100vh;}
@@ -248,7 +248,7 @@
       <head>
         <meta charset="utf-8">
         <title>گزارش بیماران</title>
-        <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+        <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
         <style>
           *{box-sizing:border-box;}
           body{font-family:'Vazirmatn',sans-serif;padding:1rem;direction:rtl;}
@@ -302,7 +302,7 @@
     if(!content) return;
     const html = content.innerHTML;
     const win = window.open('', '_blank', 'width=1000,height=1200');
-    const fontHref = 'https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css';
+    const fontHref = '{{ url_for('static', filename='css/vazirmatn.css') }}';
     const styles = `
       body{font-family:'Vazirmatn',sans-serif;direction:rtl;color:#111;margin:20px;background:#fff}
       .patient-header{background:transparent;border:none;padding:0;margin-bottom:12px}

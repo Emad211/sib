@@ -307,3 +307,55 @@ CREATE TABLE IF NOT EXISTS user_active_shift (
     shift_started_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
     FOREIGN KEY (user_id) REFERENCES users (id)
 );
+
+-- Settings table (تنظیمات سیستم)
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT UNIQUE NOT NULL,
+    value TEXT,
+    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
+);
+
+-- =====================================================
+-- PERFORMANCE INDEXES (critical for fast queries)
+-- =====================================================
+
+-- Invoices: frequently filtered by status, work_date, shift
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status);
+CREATE INDEX IF NOT EXISTS idx_invoices_work_date ON invoices (work_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_patient_id ON invoices (patient_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status_opened_at ON invoices (status, opened_at DESC);
+
+-- Visits: frequently joined/filtered by invoice_id, work_date
+CREATE INDEX IF NOT EXISTS idx_visits_invoice_id ON visits (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_visits_work_date ON visits (work_date);
+CREATE INDEX IF NOT EXISTS idx_visits_patient_id ON visits (patient_id);
+
+-- Injections: frequently joined/filtered by invoice_id, work_date
+CREATE INDEX IF NOT EXISTS idx_injections_invoice_id ON injections (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_injections_work_date ON injections (work_date);
+CREATE INDEX IF NOT EXISTS idx_injections_patient_id ON injections (patient_id);
+
+-- Procedures: frequently joined/filtered by invoice_id, work_date
+CREATE INDEX IF NOT EXISTS idx_procedures_invoice_id ON procedures (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_procedures_work_date ON procedures (work_date);
+CREATE INDEX IF NOT EXISTS idx_procedures_patient_id ON procedures (patient_id);
+
+-- Consumables: frequently joined/filtered by invoice_id, work_date
+CREATE INDEX IF NOT EXISTS idx_consumables_invoice_id ON consumables_ledger (invoice_id);
+CREATE INDEX IF NOT EXISTS idx_consumables_work_date ON consumables_ledger (work_date);
+
+-- Patients: frequently searched by national_id
+CREATE INDEX IF NOT EXISTS idx_patients_national_id ON patients (national_id);
+
+-- Activity logs: frequently filtered by date, user, category
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_invoice_id ON activity_logs (invoice_id);
+
+-- Medical staff: frequently filtered by type and active status
+CREATE INDEX IF NOT EXISTS idx_medical_staff_type_active ON medical_staff (staff_type, is_active);
+
+-- Payments: frequently queried by invoice_id
+CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON invoice_item_payments (invoice_id);

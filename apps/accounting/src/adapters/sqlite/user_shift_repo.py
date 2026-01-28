@@ -13,12 +13,18 @@ from src.common.utils import iran_now
 
 from src.adapters.sqlite.core import get_db
 
+# Module-level flag to track if table has been ensured in this process
+_table_ensured = False
+
 
 class UserShiftRepository:
     """Repository for user active shift management."""
 
     def _ensure_table(self):
-        """Create table if not exists."""
+        """Create table if not exists - only runs once per process."""
+        global _table_ensured
+        if _table_ensured:
+            return
         db = get_db()
         db.execute("""
             CREATE TABLE IF NOT EXISTS user_active_shift (
@@ -30,6 +36,7 @@ class UserShiftRepository:
             )
         """)
         db.commit()
+        _table_ensured = True
 
     def get_user_active_shift(self, user_id: int) -> Optional[Dict]:
         """

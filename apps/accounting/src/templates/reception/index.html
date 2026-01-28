@@ -7,7 +7,7 @@
     <title>داشبورد پذیرش - سیستم درمانگاه</title>
 
     <!-- فونت وزیرمتن (ضخیم و خوانا) -->
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+    <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
 
     <style>
         /* ========== تم روز ========== */
@@ -1630,23 +1630,13 @@
             const modal = document.getElementById('shift-change-modal');
             const currentShiftEl = document.getElementById('modal-current-shift');
             const warningDiv = document.getElementById('modal-open-invoices-warning');
-            const listDiv = document.getElementById('modal-open-invoices-list');
             const shiftButtons = Array.from(document.querySelectorAll('.modal-shift-btn'));
             
             if (currentShiftEl) currentShiftEl.textContent = data.active_shift_fa;
 
-            // Reset invoice warning state
-            if (listDiv) listDiv.innerHTML = '';
-            
-            // Disable shift selection if there are open invoices (Policy A)
-            if (data.open_invoices_count > 0) {
-                if (warningDiv) warningDiv.style.display = 'block';
-                if (listDiv) listDiv.innerHTML = `تعداد فاکتورهای باز: ${data.open_invoices_count}`;
-                shiftButtons.forEach(btn => btn.classList.add('disabled'));
-            } else {
-                if (warningDiv) warningDiv.style.display = 'none';
-                shiftButtons.forEach(btn => btn.classList.remove('disabled'));
-            }
+            // فاکتورهای باز دیگر مانع تغییر شیفت نیستند
+            if (warningDiv) warningDiv.style.display = 'none';
+            shiftButtons.forEach(btn => btn.classList.remove('disabled'));
             
             if (modal) modal.style.display = 'flex';
         }
@@ -1666,22 +1656,7 @@
             .then(r => r.json())
             .then(data => {
                 if (data.error) {
-                    // Show open invoices if any
-                    if (data.open_invoices && data.open_invoices.length) {
-                        const warningDiv = document.getElementById('modal-open-invoices-warning');
-                        const listDiv = document.getElementById('modal-open-invoices-list');
-                        const shiftButtons = Array.from(document.querySelectorAll('.modal-shift-btn'));
-                        
-                        if (warningDiv) warningDiv.style.display = 'block';
-                        if (listDiv) {
-                            const names = data.open_invoices.map(inv => inv.patient_name).slice(0, 5);
-                            if (data.open_invoices.length > 5) names.push(`و ${data.open_invoices.length - 5} فاکتور دیگر...`);
-                            listDiv.innerHTML = names.join('<br>');
-                        }
-                        shiftButtons.forEach(btn => btn.disabled = true);
-                    } else {
-                        alert(data.message || data.error);
-                    }
+                    alert(data.message || data.error);
                     return;
                 }
                 // Success - reload page
@@ -1885,7 +1860,7 @@
             if(!contentEl) { window.print(); return; }
             const html = contentEl.innerHTML;
             const win = window.open('', '_blank', 'width=900,height=1100');
-            const fontHref = 'https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css';
+            const fontHref = '{{ url_for('static', filename='css/vazirmatn.css') }}';
             const styles = `
                 body{font-family: 'Vazirmatn',sans-serif; direction:rtl; color:#111; margin:20px}
                 .patient-header{background:transparent;border:none;padding:0;margin-bottom:12px}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>لاگ فعالیت‌ها</title>
-  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/misc/Farsi-Digits/font-face.css" rel="stylesheet" type="text/css" />
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
   <style>
     *{box-sizing:border-box;}
     body{font-family:'Vazirmatn',sans-serif;background:#0f172a;color:#e5e7eb;margin:0;padding:1.5rem;}
@@ -298,7 +298,7 @@
   {% endif %}
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/jalaali-js@1.2.6/dist/jalaali.min.js"></script>
+<script src="{{ url_for('static', filename='js/jalaali.min.js') }}"></script>
 <script>
 // تاریخ شمسی
 const jToday = { jy: {{ j_today.year }}, jm: {{ j_today.month }}, jd: {{ j_today.day }} };

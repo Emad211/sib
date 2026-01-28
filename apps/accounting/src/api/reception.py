@@ -95,6 +95,10 @@ def _ensure_user_shift_state():
         'open_invoices_count': 0
     }
 
+    # Skip for static file requests (performance optimization)
+    if request.path.startswith('/static'):
+        return
+
     # Only run for logged-in users (login_required sets g.user)
     try:
         if not hasattr(g, 'user') or not g.user:
@@ -107,14 +111,17 @@ def _ensure_user_shift_state():
 
     try:
         shift_repo = UserShiftRepository()
-        invoice_repo = InvoiceRepository()
-
+        
+        # Use single combined query instead of multiple calls
         active_shift, work_date, is_overdue, should_prompt = shift_repo.get_effective_shift_for_user(g.user['id'])
         user_shift = shift_repo.get_user_active_shift(g.user['id'])
         shift_started_at = user_shift.get('shift_started_at') if user_shift else None
         
-        open_invoices = invoice_repo.get_open_invoices()
-        open_count = len(open_invoices) if open_invoices else 0
+        # Get open invoice count with a faster COUNT query
+        from src.adapters.sqlite.core import get_db
+        db = get_db()
+        count_row = db.execute("SELECT COUNT(*) as cnt FROM invoices WHERE status = 'open'").fetchone()
+        open_count = count_row['cnt'] if count_row else 0
 
         g.user_shift_status = {
             'active_shift': active_shift,
@@ -1413,147 +1420,48 @@ def combined_ledgers():
 @bp.route('/shift_performance', methods=['GET'])
 @login_required
 def shift_performance():
-    """صفحه عملکرد شیفت با آمار کامل."""
+    """صفحه عملکرد شیفت برای پذیرش (شیفت جاری + شیفت‌های قبلی خودش)."""
     from src.adapters.sqlite.core import get_db
     from src.common.utils import get_current_shift_window, format_jalali_datetime
-    
+
     db = get_db()
-    # Use manual shift status from g
-    work_date = g.user_shift_status.get('work_date')
-    active_shift = g.user_shift_status.get('active_shift')
-    
-    # Helper for display range
-    _, start_dt, end_dt = get_current_shift_window()
-    
-    # شیفت به فارسی
+    username = g.user['username']
+
+    current_work_date = g.user_shift_status.get('work_date')
+    current_shift = g.user_shift_status.get('active_shift')
+
+    selected_work_date = request.args.get('work_date', current_work_date)
+    selected_shift = request.args.get('shift', current_shift)
+
     shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
-    shift_fa = shift_names.get(active_shift, active_shift)
-    
-    # --- آمار ویزیت‌ها ---
-    visits_stats = db.execute("""
-        SELECT COUNT(*) as count, COALESCE(SUM(price), 0) as total
-        FROM visits WHERE work_date = ? AND shift = ?
-    """, (work_date, active_shift)).fetchone()
-    
-    # --- آمار خدمات پرستاری (تزریقات) ---
-    injections_stats = db.execute("""
-        SELECT COUNT(*) as count, COALESCE(SUM(total_price), 0) as total
-        FROM injections WHERE work_date = ? AND shift = ?
-    """, (work_date, active_shift)).fetchone()
-    
-    # --- آمار کارهای عملی ---
-    procedures_stats = db.execute("""
-        SELECT COUNT(*) as count, COALESCE(SUM(price), 0) as total
-        FROM procedures WHERE work_date = ? AND shift = ?
-    """, (work_date, active_shift)).fetchone()
-    
-    # --- آمار مصرفی‌ها (از consumables_ledger) ---
-    # Only count consumables that were provided by the center and are not marked as exceptions
-    consumables_stats = db.execute("""
-        SELECT COUNT(*) as count, COALESCE(SUM(total_cost), 0) as total
-        FROM consumables_ledger
-        WHERE work_date = ? AND shift = ? AND (COALESCE(patient_provided,0) = 0 AND COALESCE(is_exception,0) = 0)
-    """, (work_date, active_shift)).fetchone()
-    
-    # --- آمار فاکتورها ---
-    invoices_stats = db.execute("""
-        SELECT COUNT(*) as invoice_count
-        FROM invoices
-        WHERE work_date = ? AND shift = ?
-    """, (work_date, active_shift)).fetchone()
-    
-    # --- محاسبه تسویه شده ---
-    # منطق: فاکتورهای بسته شده + آیتم‌های تیک خورده در فاکتورهای باز
-    
-    # ویزیت‌های تسویه شده: فاکتور بسته یا تیک خورده در فاکتور باز
-    settled_visits = db.execute("""
-        SELECT COALESCE(SUM(v.price), 0) as total
-        FROM visits v
-        JOIN invoices i ON v.invoice_id = i.id
-        WHERE v.work_date = ? AND v.shift = ?
-        AND (
-            i.status = 'closed'
-            OR EXISTS (
-                SELECT 1 FROM invoice_item_payments iip 
-                WHERE iip.item_id = v.id AND iip.item_type = 'visit' AND iip.is_paid = 1
-            )
-        )
-    """, (work_date, active_shift)).fetchone()['total']
-    
-    # تزریقات تسویه شده
-    settled_injections = db.execute("""
-        SELECT COALESCE(SUM(inj.total_price), 0) as total
-        FROM injections inj
-        JOIN invoices i ON inj.invoice_id = i.id
-        WHERE inj.work_date = ? AND inj.shift = ?
-        AND (
-            i.status = 'closed'
-            OR EXISTS (
-                SELECT 1 FROM invoice_item_payments iip 
-                WHERE iip.item_id = inj.id AND iip.item_type = 'injection' AND iip.is_paid = 1
-            )
-        )
-    """, (work_date, active_shift)).fetchone()['total']
-    
-    # کارهای عملی تسویه شده
-    settled_procedures = db.execute("""
-        SELECT COALESCE(SUM(p.price), 0) as total
-        FROM procedures p
-        JOIN invoices i ON p.invoice_id = i.id
-        WHERE p.work_date = ? AND p.shift = ?
-        AND (
-            i.status = 'closed'
-            OR EXISTS (
-                SELECT 1 FROM invoice_item_payments iip 
-                WHERE iip.item_id = p.id AND iip.item_type = 'procedure' AND iip.is_paid = 1
-            )
-        )
-    """, (work_date, active_shift)).fetchone()['total']
-    
-    # مصرفی‌های تسویه شده
-    # Sum only consumables provided by center and not exceptions when computing settled consumables
-    settled_consumables = db.execute("""
-        SELECT COALESCE(SUM(c.total_cost), 0) as total
-        FROM consumables_ledger c
-        JOIN invoices i ON c.invoice_id = i.id
-        WHERE c.work_date = ? AND c.shift = ? AND (COALESCE(c.patient_provided,0) = 0 AND COALESCE(c.is_exception,0) = 0)
-        AND (
-            i.status = 'closed'
-            OR EXISTS (
-                SELECT 1 FROM invoice_item_payments iip 
-                WHERE iip.item_id = c.id AND iip.item_type = 'consumable' AND iip.is_paid = 1
-            )
-        )
-    """, (work_date, active_shift)).fetchone()['total']
-    
-    settled_amount = settled_visits + settled_injections + settled_procedures + settled_consumables
-    total_revenue = visits_stats['total'] + injections_stats['total'] + procedures_stats['total'] + consumables_stats['total']
-    
-    # --- تعداد بیماران یونیک ---
-    unique_patients = db.execute("""
-        SELECT COUNT(DISTINCT patient_id) as count
-        FROM invoices
-        WHERE work_date = ? AND shift = ?
-    """, (work_date, active_shift)).fetchone()['count']
-    
+
+    shifts_list = _get_user_shifts_list(db, username, current_work_date, current_shift)
+    allowed = {(s['work_date'], s['shift']) for s in shifts_list}
+    if selected_work_date and selected_shift and (selected_work_date, selected_shift) not in allowed:
+        selected_work_date = current_work_date
+        selected_shift = current_shift
+
+    report = _generate_shift_report(db, selected_work_date, selected_shift, username)
+
+    start_time = '—'
+    end_time = '—'
+    is_current = (selected_work_date == current_work_date and selected_shift == current_shift)
+    if is_current:
+        _, start_dt, end_dt = get_current_shift_window()
+        start_time = format_jalali_datetime(start_dt)
+        end_time = format_jalali_datetime(end_dt)
+
     return render_template('reception/shift_performance.html',
-        shift=active_shift,
-        shift_fa=shift_fa,
-        start_time=format_jalali_datetime(start_dt),
-        end_time=format_jalali_datetime(end_dt),
-        visits_count=visits_stats['count'],
-        visits_total=visits_stats['total'],
-        injections_count=injections_stats['count'],
-        injections_total=injections_stats['total'],
-        procedures_count=procedures_stats['count'],
-        procedures_total=procedures_stats['total'],
-        consumables_count=consumables_stats['count'],
-        consumables_total=consumables_stats['total'],
-        invoice_count=invoices_stats['invoice_count'],
-        total_revenue=total_revenue,
-        settled_amount=settled_amount,
-        pending_amount=total_revenue - settled_amount,
-        unique_patients=unique_patients
+        shifts_list=shifts_list,
+        selected_work_date=selected_work_date,
+        selected_shift=selected_shift,
+        shift=selected_shift,
+        shift_fa=shift_names.get(selected_shift, selected_shift),
+        jalali_date=report.get('jalali_date', '—'),
+        start_time=start_time,
+        end_time=end_time,
+        username=username,
+        report=report,
     )
 
 
@@ -1569,64 +1477,13 @@ def my_shifts_report():
     db = get_db()
     username = g.user['username']
     
-    # Get list of all shifts for this user (from invoices opened_by)
-    user_shifts = db.execute("""
-        SELECT DISTINCT work_date, shift, opened_by
-        FROM invoices 
-        WHERE opened_by = ? AND work_date IS NOT NULL AND shift IS NOT NULL
-        ORDER BY work_date DESC, 
-            CASE shift WHEN 'night' THEN 1 WHEN 'evening' THEN 2 WHEN 'morning' THEN 3 END
-    """, (username,)).fetchall()
-    
     # Current active shift
     work_date = g.user_shift_status.get('work_date')
     active_shift = g.user_shift_status.get('active_shift')
-    
+
     shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
-    
-    # Build shifts list with Jalali dates
-    shifts_list = []
-    seen = set()
-    
-    # Add current shift first (even if no invoices yet)
-    if work_date and active_shift:
-        key = (work_date, active_shift)
-        seen.add(key)
-        try:
-            parts = work_date.split('-')
-            g_tuple = (int(parts[0]), int(parts[1]), int(parts[2]))
-            j_tuple = Gregorian(*g_tuple).persian_tuple()
-            jalali_date = f"{j_tuple[0]}/{j_tuple[1]:02d}/{j_tuple[2]:02d}"
-        except:
-            jalali_date = work_date
-        shifts_list.append({
-            'work_date': work_date,
-            'shift': active_shift,
-            'shift_fa': shift_names.get(active_shift, active_shift),
-            'jalali_date': jalali_date,
-            'is_current': True
-        })
-    
-    # Add past shifts
-    for s in user_shifts:
-        key = (s['work_date'], s['shift'])
-        if key in seen:
-            continue
-        seen.add(key)
-        try:
-            parts = s['work_date'].split('-')
-            g_tuple = (int(parts[0]), int(parts[1]), int(parts[2]))
-            j_tuple = Gregorian(*g_tuple).persian_tuple()
-            jalali_date = f"{j_tuple[0]}/{j_tuple[1]:02d}/{j_tuple[2]:02d}"
-        except:
-            jalali_date = s['work_date']
-        shifts_list.append({
-            'work_date': s['work_date'],
-            'shift': s['shift'],
-            'shift_fa': shift_names.get(s['shift'], s['shift']),
-            'jalali_date': jalali_date,
-            'is_current': False
-        })
+
+    shifts_list = _get_user_shifts_list(db, username, work_date, active_shift)
     
     # Get selected shift (from query or current)
     selected_work_date = request.args.get('work_date', work_date)
@@ -1655,47 +1512,122 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
     visits_by_insurance = db.execute("""
         SELECT v.insurance_type, COUNT(*) as count, COALESCE(SUM(v.price), 0) as total
         FROM visits v
-        WHERE v.work_date = ? AND v.shift = ?
+        WHERE v.work_date = ? AND v.shift = ? AND v.reception_user = ?
         GROUP BY v.insurance_type
-    """, (work_date, shift)).fetchall()
+    """, (work_date, shift, username)).fetchall()
     
     visits_total = sum(r['total'] for r in visits_by_insurance)
     visits_count = sum(r['count'] for r in visits_by_insurance)
     
-    # ویزیت‌های معوق (بیمار پرداخت نکرده - فاکتور باز و تیک نخورده)
-    visits_pending = db.execute("""
-        SELECT COALESCE(SUM(v.price), 0) as total, COUNT(*) as count
+    # ===================== معوقات بیمه (طبق منطق پنل مدیر) =====================
+    # ویزیت:
+    # - تعرفه پایه (آزاد) = visit_tariffs.is_base_tariff یا بیمه 'آزاد'
+    # - سهم بیمار برای بیمه پایه = visit_tariffs.tariff_price (non-supplementary)
+    # - معوقه بیمه پایه = تعرفه پایه - سهم بیمار
+    # - اگر بیمه تکمیلی وجود داشته باشد: معوقه تکمیلی = سهم بیمارِ بیمه پایه - سهم نهایی بیمار با تکمیلی
+
+    base_tariff = db.execute("SELECT tariff_price FROM visit_tariffs WHERE is_base_tariff = 1 AND is_active = 1 LIMIT 1").fetchone()
+    if not base_tariff:
+        base_tariff = db.execute("SELECT tariff_price FROM visit_tariffs WHERE insurance_type = 'آزاد' AND is_active = 1 LIMIT 1").fetchone()
+    base_visit_price = float(base_tariff['tariff_price']) if base_tariff and base_tariff['tariff_price'] is not None else 0.0
+
+    insurance_tariffs_rows = db.execute("""
+        SELECT insurance_type, tariff_price
+        FROM visit_tariffs
+        WHERE insurance_type != 'آزاد'
+          AND COALESCE(is_supplementary, 0) = 0
+          AND COALESCE(is_base_tariff, 0) = 0
+          AND is_active = 1
+    """).fetchall()
+    insurance_tariffs = {r['insurance_type']: float(r['tariff_price'] or 0) for r in insurance_tariffs_rows}
+
+    supplementary_rows = db.execute("""
+        SELECT insurance_type, tariff_price
+        FROM visit_tariffs
+        WHERE COALESCE(is_supplementary, 0) = 1
+          AND is_active = 1
+    """).fetchall()
+    supplementary_tariffs = {r['insurance_type']: float(r['tariff_price'] or 0) for r in supplementary_rows}
+
+    visits_for_arrears = db.execute("""
+        SELECT v.id, v.insurance_type, v.supplementary_insurance
         FROM visits v
-        JOIN invoices i ON v.invoice_id = i.id
-        WHERE v.work_date = ? AND v.shift = ?
-        AND i.status = 'open'
-        AND NOT EXISTS (
-            SELECT 1 FROM invoice_item_payments iip 
-            WHERE iip.item_id = v.id AND iip.item_type = 'visit' AND iip.is_paid = 1
-        )
-    """, (work_date, shift)).fetchone()
+        WHERE v.work_date = ? AND v.shift = ? AND v.reception_user = ?
+          AND v.insurance_type IS NOT NULL AND v.insurance_type != 'آزاد'
+    """, (work_date, shift, username)).fetchall()
+
+    visits_base_arrears_total = 0.0
+    visits_supplementary_arrears_total = 0.0
+    visits_arrears_visit_ids = set()
+
+    for v in visits_for_arrears:
+        ins_type = v['insurance_type']
+        supp_ins = v['supplementary_insurance']
+
+        patient_share = float(insurance_tariffs.get(ins_type, 0.0) or 0.0)
+        base_debt = base_visit_price - patient_share
+        if base_debt > 0:
+            visits_base_arrears_total += base_debt
+            visits_arrears_visit_ids.add(v['id'])
+
+        if supp_ins and supp_ins in supplementary_tariffs and patient_share > 0:
+            final_patient_share = float(supplementary_tariffs.get(supp_ins, 0.0) or 0.0)
+            supp_debt = patient_share - final_patient_share
+            if supp_debt > 0:
+                visits_supplementary_arrears_total += supp_debt
+                visits_arrears_visit_ids.add(v['id'])
+
+    visits_pending_total = visits_base_arrears_total + visits_supplementary_arrears_total
+    visits_pending_count = len(visits_arrears_visit_ids)
     
     # ============ خدمات پرستاری ============
     nursing_stats = db.execute("""
         SELECT COUNT(*) as count, COALESCE(SUM(total_price), 0) as total
         FROM injections
-        WHERE work_date = ? AND shift = ?
-    """, (work_date, shift)).fetchone()
+        WHERE work_date = ? AND shift = ? AND reception_user = ?
+    """, (work_date, shift, username)).fetchone()
     
-    # خدمات پرستاری معوق
-    nursing_pending = db.execute("""
-        SELECT COALESCE(SUM(inj.total_price), 0) as total, COUNT(*) as count
+    # خدمات پرستاری - معوقه بیمه (طبق منطق پنل مدیر: nursing_covers و استثناها)
+    nursing_tariffs_rows = db.execute("""
+        SELECT insurance_type, nursing_covers
+        FROM visit_tariffs
+        WHERE insurance_type != 'آزاد'
+          AND COALESCE(is_supplementary, 0) = 0
+          AND COALESCE(is_base_tariff, 0) = 0
+          AND is_active = 1
+    """).fetchall()
+    nursing_covers_map = {r['insurance_type']: bool(r['nursing_covers']) for r in nursing_tariffs_rows}
+
+    nursing_arrears_rows = db.execute("""
+        SELECT inj.id, inj.total_price, inj.service_id, inv.insurance_type
         FROM injections inj
-        JOIN invoices i ON inj.invoice_id = i.id
-        WHERE inj.work_date = ? AND inj.shift = ?
-        AND i.status = 'open'
-        AND NOT EXISTS (
-            SELECT 1 FROM invoice_item_payments iip 
-            WHERE iip.item_id = inj.id AND iip.item_type = 'injection' AND iip.is_paid = 1
-        )
-    """, (work_date, shift)).fetchone()
+        JOIN invoices inv ON inv.id = inj.invoice_id
+        WHERE inj.work_date = ? AND inj.shift = ? AND inj.reception_user = ?
+          AND inv.insurance_type IS NOT NULL AND inv.insurance_type != 'آزاد'
+    """, (work_date, shift, username)).fetchall()
+
+    nursing_pending_total = 0.0
+    nursing_pending_count = 0
+    for r in nursing_arrears_rows:
+        ins_type = r['insurance_type']
+        if not nursing_covers_map.get(ins_type, False):
+            continue
+        svc_id = r['service_id']
+        if svc_id is not None:
+            excluded = db.execute(
+                "SELECT 1 FROM insurance_nursing_exclusions WHERE insurance_type = ? AND nursing_service_id = ? LIMIT 1",
+                (ins_type, int(svc_id)),
+            ).fetchone()
+            if excluded:
+                # این خدمت پرستاری برای این بیمه استثنا شده (پوشش ندارد)
+                continue
+
+        nursing_pending_total += float(r['total_price'] or 0.0)
+        nursing_pending_count += 1
     
     # تزریقات به تفکیک پزشک
+    # منطق جدید: تزریقات پزشک فقط زمانی محاسبه می‌شود که در همان فاکتور هم ویزیت وجود داشته باشد
+    # یعنی پزشک هم ویزیت کرده و هم تزریقات ثبت شده
     injections_by_doctor = db.execute("""
         SELECT 
             COALESCE(ms.full_name, 'نامشخص') as doctor_name,
@@ -1703,16 +1635,22 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
             COALESCE(SUM(inj.total_price), 0) as total
         FROM injections inj
         LEFT JOIN medical_staff ms ON inj.doctor_id = ms.id
-        WHERE inj.work_date = ? AND inj.shift = ?
+        WHERE inj.work_date = ? AND inj.shift = ? AND inj.reception_user = ?
+          AND inj.doctor_id IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM visits v 
+              WHERE v.invoice_id = inj.invoice_id 
+              AND v.doctor_id = inj.doctor_id
+          )
         GROUP BY inj.doctor_id
-    """, (work_date, shift)).fetchall()
+    """, (work_date, shift, username)).fetchall()
     
     # ============ کار عملی ============
     procedures_stats = db.execute("""
         SELECT COUNT(*) as count, COALESCE(SUM(price), 0) as total
         FROM procedures
-        WHERE work_date = ? AND shift = ?
-    """, (work_date, shift)).fetchone()
+        WHERE work_date = ? AND shift = ? AND reception_user = ?
+    """, (work_date, shift, username)).fetchone()
     
     # کار عملی معوق
     procedures_pending = db.execute("""
@@ -1720,12 +1658,13 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
         FROM procedures p
         JOIN invoices i ON p.invoice_id = i.id
         WHERE p.work_date = ? AND p.shift = ?
+        AND p.reception_user = ?
         AND i.status = 'open'
         AND NOT EXISTS (
             SELECT 1 FROM invoice_item_payments iip 
             WHERE iip.item_id = p.id AND iip.item_type = 'procedure' AND iip.is_paid = 1
         )
-    """, (work_date, shift)).fetchone()
+    """, (work_date, shift, username)).fetchone()
     
     # ============ مصرفی‌ها به تفکیک آیتم ============
     consumables_items = db.execute("""
@@ -1733,11 +1672,12 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                COALESCE(SUM(total_cost), 0) as total_cost
         FROM consumables_ledger
         WHERE work_date = ? AND shift = ? 
+        AND reception_user = ?
         AND category = 'supply' 
         AND (COALESCE(patient_provided, 0) = 0 AND COALESCE(is_exception, 0) = 0)
         GROUP BY item_name
         ORDER BY total_qty DESC
-    """, (work_date, shift)).fetchall()
+    """, (work_date, shift, username)).fetchall()
     
     consumables_total = sum(r['total_cost'] for r in consumables_items)
     
@@ -1747,11 +1687,12 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                COALESCE(SUM(total_cost), 0) as total_cost
         FROM consumables_ledger
         WHERE work_date = ? AND shift = ? 
+        AND reception_user = ?
         AND category = 'drug'
         AND (COALESCE(patient_provided, 0) = 0 AND COALESCE(is_exception, 0) = 0)
         GROUP BY item_name
         ORDER BY total_qty DESC
-    """, (work_date, shift)).fetchall()
+    """, (work_date, shift, username)).fetchall()
     
     drugs_total = sum(r['total_cost'] for r in drugs_items)
     
@@ -1759,8 +1700,8 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
     invoices_stats = db.execute("""
         SELECT COUNT(*) as invoice_count, COUNT(DISTINCT patient_id) as patient_count
         FROM invoices
-        WHERE work_date = ? AND shift = ?
-    """, (work_date, shift)).fetchone()
+        WHERE work_date = ? AND shift = ? AND opened_by = ?
+    """, (work_date, shift, username)).fetchone()
     
     # ============ خلاصه مالی ============
     # تسویه شده
@@ -1769,6 +1710,7 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
         FROM visits v
         JOIN invoices i ON v.invoice_id = i.id
         WHERE v.work_date = ? AND v.shift = ?
+        AND v.reception_user = ?
         AND (
             i.status = 'closed'
             OR EXISTS (
@@ -1776,13 +1718,14 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                 WHERE iip.item_id = v.id AND iip.item_type = 'visit' AND iip.is_paid = 1
             )
         )
-    """, (work_date, shift)).fetchone()['total']
+    """, (work_date, shift, username)).fetchone()['total']
     
     settled_injections = db.execute("""
         SELECT COALESCE(SUM(inj.total_price), 0) as total
         FROM injections inj
         JOIN invoices i ON inj.invoice_id = i.id
         WHERE inj.work_date = ? AND inj.shift = ?
+        AND inj.reception_user = ?
         AND (
             i.status = 'closed'
             OR EXISTS (
@@ -1790,13 +1733,14 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                 WHERE iip.item_id = inj.id AND iip.item_type = 'injection' AND iip.is_paid = 1
             )
         )
-    """, (work_date, shift)).fetchone()['total']
+    """, (work_date, shift, username)).fetchone()['total']
     
     settled_procedures = db.execute("""
         SELECT COALESCE(SUM(p.price), 0) as total
         FROM procedures p
         JOIN invoices i ON p.invoice_id = i.id
         WHERE p.work_date = ? AND p.shift = ?
+        AND p.reception_user = ?
         AND (
             i.status = 'closed'
             OR EXISTS (
@@ -1804,13 +1748,14 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                 WHERE iip.item_id = p.id AND iip.item_type = 'procedure' AND iip.is_paid = 1
             )
         )
-    """, (work_date, shift)).fetchone()['total']
+    """, (work_date, shift, username)).fetchone()['total']
     
     settled_consumables = db.execute("""
         SELECT COALESCE(SUM(c.total_cost), 0) as total
         FROM consumables_ledger c
         JOIN invoices i ON c.invoice_id = i.id
         WHERE c.work_date = ? AND c.shift = ? 
+        AND c.reception_user = ?
         AND (COALESCE(c.patient_provided, 0) = 0 AND COALESCE(c.is_exception, 0) = 0)
         AND (
             i.status = 'closed'
@@ -1819,7 +1764,7 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
                 WHERE iip.item_id = c.id AND iip.item_type = 'consumable' AND iip.is_paid = 1
             )
         )
-    """, (work_date, shift)).fetchone()['total']
+    """, (work_date, shift, username)).fetchone()['total']
     
     total_revenue = visits_total + nursing_stats['total'] + procedures_stats['total'] + consumables_total + drugs_total
     total_settled = settled_visits + settled_injections + settled_procedures + settled_consumables
@@ -1834,6 +1779,8 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
     except:
         jalali_date = work_date
     
+    injections_doctor_total = sum(r['total'] for r in injections_by_doctor)
+
     return {
         'jalali_date': jalali_date,
         'work_date': work_date,
@@ -1843,17 +1790,22 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
         'visits_by_insurance': [dict(r) for r in visits_by_insurance],
         'visits_total': visits_total,
         'visits_count': visits_count,
-        'visits_pending_total': visits_pending['total'],
-        'visits_pending_count': visits_pending['count'],
+        # معوقات بیمه (ویزیت)
+        'visits_pending_total': visits_pending_total,
+        'visits_pending_count': visits_pending_count,
+        'visits_base_arrears_total': visits_base_arrears_total,
+        'visits_supplementary_arrears_total': visits_supplementary_arrears_total,
         
         # خدمات پرستاری
         'nursing_total': nursing_stats['total'],
         'nursing_count': nursing_stats['count'],
-        'nursing_pending_total': nursing_pending['total'],
-        'nursing_pending_count': nursing_pending['count'],
+        # معوقات بیمه (پرستاری)
+        'nursing_pending_total': nursing_pending_total,
+        'nursing_pending_count': nursing_pending_count,
         
         # تزریقات پزشک
         'injections_by_doctor': [dict(r) for r in injections_by_doctor],
+        'injections_doctor_total': injections_doctor_total,
         
         # کار عملی
         'procedures_total': procedures_stats['total'],
@@ -1878,6 +1830,63 @@ def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dic
         'total_settled': total_settled,
         'total_pending': total_pending
     }
+
+
+def _get_user_shifts_list(db, username: str, current_work_date: str | None, current_shift: str | None):
+    """Build a list of shifts for a reception user (current + historical)."""
+    from src.common.jalali import Gregorian
+
+    shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
+
+    # Historical shifts come from invoices opened by this user
+    user_shifts = db.execute("""
+        SELECT DISTINCT work_date, shift
+        FROM invoices
+        WHERE opened_by = ? AND work_date IS NOT NULL AND shift IS NOT NULL
+        ORDER BY work_date DESC,
+            CASE shift WHEN 'night' THEN 1 WHEN 'evening' THEN 2 WHEN 'morning' THEN 3 END
+    """, (username,)).fetchall()
+
+    shifts_list = []
+    seen = set()
+
+    # Add current shift first (even if no invoices yet)
+    if current_work_date and current_shift:
+        key = (current_work_date, current_shift)
+        seen.add(key)
+        shifts_list.append({
+            'work_date': current_work_date,
+            'shift': current_shift,
+            'shift_fa': shift_names.get(current_shift, current_shift),
+            'jalali_date': _to_jalali_date_str(current_work_date, Gregorian),
+            'is_current': True,
+        })
+
+    # Add past shifts
+    for s in user_shifts:
+        key = (s['work_date'], s['shift'])
+        if key in seen:
+            continue
+        seen.add(key)
+        shifts_list.append({
+            'work_date': s['work_date'],
+            'shift': s['shift'],
+            'shift_fa': shift_names.get(s['shift'], s['shift']),
+            'jalali_date': _to_jalali_date_str(s['work_date'], Gregorian),
+            'is_current': False,
+        })
+
+    return shifts_list
+
+
+def _to_jalali_date_str(work_date: str, GregorianType) -> str:
+    try:
+        parts = work_date.split('-')
+        g_tuple = (int(parts[0]), int(parts[1]), int(parts[2]))
+        j_tuple = GregorianType(*g_tuple).persian_tuple()
+        return f"{j_tuple[0]}/{j_tuple[1]:02d}/{j_tuple[2]:02d}"
+    except Exception:
+        return work_date
 
 
 @bp.route('/api/invoice/<int:invoice_id>/details', methods=['GET'])
@@ -1967,27 +1976,12 @@ def get_shift_status():
 def change_shift():
     """
     Change user's active shift (manual).
-    Policy A: User cannot change shift if there are open invoices.
+    فاکتورهای باز مانعی برای تغییر شیفت نیستند.
     """
     from src.adapters.sqlite.user_shift_repo import UserShiftRepository
-    from src.adapters.sqlite.invoices_repo import InvoiceRepository
     
     user_id = g.user['id']
     shift_repo = UserShiftRepository()
-    invoice_repo = InvoiceRepository()
-    
-    # Check for open invoices - Policy A enforcement
-    open_invoices = invoice_repo.get_open_invoices()
-    if open_invoices and len(open_invoices) > 0:
-        invoice_names = [f"{inv['patient_name']}" for inv in open_invoices[:5]]
-        if len(open_invoices) > 5:
-            invoice_names.append(f"و {len(open_invoices) - 5} فاکتور دیگر")
-        return jsonify({
-            'error': 'فاکتورهای باز وجود دارد',
-            'message': 'قبل از تغییر شیفت باید همه فاکتورهای باز را ببندید.',
-            'open_invoices': [dict(inv) for inv in open_invoices],
-            'open_count': len(open_invoices)
-        }), 400
     
     payload = request.get_json(silent=True) or {}
     requested_shift = (payload.get('shift') or '').strip()
