@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash BLOB NOT NULL,
     role TEXT NOT NULL DEFAULT 'reception', -- 'admin', 'manager', 'reception'
     full_name TEXT,
+    staff_id INTEGER, -- optional link to medical_staff.id (for doctor accounts)
     is_active INTEGER NOT NULL DEFAULT 1,
     failed_attempts INTEGER DEFAULT 0,
     locked_until TEXT,
@@ -19,6 +20,17 @@ CREATE TABLE IF NOT EXISTS medical_staff (
     staff_type TEXT NOT NULL, -- 'doctor', 'nurse'
     is_active INTEGER DEFAULT 1,
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
+);
+
+-- Doctor Room State (which patient/invoice is currently in doctor's room)
+CREATE TABLE IF NOT EXISTS doctor_room_state (
+    doctor_staff_id INTEGER PRIMARY KEY, -- unique state per doctor
+    active_invoice_id INTEGER,
+    set_by_user_id INTEGER,
+    updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    FOREIGN KEY (doctor_staff_id) REFERENCES medical_staff (id),
+    FOREIGN KEY (active_invoice_id) REFERENCES invoices (id),
+    FOREIGN KEY (set_by_user_id) REFERENCES users (id)
 );
 
 -- Patients table

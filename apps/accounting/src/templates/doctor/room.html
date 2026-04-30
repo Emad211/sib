@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>اتاق پزشک</title>
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+  <link href="{{ url_for('static', filename='css/doctor_room.css') }}" rel="stylesheet" type="text/css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div>
+        <h1>اتاق پزشک</h1>
+        <div class="subtitle">انتخاب بیمار از بین فاکتورهای باز با نام یا کد ملی</div>
+      </div>
+      <div class="header-actions">
+        <a class="btn" href="{{ url_for('doctor.index') }}">بازگشت</a>
+        <a class="btn btn-secondary" href="{{ url_for('auth.logout') }}">خروج</a>
+      </div>
+    </header>
+
+    {% if error %}
+      <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <section class="card">
+      <div class="card-title">جستجو در فاکتورهای باز</div>
+      <div class="search-row">
+        <input id="searchInput" class="input" type="text" placeholder="نام بیمار یا کد ملی..." autocomplete="off" />
+        <button id="searchBtn" class="btn btn-primary" type="button">جستجو</button>
+      </div>
+      <div id="searchMsg" class="muted"></div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>فاکتور</th>
+              <th>بیمار</th>
+              <th>کد ملی</th>
+              <th>تاریخ</th>
+              <th>پذیرش</th>
+              <th>عملیات</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="6" class="muted center">برای شروع، جستجو کنید</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-title">بیمار داخل اتاق</div>
+      <div id="currentBox" class="muted">در حال بارگذاری...</div>
+    </section>
+  </div>
+
+  <script>
+    window.DOCTOR_ROOM = {
+      endpoints: {
+        current: "{{ url_for('doctor_room.api_room_current') }}",
+        openInvoices: "{{ url_for('doctor_room.api_open_invoices') }}",
+        setRoom: "{{ url_for('doctor_room.api_room_set') }}",
+        clearRoom: "{{ url_for('doctor_room.api_room_clear') }}"
+      }
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/doctor_room.js') }}"></script>
+</body>
+</html>

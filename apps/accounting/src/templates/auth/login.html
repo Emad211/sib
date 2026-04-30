@@ -427,6 +427,10 @@
                     <span class="tab-icon">🖥️</span>
                     <span>پذیرش</span>
                 </div>
+                <div class="tab" id="tab-doctor">
+                    <span class="tab-icon">👨‍⚕️</span>
+                    <span>پزشک</span>
+                </div>
                 <div class="tab" id="tab-manager">
                     <span class="tab-icon">👨‍💼</span>
                     <span>مدیر</span>
@@ -456,6 +460,33 @@
                 </div>
                 <button type="submit" class="submit-btn">
                     <span>ورود به پذیرش</span>
+                    <span>←</span>
+                </button>
+            </form>
+
+            <!-- فرم پزشک -->
+            <form method="post" id="form-doctor" class="login-form hidden">
+                <input type="hidden" name="role" value="doctor">
+                <div class="form-group">
+                    <label for="doctor_username">نام کاربری پزشک</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👨‍⚕️</span>
+                        <select name="doctor_username" id="doctor_username" required>
+                            {% for u in doctor_users %}
+                                <option value="{{ u }}">{{ u }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="doctor_password">رمز عبور</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" name="password" id="doctor_password" placeholder="رمز عبور خود را وارد کنید" required>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn">
+                    <span>ورود به داشبورد پزشک</span>
                     <span>←</span>
                 </button>
             </form>
@@ -492,22 +523,37 @@
 
     <script>
         const tabReception = document.getElementById('tab-reception');
+        const tabDoctor = document.getElementById('tab-doctor');
         const tabManager = document.getElementById('tab-manager');
         const formReception = document.getElementById('form-reception');
+        const formDoctor = document.getElementById('form-doctor');
         const formManager = document.getElementById('form-manager');
 
         tabReception.addEventListener('click', () => {
             tabReception.classList.add('active');
+            tabDoctor.classList.remove('active');
             tabManager.classList.remove('active');
             formReception.classList.remove('hidden');
+            formDoctor.classList.add('hidden');
+            formManager.classList.add('hidden');
+        });
+
+        tabDoctor.addEventListener('click', () => {
+            tabDoctor.classList.add('active');
+            tabReception.classList.remove('active');
+            tabManager.classList.remove('active');
+            formDoctor.classList.remove('hidden');
+            formReception.classList.add('hidden');
             formManager.classList.add('hidden');
         });
 
         tabManager.addEventListener('click', () => {
             tabManager.classList.add('active');
             tabReception.classList.remove('active');
+            tabDoctor.classList.remove('active');
             formManager.classList.remove('hidden');
             formReception.classList.add('hidden');
+            formDoctor.classList.add('hidden');
         });
         
         // انیمیشن ورود

@@ -11,5 +11,7 @@ def index():
     """Redirect to appropriate dashboard based on user role."""
     if g.user and g.user['role'] == 'manager':
         return redirect(url_for('manager.index'))
+    elif g.user and g.user['role'] == 'doctor':
+        return redirect(url_for('doctor.index'))
     else:
         return redirect(url_for('reception.index'))

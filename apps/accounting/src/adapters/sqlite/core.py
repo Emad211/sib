@@ -54,6 +54,14 @@ def _ensure_work_date_columns(db) -> None:
         pass
 
 
+def _ensure_user_staff_link(db) -> None:
+    """Ensure optional linkage between users and medical_staff.
+
+    Used for doctor accounts created from the management panel.
+    """
+    _ensure_column(db, "users", "staff_id", "INTEGER")
+
+
 def _ensure_indexes(db) -> None:
     """Create performance indexes if they don't exist."""
     try:
@@ -95,6 +103,9 @@ def _ensure_indexes(db) -> None:
         
         # Payments indexes
         db.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON invoice_item_payments (invoice_id)")
+
+        # Users indexes
+        db.execute("CREATE INDEX IF NOT EXISTS idx_users_staff_id ON users (staff_id)")
         
         db.commit()
     except Exception:
@@ -116,6 +127,26 @@ def _ensure_settings_table(db) -> None:
         db.commit()
     except Exception:
         pass
+
+
+def _ensure_doctor_room_table(db) -> None:
+    """Ensure doctor_room_state exists for existing databases."""
+    try:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS doctor_room_state (
+                doctor_staff_id INTEGER PRIMARY KEY,
+                active_invoice_id INTEGER,
+                set_by_user_id INTEGER,
+                updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+                FOREIGN KEY (doctor_staff_id) REFERENCES medical_staff (id),
+                FOREIGN KEY (active_invoice_id) REFERENCES invoices (id),
+                FOREIGN KEY (set_by_user_id) REFERENCES users (id)
+            )
+            """
+        )
+        db.commit()
+    except Exception:
         pass
 
 
@@ -215,8 +246,10 @@ def get_db():
         # Run migrations only ONCE per process (not per request)
         if not _migrations_done:
             _ensure_work_date_columns(db)
+            _ensure_user_staff_link(db)
             _ensure_indexes(db)  # Create performance indexes
             _ensure_settings_table(db)  # Create settings table if missing
+            _ensure_doctor_room_table(db)
             _migrations_done = True
 
     return db

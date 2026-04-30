@@ -111,12 +111,28 @@ class AuthService:
     def validate_reception(self, username: str, password: str) -> Optional[dict]:
         return self._attempt_login(username, password, "reception")
 
+    # ---- Doctor ----
+    def get_doctor_users(self) -> List[str]:
+        """Get list of active doctor usernames for login dropdown."""
+        return self.repo.get_doctor_usernames()
+
+    def validate_doctor(self, username: str, password: str) -> Optional[dict]:
+        """Validate doctor login credentials."""
+        return self._attempt_login(username, password, "doctor")
+
     # ---- User creation for CLI / setup ----
-    def register_user(self, username: str, password: str, role: str = "reception", full_name: str | None = None) -> bool:
+    def register_user(
+        self,
+        username: str,
+        password: str,
+        role: str = "reception",
+        full_name: str | None = None,
+        staff_id: int | None = None,
+    ) -> bool:
         # Reuse low-level repo + bcrypt like desktop app
         if self.repo.get_raw_by_username(username):
             return False
 
         salt = bcrypt.gensalt()
         password_hash = bcrypt.hashpw(password.encode("utf-8"), salt)
-        return self.repo.create_user(username, password_hash, role, full_name)
+        return self.repo.create_user(username, password_hash, role, full_name, staff_id=staff_id)

@@ -3292,14 +3292,42 @@ def users_management():
             if action == 'add':
                 full_name = request.form.get('full_name', '').strip()
                 staff_type = request.form.get('staff_type', 'doctor')
+                username = request.form.get('username', '').strip()
+                password = request.form.get('password', '').strip()
                 
                 if full_name:
-                    db.execute(
+                    # Create staff record
+                    cur = db.execute(
                         "INSERT INTO medical_staff (full_name, staff_type, is_active) VALUES (?, ?, 1)",
                         (full_name, staff_type)
                     )
+                    staff_id = cur.lastrowid
                     db.commit()
-                    flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
+
+                    # Optionally create a linked doctor user account
+                    if staff_type == 'doctor' and (username or password):
+                        if not (username and password):
+                            flash('برای ساخت حساب پزشک، نام کاربری و رمز عبور هر دو لازم است.', 'error')
+                        else:
+                            existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+                            if existing:
+                                flash(f'نام کاربری "{username}" قبلاً استفاده شده است.', 'error')
+                            else:
+                                from src.services.auth_service import AuthService
+                                auth_service = AuthService()
+                                created = auth_service.register_user(
+                                    username=username,
+                                    password=password,
+                                    role='doctor',
+                                    full_name=full_name,
+                                    staff_id=staff_id,
+                                )
+                                if created:
+                                    flash(f'پزشک "{full_name}" با حساب کاربری "{username}" اضافه شد.', 'success')
+                                else:
+                                    flash(f'پزشک "{full_name}" اضافه شد اما ساخت حساب کاربری ناموفق بود.', 'error')
+                    else:
+                        flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
             
             elif action == 'update':
                 staff_id = request.form.get('staff_id')

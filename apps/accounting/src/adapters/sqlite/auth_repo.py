@@ -47,13 +47,26 @@ class AuthRepository:
         except sqlite3.OperationalError:
             db.rollback()
 
-    def create_user(self, username: str, password_hash: bytes, role: str = "reception", full_name: Optional[str] = None):
+    def create_user(
+        self,
+        username: str,
+        password_hash: bytes,
+        role: str = "reception",
+        full_name: Optional[str] = None,
+        staff_id: Optional[int] = None,
+    ):
         db = get_db()
         try:
-            db.execute(
-                "INSERT INTO users (username, password_hash, role, full_name) VALUES (?, ?, ?, ?)",
-                (username, password_hash, role, full_name),
-            )
+            if staff_id is not None:
+                db.execute(
+                    "INSERT INTO users (username, password_hash, role, full_name, staff_id) VALUES (?, ?, ?, ?, ?)",
+                    (username, password_hash, role, full_name, staff_id),
+                )
+            else:
+                db.execute(
+                    "INSERT INTO users (username, password_hash, role, full_name) VALUES (?, ?, ?, ?)",
+                    (username, password_hash, role, full_name),
+                )
             db.commit()
             return True
         except Exception as e:
@@ -76,3 +89,8 @@ class AuthRepository:
     def get_reception_usernames(self) -> List[str]:
         users = self.get_all_users()
         return [u["username"] for u in users if u.get("role") == "reception" and u.get("is_active", 1)]
+
+    def get_doctor_usernames(self) -> List[str]:
+        """Get all active doctor usernames for dropdown."""
+        users = self.get_all_users()
+        return [u["username"] for u in users if u.get("role") == "doctor" and u.get("is_active", 1)]
