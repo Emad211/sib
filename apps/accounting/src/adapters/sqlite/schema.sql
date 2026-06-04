@@ -22,17 +22,6 @@ CREATE TABLE IF NOT EXISTS medical_staff (
     created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
 );
 
--- Doctor Room State (which patient/invoice is currently in doctor's room)
-CREATE TABLE IF NOT EXISTS doctor_room_state (
-    doctor_staff_id INTEGER PRIMARY KEY, -- unique state per doctor
-    active_invoice_id INTEGER,
-    set_by_user_id INTEGER,
-    updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-    FOREIGN KEY (doctor_staff_id) REFERENCES medical_staff (id),
-    FOREIGN KEY (active_invoice_id) REFERENCES invoices (id),
-    FOREIGN KEY (set_by_user_id) REFERENCES users (id)
-);
-
 -- Patients table
 CREATE TABLE IF NOT EXISTS patients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

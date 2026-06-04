@@ -129,9 +129,6 @@ def create_app(test_config=None):
     from src.api.doctor import bp as doctor_bp
     app.register_blueprint(doctor_bp)
 
-    from src.api.doctor_room import bp as doctor_room_bp
-    app.register_blueprint(doctor_room_bp)
-
     from src.api.manager import bp as manager_bp
     app.register_blueprint(manager_bp)
 

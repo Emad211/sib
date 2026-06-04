@@ -129,26 +129,6 @@ def _ensure_settings_table(db) -> None:
         pass
 
 
-def _ensure_doctor_room_table(db) -> None:
-    """Ensure doctor_room_state exists for existing databases."""
-    try:
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS doctor_room_state (
-                doctor_staff_id INTEGER PRIMARY KEY,
-                active_invoice_id INTEGER,
-                set_by_user_id INTEGER,
-                updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-                FOREIGN KEY (doctor_staff_id) REFERENCES medical_staff (id),
-                FOREIGN KEY (active_invoice_id) REFERENCES invoices (id),
-                FOREIGN KEY (set_by_user_id) REFERENCES users (id)
-            )
-            """
-        )
-        db.commit()
-    except Exception:
-        pass
-
 
 def _load_schema_and_initialize(db):
     """Load bundled schema.sql (works in source and frozen modes) and run it."""
@@ -249,7 +229,6 @@ def get_db():
             _ensure_user_staff_link(db)
             _ensure_indexes(db)  # Create performance indexes
             _ensure_settings_table(db)  # Create settings table if missing
-            _ensure_doctor_room_table(db)
             _migrations_done = True
 
     return db
