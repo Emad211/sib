@@ -1,3 +1,5 @@
 flask
+werkzeug
+bcrypt
 jdatetime
 pytest
