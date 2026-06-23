@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # debug=False و use_reloader=False برای جلوگیری از باز شدن چند پنجره
     app.run(
         debug=False, 
-        host='0.0.0.0', 
+        host=('127.0.0.1' if app.config.get('PRODUCTION') else '0.0.0.0'),
         port=8080, 
         use_reloader=False,
         threaded=True

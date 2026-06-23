@@ -54,6 +54,18 @@ def create_app(test_config=None):
         except Exception:
             pass
 
+    # ---- Security hardening (active only in PRODUCTION; local/.exe/LAN/test unchanged) ----
+    from src.config.settings import DEFAULT_SECRET_KEY
+    if app.config.get("PRODUCTION") and not app.config.get("TESTING", False):
+        if app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY):
+            raise RuntimeError(
+                "PRODUCTION but SECRET_KEY is unset or the insecure default. "
+                "Set a strong SECRET_KEY environment variable before starting in production.")
+    app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+
     # Respect environment for production vs development.
     # Use FLASK_ENV or APP_ENV to choose 'production' mode; otherwise fall back to config.
     if not app.config.get('TESTING', False):
@@ -230,7 +242,7 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     application.run(
         debug=False,
-        host="0.0.0.0",
+        host=("127.0.0.1" if application.config.get("PRODUCTION") else "0.0.0.0"),
         port=port,
         use_reloader=False,
     )
