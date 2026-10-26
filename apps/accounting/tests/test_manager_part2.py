@@ -15,9 +15,9 @@ from src.services import tariff_audit
 # --------------------------------------------------------------------------- migration 0003
 
 
-def test_schema_version_is_three_and_the_history_table_exists(db):
-    assert LATEST == 3
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+def test_the_history_table_exists_from_schema_version_three(db):
+    assert LATEST >= 3
+    assert db.execute("PRAGMA user_version").fetchone()[0] == LATEST
     cols = {r[1] for r in db.execute("PRAGMA table_info(tariff_changes)")}
     assert {"changed_at", "username", "kind", "tariff_id", "label", "action", "field", "old_value", "new_value"} <= cols
 

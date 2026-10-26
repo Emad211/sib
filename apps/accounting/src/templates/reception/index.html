@@ -1484,8 +1484,10 @@
                                         <!-- Covered by insurance: show empty cell (no dropdown) -->
                                         <div style="min-width:120px; color:var(--muted);">—</div>
                                     {% else %}
+                                        {% set legacy_untyped = (current_type == '' and pay and pay[0].is_paid == 1) %}
                                         <select class="pay-select" onchange="updatePayment('{{ item.type }}', {{ item.id }}, this.value, this.parentElement.parentElement)">
-                                            <option value="card" {% if current_type in ['', 'card'] %}selected{% endif %}>💳 کارتخوان</option>
+                                            {% if legacy_untyped %}<option value="" selected disabled>⚠ روش پرداخت؟</option>{% endif %}
+                                            <option value="card" {% if current_type == 'card' or (current_type == '' and not legacy_untyped) %}selected{% endif %}>💳 کارتخوان</option>
                                             <option value="cash" {% if current_type=='cash' %}selected{% endif %}>💵 نقدی</option>
                                         </select>
                                     {% endif %}

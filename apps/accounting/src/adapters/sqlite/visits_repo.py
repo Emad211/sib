@@ -48,25 +48,6 @@ class VisitRepository:
         
         return [self._map_row(row) for row in rows]
 
-    def get_unpaid_visits(self):
-        db = get_db()
-        rows = db.execute(
-            '''SELECT v.*, p.full_name as patient_name 
-               FROM visits v 
-               JOIN patients p ON v.patient_id = p.id
-               WHERE v.payment_status = 'unpaid'
-               ORDER BY v.visit_date DESC'''
-        ).fetchall()
-        return [self._map_row(row) for row in rows]
-
-    def mark_as_paid(self, visit_id):
-        db = get_db()
-        db.execute(
-            "UPDATE visits SET payment_status = 'paid', status = 'completed' WHERE id = ?",
-            (visit_id,)
-        )
-        db.commit()
-
     def _map_row(self, row) -> Visit:
         return Visit(
             id=row['id'],

@@ -88,9 +88,9 @@ CREATE TABLE IF NOT EXISTS visits (
     work_date TEXT, -- YYYY-MM-DD (manual work date)
     insurance_type TEXT,
     supplementary_insurance TEXT,
-    status TEXT DEFAULT 'pending',
+    status TEXT DEFAULT 'pending',        -- DEPRECATED (ACC-2.10): always 'pending'; real state is invoices.status
     price REAL DEFAULT 0,
-    payment_status TEXT DEFAULT 'unpaid', -- 'unpaid','paid'
+    payment_status TEXT DEFAULT 'unpaid', -- DEPRECATED (ACC-2.10): always 'unpaid'; real state is invoice_item_payments
     reception_user TEXT,
     notes TEXT,
     invoice_id INTEGER,
@@ -221,7 +221,9 @@ CREATE TABLE IF NOT EXISTS consumable_tariffs (
     default_price REAL NOT NULL DEFAULT 0,
     category TEXT NOT NULL, -- 'supply' or 'drug'
     is_active INTEGER DEFAULT 1,
-    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
+    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    acc_code TEXT,                 -- stock item code the shift app counts (migration 0004)
+    stock_factor REAL DEFAULT 1    -- stock units per ledger unit
 );
 
 -- Insurance-specific exclusions for nursing services
@@ -375,3 +377,17 @@ CREATE TABLE IF NOT EXISTS tariff_changes (
     new_value TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tariff_changes_changed_at ON tariff_changes (changed_at);
+
+-- What each item cost the patient and how it was paid, written once at invoice close (migration 0004).
+CREATE TABLE IF NOT EXISTS invoice_payment_lines (
+    invoice_id INTEGER NOT NULL,
+    item_type TEXT NOT NULL,
+    item_id INTEGER NOT NULL,
+    payment_type TEXT,
+    patient_amount REAL NOT NULL DEFAULT 0,
+    closed_at TIMESTAMP,
+    PRIMARY KEY (invoice_id, item_type, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_payment_lines_closed_at ON invoice_payment_lines (closed_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_closed_at ON invoices (closed_at);
+-- The v_shift_*_v1 views for the shift app are created by migration 0004 only.
