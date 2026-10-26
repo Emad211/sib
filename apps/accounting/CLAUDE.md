@@ -40,7 +40,7 @@ pyinstaller HesabdariSib.spec            # single-file HesabdariSib.exe (console
 
 ```
 start.py → src/app.py:create_app()       registers blueprints, Jinja filters, CLI, scheduler
-src/api/*.py          Blueprints: auth (/auth), dashboard (/), reception (/reception), manager (/manager)
+src/api/*.py          Blueprints: auth (/auth), dashboard (/), reception (/reception); src/api/manager/ (package, /manager)
 src/services/         auth_service, reception_service, activity_logger, backup, scheduler, exports, manager_insights
 src/web/csrf.py       CSRF for every state-changing request (token injected by static/js/csrf.js)
 src/adapters/sqlite/  core.py (connection + schema), migrations/ (versioned), and one repo per aggregate
@@ -48,11 +48,11 @@ src/common/           jalali.py, utils.py (iran_now, shift/work_date helpers), v
 src/templates/<role>/ Jinja pages per role (auth, reception, manager); static/ holds vendored Vazirmatn, chart.min.js, jalaali.min.js (offline, no CDN)
 ```
 
-**The layering is aspirational, not enforced.** `api/manager.py` (~3.7k lines) and `api/reception.py` (~1.9k lines) run hundreds of `db.execute` calls inline, and several `services/` and `domain/` files are empty stubs. New code should go route → service → repo, with SQL in `src/adapters/sqlite/`. Read the existing route before you assume a repo owns a query; many report and payroll queries live only in `manager.py`.
+**The layering is aspirational, not enforced.** The `api/manager/` package (split from the old 3.7k-line `manager.py`, ACC-2.6; modules: dashboard, reports, exports, arrears, tariffs, users, payroll, logs, settings, `_common`) and `api/reception.py` (~1.9k lines) run hundreds of `db.execute` calls inline, and several `services/` and `domain/` files are empty stubs. New code should go route → service → repo, with SQL in `src/adapters/sqlite/`. Read the existing route before you assume a repo owns a query; many report and payroll queries live only in `api/manager/*.py` (e.g. `reports.py`, `payroll.py`).
 
 ### Auth and roles
 - Roles are `manager` and `reception` (`USER_ROLES` in `auth_service.py`). The old `doctor` login was retired (ADR-013): doctors exist only as `medical_staff` rows, and a session or account with any other role is rejected. The login form posts a `role`, and `AuthService` validates the user against that role.
-- There is a single `login_required` decorator (`api/auth.py`). Manager routes check `g.user['role']` **inline** and redirect when it doesn't match. Copy that check on new manager routes (`@require_role` is planned, ACC-2.1).
+- There is a single `login_required` decorator (`api/auth.py`). Manager routes are guarded by `manager_required` (HTML: redirect to reception, optional `flash_message=`) or `manager_api_required` (JSON/CSV: 403, optional `body=`) from `api/manager/_common.py`, applied below `@login_required`; `tests/test_manager_authz.py` fails if a `manager.*` route lacks one. Report date ranges share `_common.jalali_to_start_end`. (A general `@require_role` is still planned, ACC-2.1.)
 - Every POST/PUT/DELETE needs the CSRF token. Pages get it automatically; tests use `CsrfClient`.
 - Passwords are hashed with bcrypt. Legacy werkzeug hashes are migrated to bcrypt on a successful login. After 5 failed attempts the account locks for 15 minutes (`locked_until`).
 - The session secret is a per-install file `.hesabdari_secret_key` next to the DB (created on first start, never committed). `PRODUCTION=1` (or `FLASK_ENV`/`APP_ENV=production`) sets secure cookies and binds to 127.0.0.1; otherwise the app binds to `0.0.0.0` for LAN use. `tests/test_security_config.py` pins this behavior.
