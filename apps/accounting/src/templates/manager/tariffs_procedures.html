@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تعرفهٔ کارهای عملی - سیستم درمانگاه</title>
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Vazirmatn', sans-serif; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100vh; color: #f1f5f9; padding: 2rem 1rem; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap; }
+    h1 { font-size: 1.5rem; }
+    a.back { color: #a78bfa; text-decoration: none; font-size: .9rem; }
+    .card { background: rgba(30, 41, 59, 0.6); border-radius: 20px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1.25rem; }
+    .card h2 { font-size: 1.05rem; margin-bottom: .4rem; }
+    .note { color: #94a3b8; font-size: .82rem; margin-bottom: 1rem; line-height: 1.8; }
+    form.row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: flex-end; }
+    label { display: block; font-size: .78rem; color: #94a3b8; margin-bottom: .25rem; }
+    input[type=text] { background: rgba(15,23,42,.8); color: #f1f5f9; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: .55rem .75rem; font-family: inherit; }
+    button { font-family: inherit; cursor: pointer; border: none; border-radius: 10px; padding: .55rem 1rem; font-weight: 700; }
+    .btn-add { background: #059669; color: #fff; }
+    .btn-small { background: rgba(99,102,241,.25); color: #c7d2fe; padding: .35rem .7rem; font-size: .8rem; }
+    .btn-off { background: rgba(239,68,68,.2); color: #fca5a5; padding: .35rem .7rem; font-size: .8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { padding: .6rem .5rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    th { color: #94a3b8; font-weight: 600; font-size: .78rem; }
+    .muted { color: #64748b; }
+    .inactive td { opacity: .55; }
+    .table-scroll { overflow-x: auto; }
+    .tag { font-size: .72rem; padding: .1rem .45rem; border-radius: 999px; background: rgba(245,158,11,.2); color: #fbbf24; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="page-header">
+    <h1>✨ تعرفهٔ کارهای عملی</h1>
+    <a class="back" href="{{ url_for('manager.tariffs_index') }}">→ بازگشت به تعرفه‌ها</a>
+  </div>
+  {% include 'manager/_flash.html' %}
+
+  <div class="card">
+    <h2>افزودن کار عملی</h2>
+    <div class="note">پذیرش فقط از همین فهرست انتخاب می‌کند و قیمت از همین‌جا می‌آید. تا وقتی فهرست خالی است، پذیرش عنوان و قیمت را دستی می‌نویسد.</div>
+    <form method="post" class="row">
+      <input type="hidden" name="action" value="add">
+      <div><label>عنوان</label><input type="text" name="name" required placeholder="مثلاً کشیدن بخیه" style="width:240px"></div>
+      <div><label>قیمت (تومان)</label><input type="text" name="unit_price" required placeholder="مثلاً 150000" style="width:140px"></div>
+      <button type="submit" class="btn-add">➕ افزودن</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>فهرست ({{ items|length }})</h2>
+    {% if items %}
+    <div class="table-scroll"><table>
+      <thead><tr><th>عنوان</th><th>قیمت (تومان)</th><th>تعداد ثبت‌شده</th><th>وضعیت</th><th>ویرایش</th></tr></thead>
+      <tbody>
+      {% for t in items %}
+        <tr class="{{ '' if t.is_active else 'inactive' }}">
+          <td colspan="5">
+            <form method="post" class="row" style="justify-content:space-between">
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="item_id" value="{{ t.id }}">
+              <input type="text" name="name" value="{{ t.name }}" style="width:240px">
+              <input type="text" name="unit_price" value="{{ '{:.0f}'.format(t.unit_price or 0) }}" style="width:120px">
+              <span class="muted">{{ t.uses }} بار</span>
+              <label style="display:flex;gap:.3rem;align-items:center;margin:0"><input type="checkbox" name="is_active" value="1" {% if t.is_active %}checked{% endif %}> فعال</label>
+              <button type="submit" class="btn-small">💾 ذخیره</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="muted">هنوز کار عملی‌ای تعریف نشده است. از پیشنهادهای پایین شروع کنید.</div>
+    {% endif %}
+  </div>
+
+  {% if suggestions %}
+  <div class="card">
+    <h2>پیشنهاد از سابقهٔ ثبت‌های دستی</h2>
+    <div class="note">این عنوان‌ها قبلاً دستی تایپ شده‌اند (پرتکرارترین بالا). قیمت پیشنهادی رایج‌ترین قیمت ثبت‌شده است. عنوان‌های هم‌معنی (مثل «شستشوی گوش» و «شستشوگوش») را فقط یک بار و با یک نام اضافه کنید.</div>
+    <div class="table-scroll"><table>
+      <thead><tr><th>عنوان</th><th>تعداد</th><th>قیمت رایج</th><th></th></tr></thead>
+      <tbody>
+      {% for s in suggestions %}
+        <tr>
+          <td>{{ s.name }}{% if s.prices > 1 %} <span class="tag">{{ s.prices }} قیمت متفاوت</span>{% endif %}</td>
+          <td>{{ s.uses }}</td>
+          <td>{{ '{:,.0f}'.format(s.common_price or 0) }}</td>
+          <td>
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="add">
+              <input type="hidden" name="name" value="{{ s.name }}">
+              <input type="hidden" name="unit_price" value="{{ '{:.0f}'.format(s.common_price or 0) }}">
+              <button type="submit" class="btn-small">➕ افزودن</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

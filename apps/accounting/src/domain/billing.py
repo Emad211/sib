@@ -85,3 +85,35 @@ def needs_payment_type(patient_share: float | None) -> bool:
 
 def is_valid_payment_type(payment_type: str | None) -> bool:
     return payment_type in PAYMENT_TYPES
+
+
+def group_items(items: list[dict], payments: list[dict] | None = None) -> list[dict]:
+    """Identical invoice lines shown once with ×N (FB-09).
+
+    Lines are identical when type, title, full price and patient share match. Returns the same
+    dicts, reordered so each group is contiguous (groups keep the order of their first line), with
+    `group_id`, `group_size`, `group_first`; the first line of a group also carries the group's
+    `group_recorded_total`, `group_share_total` and `group_paid` (how many lines are settled).
+    """
+    paid = {(p["item_type"], p["item_id"]) for p in (payments or []) if p.get("is_paid") == 1}
+    groups: dict[tuple, list[dict]] = {}
+    for it in items:
+        key = (
+            it.get("type"),
+            it.get("description"),
+            float(it.get("recorded_price") or 0),
+            float(it.get("patient_share") or 0),
+        )
+        groups.setdefault(key, []).append(it)
+    ordered = []
+    for n, members in enumerate(groups.values()):
+        for i, it in enumerate(members):
+            it["group_id"] = f"g{n}"
+            it["group_size"] = len(members)
+            it["group_first"] = i == 0
+        head = members[0]
+        head["group_recorded_total"] = sum(float(m.get("recorded_price") or 0) for m in members)
+        head["group_share_total"] = sum(float(m.get("patient_share") or 0) for m in members)
+        head["group_paid"] = sum(1 for m in members if (m.get("type"), m.get("id")) in paid)
+        ordered.extend(members)
+    return ordered

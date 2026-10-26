@@ -58,7 +58,7 @@ src/templates/<role>/ Jinja pages per role (auth, reception, manager); static/ h
 - The session secret is a per-install file `.hesabdari_secret_key` next to the DB (created on first start, never committed). `PRODUCTION=1` (or `FLASK_ENV`/`APP_ENV=production`) sets secure cookies and binds to 127.0.0.1; otherwise the app binds to `0.0.0.0` for LAN use. `tests/test_security_config.py` pins this behavior.
 
 ### Shifts and `work_date` (core domain concept)
-- Shifts (`morning`/`evening`/`night`) are **switched manually** per user and stored in `user_active_shift`. They are not derived from clock time.
+- Shifts (`morning`/`evening`/`night`) are stored per user in `user_active_shift`. A person **starts** the shift the schedule says (`domain/shifts.py`: 07:30 / 13:30 / 19:30, settings-overridable, 30-min early takeover) via `services/shift_handover.py`; it is refused while an invoice of another shift is open, and nobody is ever switched automatically (late handovers keep working; a stale shift cannot open new invoices).
 - `reception.py`'s `@bp.before_app_request` runs on *every* request. It fills `g.user_shift_status` (active_shift, work_date, shift_started_at, open_invoices_count, …).
 - `utils.get_work_date_for_datetime()` and `get_current_shift_name()` read from that `g` value.
 - Operational rows (`invoices`, `visits`, `injections`, `procedures`, `consumables_ledger`) store `work_date` (and invoices also store `shift`). This keeps a night shift that crosses midnight on one date. Reports and ledgers filter on `work_date`, **not** `DATE(timestamp)`.

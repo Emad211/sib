@@ -306,7 +306,7 @@
       </div>
 
       <!-- حذف دکمه داشبورد اصلی طبق درخواست -->
-      <a href="#" class="nav-btn active">💉 ثبت خدمات پرستاری</a>
+      <a href="#" class="nav-btn active">✨ ثبت کار عملی و مصرفی</a>
       {% if invoice %}
       <a href="{{ url_for('reception.index', invoice_id=invoice.id) }}" class="nav-btn">🔙 بازگشت به فاکتور</a>
       {% endif %}
@@ -348,6 +348,19 @@
       <div class="tab-panel active" id="panel-procedures">
         <!-- Input Form -->
         <div class="form-grid">
+          {% if procedure_tariffs %}
+          <div class="form-group">
+            <label>کار عملی</label>
+            <select id="procTariff">
+              {% for t in procedure_tariffs %}
+              <option value="{{ t.id }}" data-name="{{ t.name }}" data-price="{{ t.unit_price }}">{{ t.name }} — {{ '{:,.0f}'.format(t.unit_price or 0) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% else %}
+          <div class="form-group" style="grid-column: 1 / -1; color:#b45309; font-size:.85rem;">
+            ⚠ مدیر هنوز «تعرفهٔ کارهای عملی» را تعریف نکرده است؛ تا آن زمان عنوان و قیمت دستی وارد می‌شود.
+          </div>
           <div class="form-group">
             <label>عنوان کار عملی</label>
             <input type="text" id="procName" placeholder="مثلاً بخیه یا پانسمان...">
@@ -356,6 +369,7 @@
             <label>قیمت واحد (تومان)</label>
             <input type="number" id="procPrice" placeholder="0">
           </div>
+          {% endif %}
           <div class="form-group">
             <label>تعداد</label>
             <input type="number" id="procQty" value="1" min="1">
@@ -367,9 +381,9 @@
 
         <div class="form-group" style="margin-bottom: 12px; flex-direction: row; align-items: center; gap: 10px;">
           <label>انجام دهنده:</label>
-          <select id="procPerformer" style="width: 150px;">
-            <option value="doctor">پزشک</option>
-            <option value="nurse">پرستار</option>
+          <select id="procPerformer" style="min-width: 220px;">
+            <option value="nurse">پرستار شیفت{% if shift_nurse %}: {{ shift_nurse }}{% else %} (تعیین نشده){% endif %}</option>
+            {% for d in doctors %}<option value="doctor:{{ d.id }}">{{ d.full_name }}</option>{% endfor %}
           </select>
         </div>
 
@@ -489,17 +503,26 @@
       });
     });
 
+    function escapeText(s){ const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
     // --- Procedure Logic ---
     const procTbody = document.querySelector('#procTable tbody');
     
     function addManualProcedure() {
+      const tariffSel = document.getElementById('procTariff');
       const nameInp = document.getElementById('procName');
       const priceInp = document.getElementById('procPrice');
       const qtyInp = document.getElementById('procQty');
       const performerInp = document.getElementById('procPerformer');
 
-      const name = nameInp.value.trim();
-      const price = parseFloat(priceInp.value || 0);
+      let name, price, tariffId = '';
+      if (tariffSel) {
+        const opt = tariffSel.options[tariffSel.selectedIndex];
+        if (!opt) { alert('کار عملی را از فهرست انتخاب کنید'); return; }
+        name = opt.dataset.name; price = parseFloat(opt.dataset.price || 0); tariffId = opt.value;
+      } else {
+        name = nameInp.value.trim(); price = parseFloat(priceInp.value || 0);
+      }
       let qty = parseInt(qtyInp.value || '1');
 
       if(!name) { alert('لطفا عنوان خدمت را وارد کنید'); return; }
@@ -512,25 +535,26 @@
       tr.dataset.name = name;
       tr.dataset.price = price;
       tr.dataset.performer = performerVal;
+      tr.dataset.tariffId = tariffId;
 
       tr.innerHTML = `
-        <td>${name}</td>
+        <td>${escapeText(name)}</td>
         <td style="text-align:center;">
           <input type="number" class="qty-input" value="${qty}" min="1" style="width:60px; padding:4px; text-align:center;">
         </td>
         <td>${price.toLocaleString()}</td>
         <td class="line-total" style="font-weight:bold;">${(price * qty).toLocaleString()}</td>
-        <td><span class="performer-badge">${performerText}</span></td>
+        <td><span class="performer-badge">${escapeText(performerText)}</span></td>
         <td><button class="action-btn">×</button></td>
       `;
 
       procTbody.appendChild(tr);
       
       // Reset inputs
-      nameInp.value = '';
-      priceInp.value = '';
+      if (nameInp) nameInp.value = '';
+      if (priceInp) priceInp.value = '';
       qtyInp.value = '1';
-      nameInp.focus();
+      (tariffSel || nameInp).focus();
 
       recalcAll();
     }
@@ -685,7 +709,8 @@
           name: tr.dataset.name,
           unit_price: parseFloat(tr.dataset.price),
           qty: parseInt(tr.querySelector('.qty-input').value),
-          performer_type: tr.dataset.performer
+          tariff_id: tr.dataset.tariffId ? parseInt(tr.dataset.tariffId) : null,
+          performer: tr.dataset.performer
         });
       });
 

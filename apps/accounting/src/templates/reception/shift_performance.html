@@ -583,6 +583,28 @@
         .stat-card:nth-child(4) { animation-delay: 0.2s; }
         .stat-card:nth-child(5) { animation-delay: 0.25s; }
         .stat-card:nth-child(6) { animation-delay: 0.3s; }
+
+        /* FB-10: the shift report fits one A5 sheet: small boxes, readable 8-9pt text, two columns */
+        @page { size: A5 portrait; margin: 5mm; }
+        @media print {
+            body { padding: 0 !important; font-size: 8.5pt !important; line-height: 1.35 !important; }
+            .page-header { margin-bottom: 2mm !important; padding-bottom: 1.5mm !important; border-bottom: 1px solid #333 !important; }
+            .page-title { font-size: 11pt !important; margin-bottom: 1mm !important; }
+            .shift-badge { font-size: 8.5pt !important; padding: .5mm 2mm !important; }
+            .stats-grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 1.2mm !important; margin-bottom: 2mm !important; }
+            .stat-card { border: 1px solid #999 !important; padding: 1mm 1.5mm !important; min-height: 0 !important; }
+            .stat-icon { display: none !important; }
+            .stat-header { margin-bottom: .3mm !important; }
+            .stat-title { font-size: 7.5pt !important; color: #444 !important; }
+            .stat-value { font-size: 10pt !important; font-weight: 800 !important; }
+            .stat-sub { font-size: 7pt !important; }
+            .container > .section-card:not(.no-print) { break-inside: avoid; }
+            .print-columns { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 2mm !important; }
+            .section-card { border: 1px solid #bbb !important; padding: 1mm !important; margin-bottom: 1.5mm !important; }
+            .section-title { font-size: 8.5pt !important; margin-bottom: .8mm !important; padding-bottom: .5mm !important; border-bottom: 1px solid #ddd !important; }
+            table.data { width: 100% !important; font-size: 7.5pt !important; border-collapse: collapse !important; }
+            table.data th, table.data td { padding: .4mm .8mm !important; border-bottom: 1px solid #e5e5e5 !important; }
+        }
     </style>
 </head>
 <body>
@@ -694,6 +716,7 @@
         </div>
 
         <!-- Visits by insurance (تفکیک) -->
+        <div class="print-columns">
         <div class="section-card">
             <div class="section-title">ویزیت به تفکیک بیمه</div>
             <div class="table-wrap">
@@ -806,6 +829,7 @@
                     </tbody>
                 </table>
             </div>
+        </div>
         </div>
 
         <!-- Financial Summary -->

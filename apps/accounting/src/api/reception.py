@@ -3,6 +3,7 @@ from flask import (
 )
 from src.api.auth import login_required
 from src.services.reception_service import ReceptionService
+from src.adapters.sqlite.core import get_db
 from src.domain import billing
 from src.domain.identity import normalize_national_id, normalize_phone
 from src.services.activity_logger import log_activity, ActionType, ActionCategory
@@ -38,6 +39,7 @@ def index():
         from src.adapters.sqlite.payments_repo import InvoiceItemPaymentRepository
         pay_repo = InvoiceItemPaymentRepository()
         payments = pay_repo.get_payments_for_invoice(selected_invoice_id)
+        invoice_items = billing.group_items(invoice_items, payments)
     else:
         financials = None
         payments = []
@@ -156,41 +158,60 @@ def new_visit():
         return render_template('reception/new_visit.html', tariffs=tariffs, supplementary_insurances=supps)
     
     # POST: Create or find patient, then open invoice
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    allowed, reason = shift_handover.may_open_invoice(_get_db(), g.user['id'], _now())
+    if not allowed:
+        return jsonify({'error': reason}), 409
     try:
         from src.common.validators import validate_iranian_national_id, validate_iranian_phone
         
-        # Extract and validate form data
-        name = request.form.get('name', '').strip()
-        family_name = request.form.get('family_name', '').strip()
+        # Extract and validate form data (FB-03, FB-04, FB-05: everything is required, names are
+        # real names, foreigners give their universal code or passport, duplicates are checked)
+        from src.domain import identity
+        name = identity.normalize_person_name(request.form.get('name', ''))
+        family_name = identity.normalize_person_name(request.form.get('family_name', ''))
         phone = normalize_phone(request.form.get('phone', ''))
-        national_id = normalize_national_id(request.form.get('national_id', ''))
         is_foreign = request.form.get('is_foreign') == 'on'
+        national_id = (identity.normalize_foreign_id if is_foreign else normalize_national_id)(request.form.get('national_id', ''))
         insurance_type = request.form.get('insurance_type', '').strip()
         supp_insurance = request.form.get('supplementary_insurance', '').strip()
-        
-        # Validation: Required fields
-        if not name or not family_name:
-            return jsonify({'error': 'نام و نام خانوادگی الزامی است'}), 400
-        
-        # Validation: Phone number format
-        if phone and not validate_iranian_phone(phone):
+        confirmed = request.form.get('confirm') == '1'
+
+        for label, value in (('نام', name), ('نام خانوادگی', family_name)):
+            problem = identity.person_name_problem(value)
+            if problem:
+                return jsonify({'error': f'{label}: {problem}'}), 400
+
+        if not phone:
+            return jsonify({'error': 'شماره همراه الزامی است'}), 400
+        if not validate_iranian_phone(phone):
             return jsonify({'error': 'شماره همراه باید 11 رقم و با 09 شروع شود'}), 400
-        
-        # Validation: National ID for Iranian patients
-        if not is_foreign:
+
+        if is_foreign:
+            if not identity.is_valid_foreign_id(national_id):
+                return jsonify({'error': 'برای اتباع، کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه الزامی است'}), 400
+        else:
             if not national_id:
                 return jsonify({'error': 'کدملی برای بیماران ایرانی اجباری است'}), 400
             if not validate_iranian_national_id(national_id):
                 return jsonify({'error': 'کدملی وارد شده نامعتبر است'}), 400
-        
+
         # Validation: Insurance type required
         if not insurance_type:
             return jsonify({'error': 'نوع بیمه الزامی است'}), 400
-        
+
         # Validation: Supplementary insurance requires a base insurance (not آزاد)
         if supp_insurance and supp_insurance != 'ندارد' and insurance_type == 'آزاد':
             return jsonify({'error': 'بیمه تکمیلی فقط برای بیماران دارای بیمه پایه قابل انتخاب است'}), 400
-        
+
+        if not confirmed:
+            from src.services.patient_matching import find_conflicts
+            conflicts = find_conflicts(_get_db(), name, family_name, national_id, phone)
+            if conflicts:
+                return jsonify({'error': conflicts['message'], 'need_confirm': True, 'matches': conflicts['matches']}), 409
+
         # Create or find patient, then open invoice
         invoice_id, patient_id = service.create_or_open_invoice(
             name=name,
@@ -306,17 +327,19 @@ def patient_history(patient_id: int):
     effective_supp = latest_inv['supplementary_insurance'] if latest_inv and latest_inv['supplementary_insurance'] else None
     # Invoices
     invoices = db.execute("""
-        SELECT id, status, insurance_type, supplementary_insurance, total_amount, opened_at, closed_at
+        SELECT id, status, insurance_type, supplementary_insurance, total_amount, opened_at, closed_at,
+               COALESCE(opened_by_name, opened_by) AS opened_by_name, COALESCE(closed_by_name, closed_by) AS closed_by_name
         FROM invoices WHERE patient_id = ? ORDER BY id DESC
     """, (patient_id,)).fetchall()
     # Visits
     visits = db.execute("""
-        SELECT id, visit_date, doctor_name, price AS amount, status, invoice_id, insurance_type, supplementary_insurance
+        SELECT id, visit_date, doctor_name, price AS amount, status, invoice_id, insurance_type, supplementary_insurance,
+               COALESCE((SELECT u.full_name FROM users u WHERE u.username = reception_user), reception_user) AS reception_name
         FROM visits WHERE patient_id = ? ORDER BY visit_date DESC
     """, (patient_id,)).fetchall()
     # Injections with doctor/nurse names
     injections = db.execute("""
-        SELECT i.id, i.injection_date, i.injection_type, i.unit_price, i.total_price, i.invoice_id, i.service_id, i.shift,
+        SELECT i.id, i.injection_date, i.injection_type, i.unit_price, i.total_price, i.invoice_id, i.service_id, i.shift, COALESCE((SELECT u.full_name FROM users u WHERE u.username = i.reception_user), i.reception_user) AS reception_name,
                COALESCE(inv_doc.full_name, shift_doc.full_name) AS doctor_name,
                COALESCE(inv_nurse.full_name, shift_nurse.full_name) AS nurse_name
         FROM injections i
@@ -330,7 +353,7 @@ def patient_history(patient_id: int):
     """, (patient_id,)).fetchall()
     # Procedures with performer info
     procedures = db.execute("""
-        SELECT pr.id, pr.procedure_date, pr.procedure_type, pr.price, pr.invoice_id,
+        SELECT pr.id, pr.procedure_date, pr.procedure_type, pr.price, pr.invoice_id, COALESCE((SELECT u.full_name FROM users u WHERE u.username = pr.reception_user), pr.reception_user) AS reception_name,
                pr.performer_type, pr.performer_id, pr.shift,
                COALESCE(inv_doc.full_name, shift_doc.full_name) AS doctor_name,
                COALESCE(inv_nurse.full_name, shift_nurse.full_name) AS nurse_name
@@ -345,7 +368,8 @@ def patient_history(patient_id: int):
     """, (patient_id,)).fetchall()
     # Consumables ledger
     consumables = db.execute("""
-        SELECT id, usage_date, item_name, category, quantity, unit_price, total_cost, patient_provided, invoice_id
+        SELECT id, usage_date, item_name, category, quantity, unit_price, total_cost, patient_provided, invoice_id,
+               COALESCE((SELECT u.full_name FROM users u WHERE u.username = reception_user), reception_user) AS reception_name
         FROM consumables_ledger WHERE patient_id = ? ORDER BY usage_date DESC
     """, (patient_id,)).fetchall()
     # Jalali formatting utility for Y-m-d H:M
@@ -394,6 +418,12 @@ def patient_history(patient_id: int):
 @login_required
 def open_invoice_existing():
     """Directly open a new invoice for an existing patient id (used in history modal)."""
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    allowed, reason = shift_handover.may_open_invoice(_get_db(), g.user['id'], _now())
+    if not allowed:
+        return jsonify({'error': reason}), 409
     pid = request.form.get('patient_id', type=int)
     if not pid:
         return jsonify({'error': 'شناسه بیمار لازم است'}), 400
@@ -1121,7 +1151,20 @@ def procedures_new():
     invoice_id = request.args.get('invoice_id', type=int)
     inv_repo = InvoiceRepository(); invoice = inv_repo.get_invoice_by_id(invoice_id) if invoice_id else None
     ct_repo = ConsumableTariffsRepository(); supplies = ct_repo.list_active('supply'); drugs = ct_repo.list_active('drug')
-    return render_template('reception/procedures_new.html', invoice=invoice, supplies=supplies, drugs=drugs)
+    # FB-08: procedures come from the manager's catalog; performer = a named doctor or the shift nurse
+    from src.adapters.sqlite.procedure_tariffs_repo import ProcedureTariffsRepository
+    from src.adapters.sqlite.shift_staff_repo import ShiftStaffRepository
+    from src.adapters.sqlite.core import get_db as _get_db
+    procedure_tariffs = ProcedureTariffsRepository().list_active()
+    db = _get_db()
+    doctors = [dict(r) for r in db.execute(
+        "SELECT id, full_name FROM medical_staff WHERE staff_type = 'doctor' AND is_active = 1 ORDER BY full_name")]
+    staff_repo = ShiftStaffRepository()
+    staff = staff_repo.get_shift_staff(None, staff_repo._current_shift()) or {}
+    nurse_row = db.execute("SELECT full_name FROM medical_staff WHERE id = ?", (staff.get('nurse_id'),)).fetchone() if staff.get('nurse_id') else None
+    return render_template('reception/procedures_new.html', invoice=invoice, supplies=supplies, drugs=drugs,
+                           procedure_tariffs=procedure_tariffs, doctors=doctors,
+                           shift_nurse=nurse_row['full_name'] if nurse_row else None)
 
 @bp.route('/procedures', methods=['POST'])
 @login_required
@@ -1165,17 +1208,54 @@ def procedures_submit():
     proc_repo = ProcedureRepository(); cons_repo = ConsumableLedgerRepository()
     created_procs = 0; created_cons = 0
     
-    # Add manual procedures
+    # Procedures (FB-08): when the manager has a catalog, only catalog items are accepted and the
+    # price comes from the catalog, never from the browser. With an empty catalog (first days after
+    # the update) the old manual entry keeps working so the desk is not blocked.
+    from src.adapters.sqlite.procedure_tariffs_repo import ProcedureTariffsRepository
+    catalog = {t['id']: t for t in ProcedureTariffsRepository().list_active()}
+    from src.adapters.sqlite.core import get_db as _get_db
+    db = _get_db()
+    lines = []
     for pr in procedures_payload:
-        name = (pr.get('name') or '').strip(); qty = int(pr.get('qty',0)); unit_price = float(pr.get('unit_price',0) or 0)
-        performer_type = (pr.get('performer_type') or '').strip().lower()
-        if performer_type not in ['doctor','nurse']:
+        try:
+            qty = int(pr.get('qty', 0))
+        except (TypeError, ValueError):
+            qty = 0
+        if qty < 1 or qty > 50:
+            return jsonify({'error': 'تعداد کار عملی باید بین ۱ و ۵۰ باشد'}), 400
+        if catalog:
+            try:
+                tariff = catalog.get(int(pr.get('tariff_id') or 0))
+            except (TypeError, ValueError):
+                tariff = None
+            if tariff is None:
+                return jsonify({'error': 'کار عملی را از فهرست تعرفه‌ها انتخاب کنید'}), 400
+            name, unit_price = tariff['name'], float(tariff['unit_price'] or 0)
+        else:
+            name = (pr.get('name') or '').strip()
+            unit_price = float(pr.get('unit_price', 0) or 0)
+            if not name or unit_price <= 0:
+                continue
+        performer = (pr.get('performer') or pr.get('performer_type') or '').strip().lower()
+        if performer.startswith('doctor:'):
+            try:
+                chosen = int(performer.split(':', 1)[1])
+            except ValueError:
+                chosen = 0
+            ok = db.execute("SELECT 1 FROM medical_staff WHERE id = ? AND staff_type = 'doctor' AND is_active = 1", (chosen,)).fetchone()
+            if not ok:
+                return jsonify({'error': 'پزشک انتخاب‌شده معتبر نیست'}), 400
+            performer_type, line_doctor, line_nurse = 'doctor', chosen, None
+        elif performer == 'nurse':
+            if not nurse_id:
+                return jsonify({'error': 'پرستار شیفت تعیین نشده است؛ ابتدا کادر شیفت را ثبت کنید'}), 400
+            performer_type, line_doctor, line_nurse = 'nurse', None, nurse_id
+        else:  # legacy 'doctor' / unknown: the shift doctor, as before
             performer_type = 'doctor' if doctor_id else 'nurse'
-        performer_id = doctor_id if performer_type=='doctor' else nurse_id
-        # فقط ID انجام‌دهنده واقعی را ثبت کن - برای جلوگیری از شمارش دوگانه در گزارش‌ها
-        actual_doctor_id = doctor_id if performer_type == 'doctor' else None
-        actual_nurse_id = nurse_id if performer_type == 'nurse' else None
-        if not name or unit_price <= 0 or qty < 1: continue
+            line_doctor = doctor_id if performer_type == 'doctor' else None
+            line_nurse = nurse_id if performer_type == 'nurse' else None
+        lines.append((name, unit_price, qty, performer_type, line_doctor, line_nurse))
+    for name, unit_price, qty, performer_type, line_doctor, line_nurse in lines:
         for _ in range(qty):
             proc_repo.add_procedure(
                 patient_id=invoice['patient_id'],
@@ -1185,9 +1265,9 @@ def procedures_submit():
                 invoice_id=invoice_id,
                 notes=notes,
                 performer_type=performer_type,
-                performer_id=performer_id,
-                doctor_id=actual_doctor_id,
-                nurse_id=actual_nurse_id
+                performer_id=line_doctor if performer_type == 'doctor' else line_nurse,
+                doctor_id=line_doctor,
+                nurse_id=line_nurse
             ); created_procs += 1
     # Add consumables ledger entries
     for item in consumables_payload:
@@ -1961,7 +2041,13 @@ def get_shift_status():
         'night': 'شب'
     }
     
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    handover = shift_handover.status(_get_db(), user_id, _now())
+
     return jsonify({
+        **handover,
         'active_shift': active_shift,
         'active_shift_fa': shift_names.get(active_shift, active_shift),
         'work_date': work_date,
@@ -1980,53 +2066,42 @@ def get_shift_status():
 @bp.route('/api/shift/change', methods=['POST'])
 @login_required
 def change_shift():
-    """
-    Change user's active shift (manual).
-    فاکتورهای باز مانعی برای تغییر شیفت نیستند.
+    """Start the shift the schedule says (FB-02). The requested shift is ignored: nobody picks one.
+
+    Refused while an invoice of another shift is still open (FB-01): its receptionist must settle
+    and close it first.
     """
     from src.adapters.sqlite.user_shift_repo import UserShiftRepository
-    
+    from src.common.utils import iran_now
+    from src.domain import shifts
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+
+    db = _get_db()
     user_id = g.user['id']
-    shift_repo = UserShiftRepository()
-    
-    payload = request.get_json(silent=True) or {}
-    requested_shift = (payload.get('shift') or '').strip()
-    requested_work_date = (payload.get('work_date') or '').strip()
+    state = shift_handover.status(db, user_id, iran_now())
+    scheduled = (state['scheduled_shift'], state['scheduled_work_date'])
+    label = state['scheduled_shift_fa']
+    if state['standing'] == shifts.CURRENT:
+        return jsonify({'success': True, 'new_shift': scheduled[0], 'new_shift_fa': label, 'work_date': scheduled[1]})
 
-    allowed = {'morning', 'evening', 'night'}
-    if requested_shift not in allowed:
-        return jsonify({'error': 'شیفت نامعتبر است'}), 400
+    pending = shift_handover.blockers(db, scheduled)
+    if pending:
+        return jsonify({
+            'error': f'تا {len(pending)} فاکتور باز از شیفت قبل بسته نشود، شیفت {label} شروع نمی‌شود. '
+                     'پذیرشِ همان شیفت باید فاکتورها را تسویه و ببندد.',
+            'blockers': pending,
+        }), 409
 
-    if not requested_work_date:
-        from src.common.utils import iran_now
-        now = iran_now()
-        # Night shift spans two calendar dates (starts ~19:30 and ends ~07:30).
-        # If user selects night shift after midnight and before 07:30, the work_date
-        # should remain the previous day.
-        if requested_shift == 'night' and (now.hour, now.minute) < (7, 30):
-            requested_work_date = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            requested_work_date = now.strftime('%Y-%m-%d')
-
-    # Update user's active shift
-    shift_repo.set_user_active_shift(user_id, requested_shift, requested_work_date)
-    
-    # Log the shift change
-    shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
+    UserShiftRepository().set_user_active_shift(user_id, scheduled[0], scheduled[1])
     log_activity(
         action_type=ActionType.SHIFT_STAFF_SET,
         action_category=ActionCategory.SHIFT,
-        description=f'تغییر شیفت به شیفت {shift_names.get(requested_shift, requested_shift)}',
+        description=f'شروع شیفت {label}',
         target_type='user_shift',
-        new_value=f'{requested_shift}:{requested_work_date}'
+        new_value=f'{scheduled[0]}:{scheduled[1]}'
     )
-    
-    return jsonify({
-        'success': True,
-        'new_shift': requested_shift,
-        'new_shift_fa': shift_names.get(requested_shift, requested_shift),
-        'work_date': requested_work_date
-    })
+    return jsonify({'success': True, 'new_shift': scheduled[0], 'new_shift_fa': label, 'work_date': scheduled[1]})
 
 
 @bp.route('/api/shift/dismiss_prompt', methods=['POST'])

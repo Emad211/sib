@@ -104,7 +104,7 @@
                 <!-- Foreign National Checkbox -->
                 <div class="checkbox-group">
                     <input type="checkbox" class="checkbox-input" id="is_foreign" name="is_foreign">
-                    <label class="checkbox-label" for="is_foreign">بیمار خارجی (بدون کدملی)</label>
+                    <label class="checkbox-label" for="is_foreign">اتباع خارجی (با کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه)</label>
                 </div>
 
                 <!-- National ID with Live Search -->
@@ -221,14 +221,23 @@
         let lastSearchedId = '';
 
         isForeignCheckbox.addEventListener('change', function() {
+            // FB-03: foreigners give their universal code or passport; nobody skips the ID
+            const label = document.querySelector('label[for="national_id"]');
+            nationalIdInput.value = '';
+            hidePatientFound();
+            nationalIdInput.setAttribute('required', 'required');
             if (this.checked) {
-                nationalIdGroup.style.display = 'none';
-                nationalIdInput.removeAttribute('required');
-                nationalIdInput.value = '';
-                hidePatientFound();
+                nationalIdInput.removeAttribute('pattern');
+                nationalIdInput.setAttribute('maxlength', '12');
+                nationalIdInput.placeholder = 'کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه';
+                if (label) label.lastChild.textContent = ' کد فراگیر اتباع / گذرنامه:';
+                nationalIdHint.textContent = 'برای اتباع، کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه الزامی است';
             } else {
-                nationalIdGroup.style.display = 'block';
-                nationalIdInput.setAttribute('required', 'required');
+                nationalIdInput.setAttribute('pattern', '[0-9]{10}');
+                nationalIdInput.setAttribute('maxlength', '10');
+                nationalIdInput.placeholder = '1234567890';
+                if (label) label.lastChild.textContent = ' کدملی:';
+                nationalIdHint.textContent = 'کدملی باید 10 رقم باشد — با وارد کردن کدملی، بیمار قبلی به صورت خودکار شناسایی می‌شود';
             }
         });
 
@@ -405,8 +414,19 @@
             }
 
             // Validate phone number
-            if (phone && (phone.length !== 11 || !phone.startsWith('09') || !/^\d+$/.test(phone))) {
+            if (!phone || phone.length !== 11 || !phone.startsWith('09') || !/^\d+$/.test(phone)) {
                 showError('❌ شماره همراه باید 11 رقم و با 09 شروع شود');
+                return;
+            }
+
+            // Real names only (FB-05): every word at least two letters
+            const shortWord = v => v.split(/\s+/).some(w => w.replace(/\u200c/g, '').length < 2);
+            if (shortWord(name) || shortWord(familyName)) {
+                showError('❌ نام و نام خانوادگی کامل نوشته شود (حرف تنها یا مخفف مثل «خ» پذیرفته نیست)');
+                return;
+            }
+            if (isForeign && nationalId.length < 6) {
+                showError('❌ برای اتباع، کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه را وارد کنید');
                 return;
             }
 
@@ -448,6 +468,10 @@
 
                 const result = await response.json();
 
+                if (response.status === 409 && result.need_confirm) {
+                    showMatches(result, formData);
+                    return;
+                }
                 if (response.ok) {
                     showSuccess('✅ فاکتور با موفقیت باز شد');
                     setTimeout(() => {
@@ -464,6 +488,54 @@
                 submitBtn.textContent = '✅ باز کردن فاکتور';
             }
         });
+
+        // FB-04: same ID with another name, or a phone used by someone else -> choose or confirm
+        function showMatches(result, formData) {
+            let panel = document.getElementById('matches-panel');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'matches-panel';
+                panel.style.cssText = 'margin:1rem 0;padding:1rem;border:2px solid #f59e0b;background:#fffbeb;border-radius:12px;';
+                submitBtn.parentNode.insertBefore(panel, submitBtn);
+            }
+            panel.textContent = '';
+            const msg = document.createElement('div');
+            msg.style.cssText = 'font-weight:700;color:#92400e;margin-bottom:.75rem;line-height:1.7;';
+            msg.textContent = '⚠️ ' + result.error;
+            panel.appendChild(msg);
+            (result.matches || []).forEach(m => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.5rem 0;border-top:1px solid #fde68a;';
+                const info = document.createElement('div');
+                info.textContent = m.full_name + ' — ' + (m.national_id || 'بدون کد') + ' — ' + (m.phone || '') + (m.last_visit_fa ? ' — آخرین مراجعه ' + m.last_visit_fa : '');
+                const use = document.createElement('button');
+                use.type = 'button';
+                use.className = 'btn-secondary';
+                use.textContent = 'فاکتور برای همین بیمار';
+                use.onclick = async () => {
+                    const fd = new FormData(); fd.append('patient_id', m.id);
+                    const r = await fetch('{{ url_for("reception.open_invoice_existing") }}', { method: 'POST', body: fd, credentials: 'same-origin' });
+                    const d = await r.json();
+                    if (!r.ok || d.error) { showError('❌ ' + (d.error || 'خطا')); return; }
+                    window.location.href = '{{ url_for("reception.index") }}' + (d.invoice_id ? '?invoice_id=' + d.invoice_id : '');
+                };
+                row.appendChild(info); row.appendChild(use);
+                panel.appendChild(row);
+            });
+            const confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.style.cssText = 'margin-top:.75rem;';
+            confirmBtn.className = 'btn-primary';
+            confirmBtn.textContent = 'اطلاعات من درست است — ادامه';
+            confirmBtn.onclick = () => {
+                const input = document.createElement('input');
+                input.type = 'hidden'; input.name = 'confirm'; input.value = '1';
+                form.appendChild(input);
+                panel.remove();
+                form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true }));
+            };
+            panel.appendChild(confirmBtn);
+        }
     </script>
 </body>
 </html>

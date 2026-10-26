@@ -635,6 +635,23 @@
    "status": 302
   }
  },
+ "GET /manager/tariffs/procedures [manager.procedure_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "GET /manager/users [manager.users_management]": {
   "anon": {
    "location": "/auth/login",
@@ -1083,6 +1100,24 @@
    "status": 302
   }
  },
+ "POST /manager/tariffs/procedures [manager.procedure_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/tariffs/procedures",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "POST /manager/users [manager.users_management]": {
   "anon": {
    "location": "/auth/login",
@@ -1123,10 +1158,10 @@
    "status": 302
   },
   "manager": {
-   "status": 400
+   "status": 409
   },
   "reception": {
-   "status": 400
+   "status": 409
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1187,10 +1222,10 @@
    "status": 302
   },
   "manager": {
-   "status": 400
+   "status": 409
   },
   "reception": {
-   "status": 400
+   "status": 409
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1251,10 +1286,10 @@
    "status": 302
   },
   "manager": {
-   "status": 400
+   "status": 409
   },
   "reception": {
-   "status": 400
+   "status": 409
   },
   "retired_doctor": {
    "location": "/auth/login",
