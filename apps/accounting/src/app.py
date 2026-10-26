@@ -35,24 +35,6 @@ def create_app(test_config=None):
         app.config.from_object(Config)
     else:
         app.config.from_mapping(test_config)
-    
-        # Diagnostic: log which database file is used and whether essential tables exist.
-        try:
-            from src.config.settings import Config as _Config
-            import sqlite3
-            db_path = _Config.DATABASE_PATH
-            print(f"[startup] Using database: {db_path}")
-            try:
-                conn = sqlite3.connect(db_path)
-                cur = conn.cursor()
-                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('payroll_settings','activity_logs')")
-                found = [r[0] for r in cur.fetchall()]
-                print(f"[startup] Found tables: {found}")
-                conn.close()
-            except Exception as e:
-                print(f"[startup] Error checking DB tables: {e}")
-        except Exception:
-            pass
 
     # ---- Security hardening (active only in PRODUCTION; local/.exe/LAN/test unchanged) ----
     from src.config.settings import DEFAULT_SECRET_KEY
@@ -61,6 +43,12 @@ def create_app(test_config=None):
             raise RuntimeError(
                 "PRODUCTION but SECRET_KEY is unset or the insecure default. "
                 "Set a strong SECRET_KEY environment variable before starting in production.")
+    # Desktop/LAN (the exe): never sign sessions with the public default key (SEC-01).
+    if (not app.config.get("PRODUCTION") and not app.config.get("TESTING", False)
+            and app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY)):
+        from src.config.settings import load_or_create_install_secret
+        db_path = app.config.get("DATABASE_PATH") or Config.DATABASE_PATH
+        app.config["SECRET_KEY"] = load_or_create_install_secret(os.path.dirname(os.path.abspath(db_path)))
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
@@ -120,13 +108,17 @@ def create_app(test_config=None):
             'open_invoices_count': 0
         }
 
-        if user_id is None:
-            g.user = None
-        else:
+        g.user = None
+        if user_id is not None:
             db = get_db()
-            g.user = db.execute(
+            user = db.execute(
                 "SELECT * FROM users WHERE id = ?", (user_id,)
             ).fetchone()
+            # A deleted or deactivated account is logged out on its next request (SEC-04).
+            if user is None or not user["is_active"]:
+                session.clear()
+            else:
+                g.user = user
 
     # --------- ثبت Blueprints ---------
     from src.api.auth import bp as auth_bp

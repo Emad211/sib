@@ -39,6 +39,7 @@ def login():
 
         if error is None:
             session.clear()
+            session.permanent = True  # PERMANENT_SESSION_LIFETIME (8h, sliding) applies
             session["user_id"] = user["id"]
             session["role"] = user["role"]
             

@@ -989,17 +989,38 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
             }
             
             // اخطار سوم با تایپ کلمه
-            const userInput = prompt('⚠️ تایید نهایی\n\nبرای تایید ریست دیتابیس، عبارت زیر را دقیقاً تایپ کنید:\n\nDELETE_ALL_DATA');
-            
+            const userInput = prompt('⚠️ تایید نهایی
+
+برای تایید ریست دیتابیس، عبارت زیر را دقیقاً تایپ کنید:
+
+DELETE_ALL_DATA');
+
             if (userInput !== 'DELETE_ALL_DATA') {
                 alert('عبارت وارد شده صحیح نیست. عملیات لغو شد.');
                 return;
             }
-            
-            // ارسال درخواست ریست
+
+            askManagerPassword(sendResetRequest);
+        }
+
+        // رمز مدیر در یک پنجرهٔ واقعی (فیلد password)، نه prompt که متن را نمایش می‌دهد
+        function askManagerPassword(onOk) {
+            const dlg = document.getElementById('reset-password-dialog');
+            const input = document.getElementById('reset-password-input');
+            input.value = '';
+            dlg.showModal();
+            input.focus();
+            dlg.onclose = () => {
+                if (dlg.returnValue === 'ok' && input.value) onOk(input.value);
+                input.value = '';
+            };
+        }
+
+        function sendResetRequest(password) {
             const formData = new FormData();
             formData.append('confirm_code', 'DELETE_ALL_DATA');
-            
+            formData.append('password', password);
+
             fetch('{{ url_for("manager.reset_database") }}', {
                 method: 'POST',
                 body: formData
@@ -1019,5 +1040,17 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
             });
         }
     </script>
+    <dialog id="reset-password-dialog" style="border:none;border-radius:16px;padding:24px;max-width:360px;font-family:inherit">
+        <form method="dialog">
+            <p style="margin:0 0 12px;font-weight:700">برای ریست، رمز عبور مدیر را وارد کنید</p>
+            <p style="margin:0 0 16px;color:#64748b;font-size:.9em">پیش از ریست، یک پشتیبان کامل خودکار گرفته می‌شود.</p>
+            <input id="reset-password-input" type="password" autocomplete="current-password" required
+                   style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:16px">
+            <div style="display:flex;gap:8px;justify-content:flex-start">
+                <button value="ok" class="btn btn-danger">ریست کن</button>
+                <button value="cancel" formnovalidate class="btn btn-secondary">انصراف</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 </html>

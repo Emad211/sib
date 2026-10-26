@@ -1,25 +1,52 @@
 import os
 import sys
 
-
 # The weak fallback secret for local/.exe/LAN runs. In a real server deployment
 # (PRODUCTION=1 or FLASK_ENV/APP_ENV=production) create_app() refuses to start with it.
-DEFAULT_SECRET_KEY = 'dev-secret-key-change-in-prod'
+DEFAULT_SECRET_KEY = "dev-secret-key-change-in-prod"
+
+
+SECRET_FILE_NAME = ".hesabdari_secret_key"
+
+
+def load_or_create_install_secret(folder) -> str:
+    """Per-install session key stored next to the database (SEC-01, ACC-1.5).
+
+    Created once with 256 bits of randomness; reused on every start so sessions survive
+    restarts. A present-but-invalid file is an error (never silently fall back).
+    """
+    import secrets
+    from pathlib import Path
+
+    path = Path(folder) / SECRET_FILE_NAME
+    if path.exists():
+        key = path.read_text(encoding="ascii", errors="replace").strip()
+        if len(key) < 64 or any(c not in "0123456789abcdef" for c in key):
+            raise RuntimeError(f"invalid session key file: {path}. Delete it to generate a new one.")
+        return key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    key = secrets.token_hex(32)
+    try:
+        with open(path, "x", encoding="ascii") as f:  # 'x': never overwrite a concurrent writer
+            f.write(key + "\n")
+    except FileExistsError:
+        return load_or_create_install_secret(folder)
+    return key
 
 
 def _env_flag(name: str) -> bool:
-    return os.environ.get(name, '').strip().lower() in ('1', 'true', 'yes', 'on')
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _is_production() -> bool:
-    if _env_flag('PRODUCTION'):
+    if _env_flag("PRODUCTION"):
         return True
-    env = (os.environ.get('FLASK_ENV') or os.environ.get('APP_ENV') or '').strip().lower()
-    return env == 'production'
+    env = (os.environ.get("FLASK_ENV") or os.environ.get("APP_ENV") or "").strip().lower()
+    return env == "production"
 
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or DEFAULT_SECRET_KEY
+    SECRET_KEY = os.environ.get("SECRET_KEY") or DEFAULT_SECRET_KEY
 
     # True only in a real (cloud/server) deployment — honours PRODUCTION=1 and the existing
     # FLASK_ENV/APP_ENV=production convention. Gates the security hardening so local .exe /
@@ -27,7 +54,7 @@ class Config:
     PRODUCTION = _is_production()
 
     # Determine project root and paths in both source and frozen (PyInstaller) modes.
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         # When bundled by PyInstaller the executable lives in sys.executable
         # Use the executable directory as the project root so DB and backups
         # are created next to the exe (and are writable on typical installs).
@@ -39,15 +66,15 @@ class Config:
         PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
 
     # Database file location
-    DATABASE_PATH = os.path.join(PROJECT_ROOT, 'clinic_new.db')
+    DATABASE_PATH = os.path.join(PROJECT_ROOT, "clinic_new.db")
 
-    DEBUG = _env_flag('DEBUG')
+    DEBUG = _env_flag("DEBUG")
     TESTING = False
 
     # Folder where automatic backups are stored (used by scheduler)
-    BACKUP_FOLDER = os.path.join(PROJECT_ROOT, 'backups')
+    BACKUP_FOLDER = os.path.join(PROJECT_ROOT, "backups")
 
 
 class TestConfig(Config):
     TESTING = True
-    DATABASE_PATH = ':memory:'
+    DATABASE_PATH = ":memory:"

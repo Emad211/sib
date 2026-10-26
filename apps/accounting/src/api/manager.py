@@ -601,73 +601,62 @@ def settings():
 @bp.route('/settings/reset-database', methods=['POST'])
 @login_required
 def reset_database():
-    """ریست کامل دیتابیس - حذف همه داده‌ها و ایجاد دیتابیس جدید با کاربر admin"""
+    """ریست کامل دیتابیس (ACC-1.6، SEC-03).
+
+    شرط‌ها: نقش مدیر، عبارت تأیید، و رمز عبور همین مدیر. پیش از هر چیز یک پشتیبان کامل
+    گرفته می‌شود. دیتابیس تازه در فایل موقت ساخته و با backup API جایگزین می‌شود؛ تنها کاربر
+    دیتابیس تازه همین مدیر با همان رمز است (دیگر admin/admin ساخته نمی‌شود).
+    """
     if g.user['role'] != 'manager':
         return jsonify({'success': False, 'error': 'دسترسی غیرمجاز'}), 403
-    
-    import os
-    import sys
-    from pathlib import Path
-    import bcrypt
-    
-    # تایید نهایی از request
-    confirm_code = request.form.get('confirm_code', '')
-    if confirm_code != 'DELETE_ALL_DATA':
+    if request.form.get('confirm_code', '') != 'DELETE_ALL_DATA':
         return jsonify({'success': False, 'error': 'کد تایید نامعتبر است'}), 400
-    
+
+    from src.services.auth_service import AuthService
+    if not AuthService().validate_manager(g.user['username'], request.form.get('password', '')):
+        return jsonify({'success': False, 'error': 'رمز عبور مدیر نادرست است'}), 403
+
+    import sqlite3
+    from pathlib import Path
+    from src.adapters.sqlite import core
+    from src.adapters.sqlite.migrations import run_migrations
+    from src.services import backup as bk
+
+    keep = {k: g.user[k] for k in ('username', 'password_hash', 'role', 'full_name')}
+    db_path = current_app.config.get('DATABASE_PATH')
+    backup_dir = current_app.config.get('BACKUP_FOLDER')
     try:
-        db_path = Path(current_app.config.get('DATABASE_PATH'))
-        
-        # پیدا کردن مسیر schema.sql در حالت‌های مختلف
-        if getattr(sys, 'frozen', False):
-            # حالت PyInstaller
-            meipass = getattr(sys, '_MEIPASS', None)
-            if meipass:
-                schema_path = Path(meipass) / 'src' / 'adapters' / 'sqlite' / 'schema.sql'
-                if not schema_path.exists():
-                    schema_path = Path(meipass) / 'schema.sql'
-            else:
-                schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
-        else:
-            # حالت سورس
-            schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
-        
-        # بستن کانکشن فعلی
-        db = get_db()
-        db.close()
-        
-        # حذف فایل دیتابیس قدیمی
-        if db_path.exists():
-            os.remove(db_path)
-        
-        # ایجاد دیتابیس جدید
-        import sqlite3
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        
-        # اجرای schema
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            schema_sql = f.read()
-        conn.executescript(schema_sql)
-        
-        # ایجاد کاربر admin با رمز admin - استفاده از bcrypt مثل سیستم اصلی
-        salt = bcrypt.gensalt()
-        password_hash = bcrypt.hashpw('admin'.encode('utf-8'), salt)
-        conn.execute("""
-            INSERT INTO users (username, password_hash, role, full_name, is_active)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('admin', password_hash, 'manager', 'مدیر سیستم', 1))
-        
-        conn.commit()
-        conn.close()
-        
-        # لاگ اوت کردن کاربر فعلی
-        session.clear()
-        
-        return jsonify({'success': True, 'message': 'دیتابیس با موفقیت ریست شد. لطفاً دوباره وارد شوید.'})
-        
-    except Exception as e:
+        core.close_connection(None)
+        safety = bk.create_backup(db_path, backup_dir, bk.KIND_PRE_RESET)
+        fresh = Path(backup_dir) / f".reset_{iran_now().strftime('%Y%m%d_%H%M%S')}.tmp"
+        conn = sqlite3.connect(fresh)
+        try:
+            core._load_schema_and_initialize(conn)
+            run_migrations(conn)
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role, full_name, is_active) VALUES (?, ?, ?, ?, 1)",
+                (keep['username'], keep['password_hash'], keep['role'], keep['full_name']),
+            )
+            conn.commit()
+            src = sqlite3.connect(f"file:{fresh.as_posix()}?mode=ro", uri=True)
+            dst = sqlite3.connect(db_path, timeout=30)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+                src.close()
+        finally:
+            conn.close()
+            fresh.unlink(missing_ok=True)
+        bk.verify_database_file(db_path)
+    except bk.BackupError as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+    log_activity(ActionType.DATABASE_RESET, ActionCategory.SYSTEM,
+                 description=f'ریست کامل دیتابیس؛ نسخهٔ قبلی در {safety.name}', target_name=safety.name)
+    session.clear()
+    return jsonify({'success': True,
+                    'message': f'دیتابیس ریست شد. نسخهٔ قبلی در «{safety.name}» ذخیره شد. لطفاً دوباره وارد شوید.'})
 
 
 @bp.route('/settings/download/<backup_name>')

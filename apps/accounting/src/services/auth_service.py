@@ -51,6 +51,11 @@ class AuthService:
         if user_dict.get("role") != expected_role:
             return None
 
+        # Deactivated accounts can never log in (SEC-09). Checked before the password so a
+        # disabled account does not accumulate failed attempts either.
+        if not user_dict.get("is_active", 1):
+            return None
+
         # Lockout check before password verify
         if self._is_locked(user_dict):
             return None

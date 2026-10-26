@@ -23,7 +23,9 @@ log = logging.getLogger(__name__)
 _migrations_done = False
 last_migration_report: MigrationReport | None = None
 
-__all__ = ["get_db", "close_connection", "ensure_database_ready", "MigrationError", "last_migration_report"]
+from src.adapters.sqlite.migrations import LATEST  # noqa: E402,F401  (re-export for callers)
+
+__all__ = ["LATEST", "get_db", "close_connection", "ensure_database_ready", "MigrationError", "last_migration_report"]
 
 
 def _read_schema_sql() -> str:

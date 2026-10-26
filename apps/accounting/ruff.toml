@@ -8,6 +8,8 @@ include = [
     "tests/test_prod_snapshot.py",
     "tests/test_migrations.py",
     "tests/test_backup.py",
+    "tests/test_auth_security.py",
+    "src/config/settings.py",
     "src/adapters/sqlite/core.py",
     "src/adapters/sqlite/migrations/**/*.py",
     "src/services/backup.py",
