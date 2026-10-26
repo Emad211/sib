@@ -32,6 +32,7 @@ def _integrity_error(error):
 from . import (  # noqa: E402, F401  (imported for their route registrations)
     arrears,
     dashboard,
+    expenses,
     exports,
     logs,
     payroll,

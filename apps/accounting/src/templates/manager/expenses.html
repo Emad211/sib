@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>هزینه‌های درمانگاه - سیستم درمانگاه</title>
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+  <script src="{{ url_for('static', filename='js/jalaali.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/jdatepicker.js') }}" defer></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Vazirmatn', sans-serif; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100vh; color: #f1f5f9; padding: 2rem 1rem; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; gap: 1rem; flex-wrap: wrap; }
+    h1 { font-size: 1.5rem; }
+    a { color: #a78bfa; text-decoration: none; }
+    .card { background: rgba(30, 41, 59, 0.6); border-radius: 20px; padding: 1.4rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1.2rem; }
+    .card h2 { font-size: 1.05rem; margin-bottom: .8rem; }
+    form.row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: flex-end; }
+    label { display: block; font-size: .78rem; color: #94a3b8; margin-bottom: .25rem; }
+    input[type=text], select { background: rgba(15,23,42,.8); color: #f1f5f9; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: .55rem .75rem; font-family: inherit; }
+    button { font-family: inherit; cursor: pointer; border: none; border-radius: 10px; padding: .55rem 1rem; font-weight: 700; }
+    .btn-add { background: #059669; color: #fff; }
+    .btn-void { background: rgba(239,68,68,.2); color: #fca5a5; padding: .3rem .6rem; font-size: .78rem; }
+    .month-nav { display: flex; gap: 1rem; align-items: center; }
+    .total { font-size: 1.6rem; font-weight: 900; color: #fbbf24; }
+    .cats { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+    .cat { background: rgba(255,255,255,.06); border-radius: 999px; padding: .25rem .7rem; font-size: .8rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { padding: .55rem .5rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    th { color: #94a3b8; font-weight: 600; font-size: .78rem; }
+    tr.void td { opacity: .5; text-decoration: line-through; }
+    .muted { color: #94a3b8; font-size: .8rem; }
+    .table-scroll { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="page-header">
+    <h1>💸 هزینه‌های درمانگاه</h1>
+    <a href="{{ url_for('manager.index') }}">→ بازگشت به داشبورد</a>
+  </div>
+  {% include 'manager/_flash.html' %}
+
+  <div class="card">
+    <h2>ثبت هزینه</h2>
+    <form method="post" class="row">
+      <input type="hidden" name="action" value="add">
+      <div><label>تاریخ</label><input type="text" name="spent_on" value="{{ today_fa }}" data-jdp autocomplete="off" style="width:130px" required></div>
+      <div><label>دسته</label><select name="category" required>{% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+      <div><label>مبلغ (تومان)</label><input type="text" name="amount" required placeholder="مثلاً 2500000" style="width:150px"></div>
+      <div><label>توضیح</label><input type="text" name="note" maxlength="300" placeholder="اختیاری" style="width:260px"></div>
+      <button type="submit" class="btn-add">➕ ثبت</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="month-nav">
+      <a href="{{ url_for('manager.expenses', month=prev_month) }}">› ماه قبل</a>
+      <h2 style="margin:0">{{ month_label }}</h2>
+      <a href="{{ url_for('manager.expenses', month=next_month) }}">ماه بعد ‹</a>
+    </div>
+    <div class="total">{{ '{:,.0f}'.format(total) }} <span class="muted">تومان</span></div>
+    <div class="cats">{% for name, amount in by_category %}<span class="cat">{{ name }}: {{ '{:,.0f}'.format(amount) }}</span>{% endfor %}</div>
+  </div>
+
+  <div class="card">
+    {% if rows %}
+    <div class="table-scroll"><table>
+      <thead><tr><th>تاریخ</th><th>دسته</th><th>مبلغ</th><th>توضیح</th><th>ثبت</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{{ 'void' if r.is_void else '' }}">
+          <td>{{ r.spent_on_fa }}</td>
+          <td>{{ r.category }}</td>
+          <td>{{ '{:,.0f}'.format(r.amount) }}</td>
+          <td>{{ r.note or '' }}{% if r.is_void %} <span class="muted">(باطل: {{ r.void_reason }})</span>{% endif %}</td>
+          <td class="muted">{{ r.created_by or '' }}</td>
+          <td>
+            {% if not r.is_void %}
+            <form method="post" onsubmit="var x = prompt('دلیل ابطال این هزینه؟'); if (!x) return false; this.reason.value = x; return true;">
+              <input type="hidden" name="action" value="void">
+              <input type="hidden" name="expense_id" value="{{ r.id }}">
+              <input type="hidden" name="reason" value="">
+              <button type="submit" class="btn-void">ابطال</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="muted">در این ماه هزینه‌ای ثبت نشده است.</div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

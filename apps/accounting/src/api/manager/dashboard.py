@@ -15,6 +15,7 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.jalali import Gregorian
 from src.common.utils import format_jalali_datetime, iran_now
+from src.services import manager_finance as finance
 from src.services import manager_insights as insights
 from src.services.exports import table_response
 
@@ -274,6 +275,7 @@ def index():
         avg_daily=avg_daily,
         server_time=iran_now().isoformat(),
         attention=_safe_insight(insights.attention_items, db, current_app.config.get("BACKUP_FOLDER")),
+        month=_safe_insight(finance.month_tiles, db, iran_now().date()) or None,
         shifts=_safe_insight(insights.recent_shifts, db, 3),
         health=insights.system_health(
             db, current_app.config.get("DATABASE_PATH"), current_app.config.get("BACKUP_FOLDER"), __version__
@@ -494,44 +496,43 @@ def chart_data():
             ).fetchone()["val"]
 
         elif data_type == "services":
-            # خدمات تفکیکی - برگرداندن هر سه نوع
-            visits_count = (
-                db.execute(
-                    """
-                SELECT COUNT(*) as val FROM visits 
-                WHERE work_date = ?
-            """,
-                    (day_key,),
-                ).fetchone()["val"]
-                or 0
-            )
+            # FB-22: by amount (Toman) of closed invoices, not by count: 1 procedure vs 40 nursing
+            # services made the old count chart meaningless.
+            def _sum(sql):
+                return db.execute(sql, (day_key,)).fetchone()["val"] or 0
 
-            injections_count = (
-                db.execute(
-                    """
-                SELECT COUNT(*) as val FROM injections 
-                WHERE work_date = ?
-            """,
-                    (day_key,),
-                ).fetchone()["val"]
-                or 0
+            visits_count = _sum(
+                "SELECT SUM(v.price) AS val FROM visits v JOIN invoices i ON i.id = v.invoice_id "
+                "WHERE i.status = 'closed' AND i.work_date = ?"
             )
-
-            procedures_count = (
-                db.execute(
-                    """
-                SELECT COUNT(*) as val FROM procedures 
-                WHERE work_date = ?
-            """,
-                    (day_key,),
-                ).fetchone()["val"]
-                or 0
+            injections_count = _sum(
+                "SELECT SUM(j.total_price) AS val FROM injections j JOIN invoices i ON i.id = j.invoice_id "
+                "WHERE i.status = 'closed' AND i.work_date = ?"
             )
-
+            procedures_count = _sum(
+                "SELECT SUM(p.price) AS val FROM procedures p JOIN invoices i ON i.id = p.invoice_id "
+                "WHERE i.status = 'closed' AND i.work_date = ?"
+            )
             visits_data.append(visits_count)
             injections_data.append(injections_count)
             procedures_data.append(procedures_count)
             result = visits_count + injections_count + procedures_count
+
+        elif data_type == "transactions":
+            # FB-21: what patients paid (closed invoices, consumables included)
+            result = db.execute(
+                "SELECT SUM(total_amount) AS val FROM invoices WHERE status = 'closed' AND work_date = ?", (day_key,)
+            ).fetchone()["val"]
+
+        elif data_type == "expenses":
+            result = db.execute(
+                "SELECT SUM(amount) AS val FROM expenses WHERE COALESCE(is_void, 0) = 0 AND spent_on = ?", (day_key,)
+            ).fetchone()["val"]
+
+        elif data_type == "salaries":
+            from .payroll import compute_payroll
+
+            result = sum(r["total_salary"] for r in compute_payroll(db, day_key, day_key))
 
         else:
             result = 0
