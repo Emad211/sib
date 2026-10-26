@@ -80,6 +80,9 @@ def create_app(test_config=None):
         configure_logging(os.path.join(os.path.dirname(os.path.abspath(db_path)), "logs"))
     _register_error_pages(app)
 
+    from src.web.csrf import init_csrf
+    init_csrf(app)  # SEC-05: every POST/PUT/PATCH/DELETE needs the session's CSRF token
+
     @app.context_processor
     def _inject_version():
         from src.__version__ import __version__

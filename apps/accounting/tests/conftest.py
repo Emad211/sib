@@ -45,6 +45,26 @@ def _guard_real_db():
         "A test wrote to the real production DB.")
 
 
+from flask.testing import FlaskClient  # noqa: E402
+
+
+class CsrfClient(FlaskClient):
+    """Behaves like a browser running static/js/csrf.js: unsafe requests carry the
+    session's CSRF token. Pass csrf=False to send a request without it."""
+
+    def open(self, *args, csrf=True, **kwargs):
+        method = (kwargs.get("method") or "GET").upper()
+        if csrf and method in {"POST", "PUT", "PATCH", "DELETE"}:
+            from src.web.csrf import HEADER, SESSION_KEY
+
+            with self.session_transaction() as s:
+                token = s.setdefault(SESSION_KEY, "test-csrf-token")
+            headers = dict(kwargs.pop("headers", None) or {})
+            headers.setdefault(HEADER, token)
+            kwargs["headers"] = headers
+        return super().open(*args, **kwargs)
+
+
 @pytest.fixture(scope="session")
 def synthetic_db_template(tmp_path_factory):
     """One synthetic, production-shaped DB per test session (ACC-0.4). Never modified:
@@ -72,6 +92,7 @@ def synthetic_app(tmp_path, synthetic_db_template):
     cfg.update({"TESTING": True, "DATABASE_PATH": temp_db, "SECRET_KEY": "test-only",
                 "BACKUP_FOLDER": str(tmp_path / "backups")})
     app = create_app(cfg)
+    app.test_client_class = CsrfClient
     try:
         yield app
     finally:
