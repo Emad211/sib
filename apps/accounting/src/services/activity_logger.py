@@ -93,6 +93,7 @@ class ActionType:
     BACKUP_DOWNLOAD = 'backup_download'
     DATABASE_RESET = 'database_reset'
     SETTINGS_CHANGE = 'settings_change'
+    USER_UNLOCK = 'user_unlock'
 
 
 # دسته‌بندی عملیات (action_category)
@@ -120,6 +121,7 @@ ACTION_DESCRIPTIONS = {
     ActionType.BACKUP_DOWNLOAD: 'دانلود پشتیبان',
     ActionType.DATABASE_RESET: 'ریست کامل دیتابیس',
     ActionType.SETTINGS_CHANGE: 'تغییر تنظیمات',
+    ActionType.USER_UNLOCK: 'باز کردن قفل حساب',
     ActionType.LOGIN: 'ورود به سیستم',
     ActionType.LOGOUT: 'خروج از سیستم',
     

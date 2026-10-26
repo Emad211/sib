@@ -5,11 +5,12 @@ from src.api.auth import login_required
 from src.adapters.sqlite.core import get_db
 from datetime import datetime, timedelta, date
 from src.common.jalali import Gregorian
-from src.common.utils import iran_now
+from src.common.utils import format_jalali_datetime, iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
 from src.services.auth_service import USER_ROLES
 from src.__version__ import __version__
 from src.services import manager_insights as insights
+from src.services import tariff_audit
 from src.services.exports import table_response
 import jdatetime
 
@@ -246,6 +247,40 @@ def _safe_insight(fn, *args):
     except Exception:
         current_app.logger.exception("dashboard insight %s failed", fn.__name__)
         return []
+
+
+@bp.route('/invoice/<int:invoice_id>/history')
+@login_required
+def invoice_history(invoice_id):
+    """Everything that happened to one invoice, in time order (ACC-2.8, A06 §3.3)."""
+    if g.user['role'] != 'manager':
+        return redirect(url_for('reception.index'))
+    db = get_db()
+    inv = db.execute(
+        """SELECT i.*, COALESCE(p.full_name, '—') AS patient_name,
+                  COALESCE(uo.full_name, i.opened_by) AS opened_by_fa, COALESCE(uc.full_name, i.closed_by) AS closed_by_fa
+           FROM invoices i LEFT JOIN patients p ON p.id = i.patient_id
+           LEFT JOIN users uo ON uo.username = i.opened_by LEFT JOIN users uc ON uc.username = i.closed_by
+           WHERE i.id = ?""", (invoice_id,)).fetchone()
+    if inv is None:
+        abort(404)
+    items = []
+    for label, sql in (
+        ('ویزیت', "SELECT doctor_name AS name, price AS amount FROM visits WHERE invoice_id = ?"),
+        ('پرستاری', "SELECT injection_type AS name, total_price AS amount FROM injections WHERE invoice_id = ?"),
+        ('کار عملی', "SELECT procedure_type AS name, price AS amount FROM procedures WHERE invoice_id = ?"),
+        ('مصرفی', "SELECT item_name AS name, total_cost AS amount FROM consumables_ledger WHERE invoice_id = ?"),
+    ):
+        items += [{'kind': label, 'name': r['name'], 'amount': r['amount'] or 0} for r in db.execute(sql, (invoice_id,))]
+    events = [dict(r) | {'at_fa': format_jalali_datetime(r['created_at'], include_seconds=True)} for r in db.execute(
+        """SELECT created_at, username, action_type, description, amount, old_value, new_value, target_name
+           FROM activity_logs WHERE invoice_id = ? ORDER BY created_at, id""", (invoice_id,))]
+    from src.services.activity_logger import ACTION_DESCRIPTIONS
+    for e in events:
+        e['action_fa'] = ACTION_DESCRIPTIONS.get(e['action_type'], e['action_type'])
+    return render_template('manager/invoice_history.html', inv=inv, items=items, events=events,
+                           opened_fa=format_jalali_datetime(inv['opened_at']), closed_fa=format_jalali_datetime(inv['closed_at']),
+                           date_fa=insights.jalali_date(inv['work_date']))
 
 
 @bp.route('/attention/<key>')
@@ -2807,6 +2842,27 @@ def tariffs_index():
     return render_template('manager/tariffs.html')
 
 
+@bp.route('/tariffs/history')
+@login_required
+def tariff_history():
+    """Who changed which tariff, when, from what to what (ACC-2.8). CSV/Excel via ?format=."""
+    if g.user['role'] != 'manager':
+        flash('دسترسی محدود', 'error')
+        return redirect(url_for('reception.index'))
+    from src.services.tariff_audit import KIND_LABELS
+    kind = request.args.get('kind', '').strip()
+    kind = kind if kind in KIND_LABELS else None
+    rows = tariff_audit.history(get_db(), kind=kind, limit=20000)
+    if request.args.get('format') in ('csv', 'xlsx'):
+        data = [[format_jalali_datetime(r['changed_at']), r['username'] or '', r['kind_label'], r['label'] or '',
+                 r['action_label'], r['field'] or '', r['old_value'] or '', r['new_value'] or ''] for r in rows]
+        headers = ['زمان', 'کاربر', 'نوع', 'مورد', 'عملیات', 'تغییر', 'قبل', 'بعد']
+        return table_response(data, headers, 'tariff_history', 'تاریخچه تعرفه')
+    for r in rows:
+        r['changed_at_fa'] = format_jalali_datetime(r['changed_at'])
+    return render_template('manager/tariff_history.html', rows=rows[:500], total=len(rows), kind=kind, kinds=KIND_LABELS)
+
+
 @bp.route('/tariffs/nursing', methods=['GET', 'POST'])
 @login_required
 def nursing_tariffs():
@@ -2829,10 +2885,11 @@ def nursing_tariffs():
                 unit_price = 0
             
             if service_name:
-                db.execute(
+                cur = db.execute(
                     "INSERT INTO nursing_services (service_name, unit_price, is_active) VALUES (?, ?, 1)",
                     (service_name, unit_price)
                 )
+                tariff_audit.record_created(db, 'nursing', cur.lastrowid, service_name, {'price': unit_price})
                 db.commit()
                 flash(f'خدمت "{service_name}" با موفقیت اضافه شد.', 'success')
         
@@ -2847,17 +2904,27 @@ def nursing_tariffs():
                 unit_price = 0
             
             if service_id and service_name:
+                old = db.execute("SELECT * FROM nursing_services WHERE id = ?", (service_id,)).fetchone()
                 db.execute(
                     "UPDATE nursing_services SET service_name = ?, unit_price = ?, is_active = ? WHERE id = ?",
                     (service_name, unit_price, 1 if is_active else 0, service_id)
                 )
+                if old:
+                    tariff_audit.record_update(db, 'nursing', service_id, service_name, {
+                        'name': (old['service_name'], service_name),
+                        'price': (old['unit_price'], unit_price),
+                        'active': (old['is_active'], 1 if is_active else 0),
+                    })
                 db.commit()
                 flash('تعرفه با موفقیت بروزرسانی شد.', 'success')
         
         elif action == 'delete':
             service_id = request.form.get('service_id')
             if service_id:
+                old = db.execute("SELECT * FROM nursing_services WHERE id = ?", (service_id,)).fetchone()
                 db.execute("DELETE FROM nursing_services WHERE id = ?", (service_id,))
+                if old:
+                    tariff_audit.record_deleted(db, 'nursing', service_id, old['service_name'], {'price': old['unit_price']})
                 db.commit()
                 flash('خدمت با موفقیت حذف شد.', 'success')
         
@@ -2912,10 +2979,13 @@ def insurance_tariffs():
                 if existing:
                     flash(f'بیمه "{insurance_type}" قبلاً تعریف شده است.', 'error')
                 else:
-                    db.execute(
+                    cur = db.execute(
                         "INSERT INTO visit_tariffs (insurance_type, tariff_price, nursing_covers, is_active, is_supplementary) VALUES (?, ?, ?, 1, ?)",
                         (insurance_type, tariff_price, 1 if nursing_covers else 0, 1 if is_supplementary else 0)
                     )
+                    tariff_audit.record_created(db, 'insurance', cur.lastrowid, insurance_type, {
+                        'price': tariff_price, 'nursing_covers': 1 if nursing_covers else 0,
+                        'supplementary': 1 if is_supplementary else 0})
                     db.commit()
                     flash(f'بیمه "{insurance_type}" با موفقیت اضافه شد.', 'success')
         
@@ -2932,10 +3002,19 @@ def insurance_tariffs():
                 tariff_price = 0
             
             if tariff_id and insurance_type:
+                old = db.execute("SELECT * FROM visit_tariffs WHERE id = ?", (tariff_id,)).fetchone()
                 db.execute(
                     "UPDATE visit_tariffs SET insurance_type = ?, tariff_price = ?, nursing_covers = ?, is_active = ?, is_supplementary = ? WHERE id = ?",
                     (insurance_type, tariff_price, 1 if nursing_covers else 0, 1 if is_active else 0, 1 if is_supplementary else 0, tariff_id)
                 )
+                if old:
+                    tariff_audit.record_update(db, 'insurance', tariff_id, insurance_type, {
+                        'name': (old['insurance_type'], insurance_type),
+                        'price': (old['tariff_price'], tariff_price),
+                        'nursing_covers': (old['nursing_covers'], 1 if nursing_covers else 0),
+                        'active': (old['is_active'], 1 if is_active else 0),
+                        'supplementary': (old['is_supplementary'], 1 if is_supplementary else 0),
+                    })
                 db.commit()
                 flash('تعرفه بیمه با موفقیت بروزرسانی شد.', 'success')
         
@@ -2943,11 +3022,14 @@ def insurance_tariffs():
             tariff_id = request.form.get('tariff_id')
             if tariff_id:
                 # اجازه حذف تعرفه پایه را ندهیم
-                base_check = db.execute("SELECT is_base_tariff FROM visit_tariffs WHERE id = ?", (tariff_id,)).fetchone()
+                base_check = db.execute("SELECT * FROM visit_tariffs WHERE id = ?", (tariff_id,)).fetchone()
                 if base_check and base_check['is_base_tariff']:
                     flash('تعرفه پایه (آزاد) قابل حذف نیست.', 'error')
                 else:
                     db.execute("DELETE FROM visit_tariffs WHERE id = ?", (tariff_id,))
+                    if base_check:
+                        tariff_audit.record_deleted(db, 'insurance', tariff_id, base_check['insurance_type'],
+                                                    {'price': base_check['tariff_price']})
                     db.commit()
                     flash('بیمه با موفقیت حذف شد.', 'success')
         
@@ -2960,17 +3042,20 @@ def insurance_tariffs():
                 base_price = 0
             
             # بررسی وجود تعرفه پایه
-            existing_base = db.execute("SELECT id FROM visit_tariffs WHERE is_base_tariff = 1").fetchone()
+            existing_base = db.execute("SELECT id, insurance_type, tariff_price FROM visit_tariffs WHERE is_base_tariff = 1").fetchone()
             if existing_base:
                 db.execute(
                     "UPDATE visit_tariffs SET tariff_price = ? WHERE is_base_tariff = 1",
                     (base_price,)
                 )
+                tariff_audit.record_update(db, 'insurance', existing_base['id'], existing_base['insurance_type'],
+                                           {'price': (existing_base['tariff_price'], base_price)})
             else:
-                db.execute(
+                cur = db.execute(
                     "INSERT INTO visit_tariffs (insurance_type, tariff_price, nursing_covers, is_active, is_supplementary, is_base_tariff) VALUES ('آزاد', ?, 0, 1, 0, 1)",
                     (base_price,)
                 )
+                tariff_audit.record_created(db, 'insurance', cur.lastrowid, 'آزاد', {'price': base_price})
             db.commit()
             flash('تعرفه پایه (آزاد) با موفقیت ذخیره شد.', 'success')
         
@@ -3026,10 +3111,13 @@ def set_nursing_exclusions(insurance_type: str):
     except Exception:
         return jsonify({'error': 'service_ids must be integers list'}), 400
     db = get_db()
+    before = {r['nursing_service_id'] for r in db.execute(
+        "SELECT nursing_service_id FROM insurance_nursing_exclusions WHERE insurance_type = ?", (insurance_type,))}
     # Replace: delete existing for this insurance, then insert provided ones
     db.execute("DELETE FROM insurance_nursing_exclusions WHERE insurance_type = ?", (insurance_type,))
     for sid in service_ids:
         db.execute("INSERT INTO insurance_nursing_exclusions (insurance_type, nursing_service_id) VALUES (?, ?)", (insurance_type, sid))
+    tariff_audit.record_exclusions(db, insurance_type, before, set(service_ids))
     db.commit()
     return jsonify({'success': True, 'insurance_type': insurance_type, 'service_ids': service_ids})
 
@@ -3065,10 +3153,11 @@ def consumables_tariffs():
                 if existing:
                     flash(f'مصرفی "{name}" قبلاً تعریف شده است.', 'error')
                 else:
-                    db.execute(
+                    cur = db.execute(
                         "INSERT INTO consumable_tariffs (name, default_price, category, is_active) VALUES (?, ?, ?, 1)",
                         (name, default_price, category)
                     )
+                    tariff_audit.record_created(db, 'consumable', cur.lastrowid, name, {'price': default_price})
                     db.commit()
                     flash(f'مصرفی "{name}" با موفقیت اضافه شد.', 'success')
         
@@ -3084,17 +3173,28 @@ def consumables_tariffs():
                 default_price = 0
             
             if item_id and name:
+                old = db.execute("SELECT * FROM consumable_tariffs WHERE id = ?", (item_id,)).fetchone()
                 db.execute(
                     "UPDATE consumable_tariffs SET name = ?, default_price = ?, category = ?, is_active = ? WHERE id = ?",
                     (name, default_price, category, 1 if is_active else 0, item_id)
                 )
+                if old:
+                    tariff_audit.record_update(db, 'consumable', item_id, name, {
+                        'name': (old['name'], name),
+                        'price': (old['default_price'], default_price),
+                        'category': (old['category'], category),
+                        'active': (old['is_active'], 1 if is_active else 0),
+                    })
                 db.commit()
                 flash('مصرفی با موفقیت بروزرسانی شد.', 'success')
         
         elif action == 'delete':
             item_id = request.form.get('item_id')
             if item_id:
+                old = db.execute("SELECT * FROM consumable_tariffs WHERE id = ?", (item_id,)).fetchone()
                 db.execute("DELETE FROM consumable_tariffs WHERE id = ?", (item_id,))
+                if old:
+                    tariff_audit.record_deleted(db, 'consumable', item_id, old['name'], {'price': old['default_price']})
                 db.commit()
                 flash('مصرفی با موفقیت حذف شد.', 'success')
         
@@ -3165,6 +3265,18 @@ def users_management():
                         else:
                             flash(f'خطا در ایجاد کاربر "{full_name}".', 'error')
             
+            elif action == 'unlock':
+                user_id = request.form.get('user_id', type=int)
+                target = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone() if user_id else None
+                if target:
+                    db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", (user_id,))
+                    db.commit()
+                    log_activity(ActionType.USER_UNLOCK, ActionCategory.SYSTEM, target_type='user', target_id=user_id,
+                                 target_name=target['username'])
+                    flash(f'قفل حساب «{target["username"]}» باز شد.', 'success')
+                else:
+                    flash('کاربر یافت نشد.', 'error')
+
             elif action == 'update':
                 user_id = request.form.get('user_id')
                 username = request.form.get('username', '').strip()
@@ -3245,7 +3357,18 @@ def users_management():
         return redirect(url_for('manager.users_management'))
     
     # دریافت لیست‌ها
-    users = db.execute("SELECT * FROM users ORDER BY role, full_name").fetchall()
+    now_text = iran_now().strftime('%Y-%m-%d %H:%M:%S')
+    month_ago = (iran_now() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+    ops = {r['username']: r['n'] for r in db.execute(
+        "SELECT username, COUNT(*) AS n FROM activity_logs WHERE created_at >= ? AND action_category != 'auth' GROUP BY username",
+        (month_ago,))}
+    users = []
+    for row in db.execute("SELECT * FROM users ORDER BY role, full_name").fetchall():
+        u = dict(row)
+        u['is_locked'] = bool(u['locked_until']) and str(u['locked_until']).replace('T', ' ') > now_text
+        u['last_login_fa'] = format_jalali_datetime(u['last_login']) if u['last_login'] else '—'
+        u['ops_30d'] = ops.get(u['username'], 0)
+        users.append(u)
     staff = db.execute("SELECT * FROM medical_staff ORDER BY staff_type, full_name").fetchall()
     
     managers = [u for u in users if u['role'] == 'manager']

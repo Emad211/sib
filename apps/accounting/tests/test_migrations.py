@@ -69,6 +69,8 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "index added: idx_users_staff_id",
             "index added: idx_invoices_work_date_status",
             "index added: idx_invoices_patient_work_date",
+            "table added: tariff_changes",
+            "index added: idx_tariff_changes_changed_at",
         ]
     )
     assert after["user_version"] == LATEST

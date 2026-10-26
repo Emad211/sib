@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>تاریخچهٔ تعرفه‌ها - سیستم درمانگاه</title>
+    <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Vazirmatn', sans-serif; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100vh; color: #f1f5f9; padding: 2rem; }
+        .wrap { max-width: 1200px; margin: 0 auto; }
+        a.back { color: #a78bfa; text-decoration: none; font-size: .9rem; }
+        h1 { font-size: 1.4rem; margin: 1rem 0 .3rem; }
+        .note { color: #94a3b8; font-size: .85rem; margin-bottom: 1.2rem; }
+        .card { background: rgba(30, 41, 59, 0.6); border-radius: 20px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.06); }
+        .toolbar { display: flex; gap: .6rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+        .toolbar a { background: #059669; color: #fff; text-decoration: none; font-size: .8rem; padding: .45rem .9rem; border-radius: 10px; }
+        .toolbar select { background: rgba(15,23,42,.8); color: #f1f5f9; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: .45rem .8rem; font-family: inherit; }
+        .table-scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+        th, td { padding: .65rem .7rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); white-space: nowrap; }
+        th { color: #94a3b8; font-weight: 600; font-size: .78rem; }
+        .old { color: #fca5a5; } .new { color: #6ee7b7; }
+        .empty { color: #94a3b8; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <a class="back" href="{{ url_for('manager.tariffs_index') }}">→ بازگشت به تعرفه‌ها</a>
+    <h1>تاریخچهٔ تغییر تعرفه‌ها</h1>
+    <div class="note">هر تغییر قیمت یا پوشش، فاکتورها را تغییر می‌دهد. اینجا می‌بینید چه کسی، کی، از چه به چه تغییر داده است. (تغییرهای پیش از نسخهٔ ۲٫۱٫۰ ثبت نشده‌اند.)</div>
+    <div class="card">
+        <div class="toolbar">
+            <form method="get"><select name="kind" onchange="this.form.submit()">
+                <option value="">همهٔ انواع</option>
+                {% for k, label in kinds.items() %}<option value="{{ k }}" {% if kind == k %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></form>
+            <a href="{{ url_for('manager.tariff_history', kind=kind or '', format='csv') }}">📥 CSV</a>
+            <a href="{{ url_for('manager.tariff_history', kind=kind or '', format='xlsx') }}">📥 Excel</a>
+            <span class="note" style="margin:0">{{ total }} تغییر{% if total > rows|length %} (۵۰۰ مورد آخر نمایش داده می‌شود؛ بقیه در خروجی){% endif %}</span>
+        </div>
+        {% if rows %}
+        <div class="table-scroll">
+        <table>
+            <thead><tr><th>زمان</th><th>کاربر</th><th>نوع</th><th>مورد</th><th>عملیات</th><th>تغییر</th><th>قبل</th><th>بعد</th></tr></thead>
+            <tbody>
+            {% for r in rows %}
+            <tr>
+                <td>{{ r.changed_at_fa }}</td><td>{{ r.username or '—' }}</td><td>{{ r.kind_label }}</td><td>{{ r.label or '—' }}</td>
+                <td>{{ r.action_label }}</td><td>{{ r.field or '' }}</td>
+                <td class="old">{{ r.old_value or '' }}</td><td class="new">{{ r.new_value or '' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="empty">هنوز تغییری ثبت نشده است.</div>
+        {% endif %}
+    </div>
+</div>
+</body>
+</html>

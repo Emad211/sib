@@ -40,8 +40,8 @@
             <tbody>
             {% for row in rows %}
             <tr>{% for cell in row %}<td>
-                {%- if loop.first and headers[0] == 'شماره فاکتور' -%}
-                    <a href="{{ url_for('manager.activity_logs', invoice_id=cell) }}">{{ cell }}</a>
+                {%- if 'فاکتور' in headers[loop.index0] and cell is integer -%}
+                    <a href="{{ url_for('manager.invoice_history', invoice_id=cell) }}">{{ cell }}</a>
                 {%- elif cell is number and cell > 99999 -%}{{ "{:,.0f}".format(cell) }}
                 {%- else -%}{{ cell }}{%- endif -%}
             </td>{% endfor %}</tr>

@@ -175,7 +175,11 @@ def recent_shifts(db, n: int = 3) -> list[dict]:
 
 # --------------------------------------------------------------------------- attention
 
+DUPLICATE_MINUTES = 10  # 10 pairs in 240 days of data: rare enough to look at each one
+
 ATTENTION_TITLES = {
+    "duplicate_invoices": "دو فاکتور برای یک بیمار در یک شیفت",
+    "tariff_changes": "تغییر تعرفه در ۲۴ ساعت اخیر",
     "open_invoices": "فاکتور باز قدیمی",
     "unset_payment": "آیتم بدون نوع پرداخت",
     "empty_closed": "فاکتور بستهٔ خالی",
@@ -294,7 +298,78 @@ def _locked_users(db, now):
     )
 
 
+def _has_items(alias: str) -> str:
+    return (
+        "("
+        + " OR ".join(
+            f"EXISTS (SELECT 1 FROM {t} x WHERE x.invoice_id = {alias}.id)"
+            for t in ("visits", "injections", "procedures", "consumables_ledger")
+        )
+        + ")"
+    )
+
+
+def _duplicate_invoices(db, now):
+    rows = db.execute(
+        f"""SELECT a.id AS first_id, b.id AS second_id, a.work_date, a.shift,
+                   CAST(ROUND((julianday(b.opened_at) - julianday(a.opened_at)) * 1440) AS INTEGER) AS minutes,
+                   COALESCE(u.full_name, a.opened_by) AS who
+            FROM invoices a
+            JOIN invoices b ON b.patient_id = a.patient_id AND b.work_date = a.work_date
+                           AND b.shift = a.shift AND b.id > a.id
+            LEFT JOIN users u ON u.username = a.opened_by
+            WHERE a.work_date >= ?
+              AND (julianday(b.opened_at) - julianday(a.opened_at)) * 1440 BETWEEN 0 AND ?
+              AND {_has_items("a")} AND {_has_items("b")}
+            ORDER BY a.work_date DESC, a.id DESC""",
+        (_window_start(db), DUPLICATE_MINUTES),
+    ).fetchall()
+    return (
+        ["فاکتور اول", "فاکتور دوم", "تاریخ کاری", "شیفت", "فاصله (دقیقه)", "پذیرش"],
+        [
+            [
+                r["first_id"],
+                r["second_id"],
+                jalali_date(r["work_date"]),
+                SHIFT_FA.get(r["shift"], r["shift"] or ""),
+                r["minutes"],
+                r["who"] or "",
+            ]
+            for r in rows
+        ],
+        f"هر دو آیتم دارند و کمتر از {DUPLICATE_MINUTES} دقیقه فاصله دارند",
+    )
+
+
+def _tariff_changes(db, now):
+    since = ((now or iran_now()) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = db.execute(
+        "SELECT * FROM tariff_changes WHERE datetime(changed_at) >= datetime(?) ORDER BY changed_at DESC, id DESC",
+        (since,),
+    ).fetchall()
+    from src.services.tariff_audit import KIND_LABELS
+
+    return (
+        ["زمان", "کاربر", "نوع", "مورد", "تغییر", "قبل", "بعد"],
+        [
+            [
+                format_jalali_datetime(r["changed_at"]),
+                r["username"] or "",
+                KIND_LABELS.get(r["kind"], r["kind"]),
+                r["label"] or "",
+                r["field"] or "",
+                r["old_value"] or "",
+                r["new_value"] or "",
+            ]
+            for r in rows
+        ],
+        "هر تغییر قیمت فاکتورها را تغییر می‌دهد؛ تاریخچهٔ کامل در صفحهٔ تعرفه‌ها",
+    )
+
+
 _DETAIL = {
+    "duplicate_invoices": _duplicate_invoices,
+    "tariff_changes": _tariff_changes,
     "open_invoices": _open_invoices,
     "unset_payment": _unset_payment,
     "empty_closed": _empty_closed,
@@ -346,7 +421,15 @@ def _system_items(backup_dir: str | None, now: datetime | None) -> list[dict]:
 def attention_items(db, backup_dir: str | None = None, now: datetime | None = None) -> list[dict]:
     """Exceptions only; an empty list means nothing needs the manager."""
     items = []
-    for key in ("open_invoices", "unset_payment", "empty_closed", "heavy_deletes", "locked_users"):
+    for key in (
+        "open_invoices",
+        "unset_payment",
+        "empty_closed",
+        "duplicate_invoices",
+        "heavy_deletes",
+        "tariff_changes",
+        "locked_users",
+    ):
         _headers, rows, note = _DETAIL[key](db, now)
         if rows:
             items.append(
