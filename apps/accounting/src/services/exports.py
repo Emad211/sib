@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 import zipfile
 from datetime import date, datetime
@@ -26,7 +27,7 @@ CSV_MIME = "text/csv; charset=utf-8"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _FORMULA_START = ("=", "+", "-", "@", "\t", "\r", "\n")
 _PLAIN_NUMBER = re.compile(r"[-+]?\d[\d,]*(\.\d+)?")
-_ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_ILLEGAL_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -87,6 +88,8 @@ def build_xlsx(headers, rows, sheet_title: str = "گزارش", plain_cols=()) ->
     def cell(ref, value, style=0, plain=False):
         if isinstance(value, bool):
             value = int(value)
+        if isinstance(value, float) and not math.isfinite(value):
+            value = None  # NaN/inf are not valid cell values
         if isinstance(value, (int, float)):
             if not style and not plain and float(value).is_integer():
                 style = 2

@@ -94,7 +94,7 @@ def _revenue_by_pair(db, pairs) -> dict[tuple[str, str], dict[str, float]]:
 
 
 def _same_shift_history(work_date: str, shift: str, weeks: int = 4):
-    d = date.fromisoformat(work_date)
+    d = date.fromisoformat(work_date[:10])
     return [((d - timedelta(days=7 * k)).isoformat(), shift) for k in range(1, weeks + 1)]
 
 
@@ -268,10 +268,10 @@ def _empty_closed(db, now):
 def _heavy_deletes(db, now):
     threshold = get_threshold(db, "anomaly_delete_threshold")
     rows = db.execute(
-        f"""SELECT a.username, DATE(a.created_at) AS day, COUNT(*) AS n, COALESCE(SUM(a.amount), 0) AS amount
-            FROM activity_logs a
-            WHERE a.action_type IN ({",".join("?" * len(DELETE_ACTIONS))}) AND DATE(a.created_at) >= ?
-            GROUP BY a.username, DATE(a.created_at) HAVING COUNT(*) >= ?
+        f"""SELECT a.username, i.work_date AS day, COUNT(*) AS n, COALESCE(SUM(a.amount), 0) AS amount
+            FROM activity_logs a JOIN invoices i ON i.id = a.invoice_id
+            WHERE a.action_type IN ({",".join("?" * len(DELETE_ACTIONS))}) AND i.work_date >= ?
+            GROUP BY a.username, i.work_date HAVING COUNT(*) >= ?
             ORDER BY day DESC, n DESC""",
         [*DELETE_ACTIONS, _window_start(db), threshold],
     ).fetchall()
@@ -284,7 +284,7 @@ def _heavy_deletes(db, now):
 
 def _locked_users(db, now):
     rows = db.execute(
-        "SELECT username, full_name, role, locked_until FROM users WHERE locked_until IS NOT NULL AND locked_until > ? ORDER BY locked_until",
+        "SELECT username, full_name, role, locked_until FROM users WHERE locked_until IS NOT NULL AND datetime(locked_until) > datetime(?) ORDER BY locked_until",
         (_now_text(now),),
     ).fetchall()
     return (

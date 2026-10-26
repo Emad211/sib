@@ -141,10 +141,12 @@ def test_empty_closed_invoice_is_flagged_but_zero_total_with_items_is_not(db):
 
 def test_heavy_deleter_threshold_is_twenty_per_user_per_day(db):
     def deletes(user, n, day="2026-09-24"):
+        inv = invoice(db, work_date=day)
+        item(db, inv)
         for _ in range(n):
             db.execute(
-                "INSERT INTO activity_logs (username, action_type, action_category, amount, created_at) VALUES (?, 'injection_delete', 'injection', 1000, ?)",
-                (user, f"{day} 09:00:00"),
+                "INSERT INTO activity_logs (username, action_type, action_category, amount, invoice_id, created_at) VALUES (?, 'injection_delete', 'injection', 1000, ?, ?)",
+                (user, inv, f"{day} 09:00:00"),
             )
         db.commit()
 
@@ -157,6 +159,21 @@ def test_heavy_deleter_threshold_is_twenty_per_user_per_day(db):
     assert rows == [["b", mi.jalali_date("2026-09-24"), 20, 20000]]
 
 
+def test_deletes_after_midnight_count_toward_the_same_work_date(db):
+    """A night shift that crosses midnight is one work date, not two calendar days."""
+    inv = invoice(db, shift="night")
+    item(db, inv)
+    for hour in ("22:00:00", "23:30:00", "00:30:00", "01:15:00"):
+        day = "2026-09-24" if hour >= "22" else "2026-09-25"
+        for _ in range(5):
+            db.execute(
+                "INSERT INTO activity_logs (username, action_type, action_category, invoice_id, created_at) VALUES ('n', 'visit_delete', 'visit', ?, ?)",
+                (inv, f"{day} {hour}"),
+            )
+    db.commit()
+    assert keys(db) == {"heavy_deletes": 1}  # 20 deletes on one work date
+
+
 def test_deletes_by_two_users_are_not_added_together(db):
     item(db, invoice(db))
     for user in ("a", "b"):
@@ -167,6 +184,25 @@ def test_deletes_by_two_users_are_not_added_together(db):
             )
     db.commit()
     assert keys(db) == {}
+
+
+def test_lock_written_by_the_app_in_iso_t_format_expires_correctly(db):
+    """auth_service writes locked_until with isoformat() ('T'); a text compare kept it 'locked' all day."""
+    db.execute(
+        "INSERT INTO users (username, password_hash, role, is_active, locked_until) VALUES ('t1', 'h', 'reception', 1, '2026-09-24T09:00:00')"
+    )
+    db.execute(
+        "INSERT INTO users (username, password_hash, role, is_active, locked_until) VALUES ('t2', 'h', 'reception', 1, '2026-09-24T12:10:00')"
+    )
+    db.commit()
+    rows = mi.attention_detail(db, "locked_users", NOW)[3]
+    assert [r[0] for r in rows] == ["t2"]
+
+
+def test_a_malformed_work_date_does_not_crash_the_shift_panel(db):
+    inv = invoice(db, work_date="2026-09-24T08:00:00")
+    item(db, inv)
+    assert mi.recent_shifts(db, 1)
 
 
 def test_locked_account_is_listed_until_the_lock_expires(db):

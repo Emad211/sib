@@ -232,11 +232,20 @@ def index():
         month_revenue=month_revenue,
         avg_daily=avg_daily,
         server_time=iran_now().isoformat(),
-        attention=insights.attention_items(db, current_app.config.get('BACKUP_FOLDER')),
-        shifts=insights.recent_shifts(db, 3),
+        attention=_safe_insight(insights.attention_items, db, current_app.config.get('BACKUP_FOLDER')),
+        shifts=_safe_insight(insights.recent_shifts, db, 3),
         health=insights.system_health(db, current_app.config.get('DATABASE_PATH'),
                                       current_app.config.get('BACKUP_FOLDER'), __version__),
     )
+
+
+def _safe_insight(fn, *args):
+    """The exception panels must never take the whole dashboard down (bad data -> empty panel + log)."""
+    try:
+        return fn(*args)
+    except Exception:
+        current_app.logger.exception("dashboard insight %s failed", fn.__name__)
+        return []
 
 
 @bp.route('/attention/<key>')

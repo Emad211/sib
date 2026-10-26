@@ -82,6 +82,19 @@ def test_control_characters_and_markup_cannot_break_the_file():
     assert _cells(sheet)["A2"].find(".//m:t", NS).text == "abc <&> ]]>"
 
 
+@pytest.mark.parametrize("bad", ["a\ufffeb", "a\uffffb", "a\ud800b", "ok\x1fok"])
+def test_characters_that_corrupt_the_sheet_are_dropped(bad):
+    sheet, _ = _sheet(exports.build_xlsx(["x"], [[bad]]))
+    assert _cells(sheet)["A2"].find(".//m:t", NS).text in ("ab", "okok")
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_numbers_become_empty_cells(bad):
+    sheet, _ = _sheet(exports.build_xlsx(["x"], [[bad]]))
+    cell = _cells(sheet)["A2"]
+    assert cell.find("m:v", NS) is None
+
+
 def test_empty_report_is_still_a_valid_workbook():
     sheet, _ = _sheet(exports.build_xlsx(["a", "b"], []))
     assert set(_cells(sheet)) == {"A1", "B1"}
