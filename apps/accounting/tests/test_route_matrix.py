@@ -54,7 +54,7 @@ def _observe(app, method, url, username):
     def _on_exc(sender, exception, **extra):
         tb = traceback.extract_tb(exception.__traceback__)
         frame = next((f for f in reversed(tb) if os.sep + "src" + os.sep in f.filename), tb[-1])
-        caught.append(f"{type(exception).__name__} @ {os.path.basename(frame.filename)}:{frame.lineno}")
+        caught.append(f"{type(exception).__name__} @ {os.path.basename(frame.filename)}:{frame.name}")
 
     client = app.test_client()
     if username:

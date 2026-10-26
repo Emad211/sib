@@ -262,7 +262,7 @@
    "status": 403
   },
   "manager": {
-   "error": "AttributeError @ manager.py:2856",
+   "error": "AttributeError @ manager.py:export_insurance_arrears",
    "status": 500
   },
   "reception": {
@@ -514,7 +514,7 @@
    "status": 302
   },
   "manager": {
-   "error": "TemplateNotFound @ manager.py:443",
+   "error": "TemplateNotFound @ manager.py:staff",
    "status": 500
   },
   "reception": {
@@ -688,15 +688,15 @@
    "status": 302
   },
   "doctor": {
-   "error": "TemplateNotFound @ reception.py:1495",
+   "error": "TemplateNotFound @ reception.py:my_shifts_report",
    "status": 500
   },
   "manager": {
-   "error": "TemplateNotFound @ reception.py:1495",
+   "error": "TemplateNotFound @ reception.py:my_shifts_report",
    "status": 500
   },
   "reception": {
-   "error": "TemplateNotFound @ reception.py:1495",
+   "error": "TemplateNotFound @ reception.py:my_shifts_report",
    "status": 500
   }
  },

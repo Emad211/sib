@@ -85,6 +85,15 @@ class ActionType:
     REPORT_VIEW = 'report_view'
     REPORT_EXPORT = 'report_export'
 
+    # سیستم (پشتیبان، تنظیمات)
+    BACKUP_CREATE = 'backup_create'
+    BACKUP_RESTORE = 'backup_restore'
+    BACKUP_DELETE = 'backup_delete'
+    BACKUP_UPLOAD = 'backup_upload'
+    BACKUP_DOWNLOAD = 'backup_download'
+    DATABASE_RESET = 'database_reset'
+    SETTINGS_CHANGE = 'settings_change'
+
 
 # دسته‌بندی عملیات (action_category)
 class ActionCategory:
@@ -99,10 +108,18 @@ class ActionCategory:
     SHIFT = 'shift'         # شیفت
     PRINT = 'print'         # چاپ
     REPORT = 'report'       # گزارش
+    SYSTEM = 'system'       # پشتیبان، تنظیمات، دیتابیس
 
 
 # توضیحات فارسی برای هر نوع عملیات
 ACTION_DESCRIPTIONS = {
+    ActionType.BACKUP_CREATE: 'ایجاد پشتیبان',
+    ActionType.BACKUP_RESTORE: 'بازگردانی دیتابیس از پشتیبان',
+    ActionType.BACKUP_DELETE: 'حذف پشتیبان',
+    ActionType.BACKUP_UPLOAD: 'آپلود پشتیبان',
+    ActionType.BACKUP_DOWNLOAD: 'دانلود پشتیبان',
+    ActionType.DATABASE_RESET: 'ریست کامل دیتابیس',
+    ActionType.SETTINGS_CHANGE: 'تغییر تنظیمات',
     ActionType.LOGIN: 'ورود به سیستم',
     ActionType.LOGOUT: 'خروج از سیستم',
     

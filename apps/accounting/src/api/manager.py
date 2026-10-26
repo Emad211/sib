@@ -6,6 +6,7 @@ from src.adapters.sqlite.core import get_db
 from datetime import datetime, timedelta, date
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
+from src.services.activity_logger import ActionCategory, ActionType, log_activity
 import jdatetime
 import csv
 import io
@@ -512,116 +513,68 @@ def get_network_info():
 @bp.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
-    """System settings and configuration with backup management."""
+    """System settings and backup management (backups via services.backup — ACC-1.2..1.4)."""
     if g.user['role'] != 'manager':
         return redirect(url_for('reception.index'))
-    
-    import os
-    import shutil
-    from pathlib import Path
-    from flask import current_app
-    
+
+    from src.services import backup as bk
+
     db = get_db()
-    backup_dir = Path(current_app.config.get('BACKUP_FOLDER'))
-    backup_dir.mkdir(exist_ok=True)
-    
+    backup_dir = current_app.config.get('BACKUP_FOLDER')
+    db_path = current_app.config.get('DATABASE_PATH')
+
     if request.method == 'POST':
         action = request.form.get('action')
-        
-        if action == 'create_backup':
-            # ایجاد بکاپ دستی
-            try:
-                db_path = Path(current_app.config.get('DATABASE_PATH'))
-                timestamp = iran_now().strftime('%Y%m%d_%H%M%S')
-                backup_name = f"backup_{timestamp}.db"
-                backup_path = backup_dir / backup_name
-                
-                shutil.copy2(db_path, backup_path)
-                flash(f'بکاپ با موفقیت ایجاد شد: {backup_name}', 'success')
-            except Exception as e:
-                flash(f'خطا در ایجاد بکاپ: {str(e)}', 'error')
-        
-        elif action == 'restore_backup':
-            # بازگردانی بکاپ
-            backup_name = request.form.get('backup_name')
-            if backup_name:
-                try:
-                    backup_path = backup_dir / backup_name
-                    db_path = Path(current_app.config.get('DATABASE_PATH'))
-                    
-                    if backup_path.exists():
-                        # ابتدا از دیتابیس فعلی بکاپ می‌گیریم
-                        timestamp = iran_now().strftime('%Y%m%d_%H%M%S')
-                        pre_restore_backup = backup_dir / f"pre_restore_{timestamp}.db"
-                        shutil.copy2(db_path, pre_restore_backup)
-                        
-                        # بازگردانی
-                        shutil.copy2(backup_path, db_path)
-                        flash(f'دیتابیس با موفقیت بازگردانی شد از: {backup_name}', 'success')
-                    else:
-                        flash('فایل بکاپ یافت نشد', 'error')
-                except Exception as e:
-                    flash(f'خطا در بازگردانی: {str(e)}', 'error')
-        
-        elif action == 'delete_backup':
-            # حذف بکاپ
-            backup_name = request.form.get('backup_name')
-            if backup_name:
-                try:
-                    backup_path = backup_dir / backup_name
-                    if backup_path.exists():
-                        backup_path.unlink()
-                        flash(f'بکاپ حذف شد: {backup_name}', 'success')
-                    else:
-                        flash('فایل بکاپ یافت نشد', 'error')
-                except Exception as e:
-                    flash(f'خطا در حذف بکاپ: {str(e)}', 'error')
-        
-        elif action == 'save_settings':
-            # ذخیره تنظیمات کلینیک
-            clinic_name = request.form.get('clinic_name', '')
-            clinic_phone = request.form.get('clinic_phone', '')
-            clinic_address = request.form.get('clinic_address', '')
-            auto_backup = request.form.get('auto_backup', '0')
-            
-            # ذخیره در جدول settings
-            db.execute("DELETE FROM settings WHERE key IN ('clinic_name', 'clinic_phone', 'clinic_address', 'auto_backup')")
-            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_name', clinic_name))
-            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_phone', clinic_phone))
-            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_address', clinic_address))
-            db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('auto_backup', auto_backup))
-            db.commit()
-            flash('تنظیمات ذخیره شد', 'success')
-        
+        backup_name = request.form.get('backup_name', '')
+        try:
+            if action == 'create_backup':
+                made = bk.create_backup(db_path, backup_dir, bk.KIND_MANUAL)
+                log_activity(ActionType.BACKUP_CREATE, ActionCategory.SYSTEM, target_name=made.name)
+                flash(f'بکاپ با موفقیت ایجاد شد: {made.name}', 'success')
+            elif action == 'restore_backup':
+                # Close this request's connection so the restore is not blocked by it.
+                from src.adapters.sqlite.core import close_connection
+                close_connection(None)
+                safety = bk.restore_backup(db_path, backup_dir, backup_name)
+                log_activity(
+                    ActionType.BACKUP_RESTORE, ActionCategory.SYSTEM,
+                    description=f'بازگردانی دیتابیس از {backup_name} (نسخهٔ قبلی: {safety.name})',
+                    target_name=backup_name,
+                )
+                flash(f'دیتابیس از «{backup_name}» بازگردانی شد. نسخهٔ قبلی در «{safety.name}» ذخیره شد.', 'success')
+            elif action == 'delete_backup':
+                bk.delete_backup(backup_dir, backup_name)
+                log_activity(ActionType.BACKUP_DELETE, ActionCategory.SYSTEM, target_name=backup_name)
+                flash(f'بکاپ حذف شد: {backup_name}', 'success')
+            elif action == 'save_settings':
+                clinic_name = request.form.get('clinic_name', '')
+                clinic_phone = request.form.get('clinic_phone', '')
+                clinic_address = request.form.get('clinic_address', '')
+                auto_backup = request.form.get('auto_backup', '0')
+                db.execute("DELETE FROM settings WHERE key IN ('clinic_name', 'clinic_phone', 'clinic_address', 'auto_backup')")
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_name', clinic_name))
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_phone', clinic_phone))
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('clinic_address', clinic_address))
+                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ('auto_backup', auto_backup))
+                db.commit()
+                log_activity(ActionType.SETTINGS_CHANGE, ActionCategory.SYSTEM,
+                             new_value=f'auto_backup={auto_backup}')
+                flash('تنظیمات ذخیره شد', 'success')
+        except bk.BackupError as e:
+            flash(str(e), 'error')
         return redirect(url_for('manager.settings'))
-    
-    # دریافت لیست بکاپ‌ها
+
     backups = []
-    if backup_dir.exists():
-        for f in sorted(backup_dir.glob('*.db'), key=lambda x: x.stat().st_mtime, reverse=True):
-            stat = f.stat()
-            # تبدیل تاریخ به شمسی
-            mtime = datetime.fromtimestamp(stat.st_mtime)
-            jalali_date = Gregorian(mtime.date()).persian_string()
-            jalali_time = mtime.strftime('%H:%M:%S')
-            
-            backups.append({
-                'name': f.name,
-                'size': round(stat.st_size / 1024, 1),  # KB
-                'date': f"{jalali_date} - {jalali_time}",
-                'timestamp': stat.st_mtime
-            })
-    
-    # دریافت تنظیمات فعلی
-    settings_data = {}
-    try:
-        rows = db.execute("SELECT key, value FROM settings").fetchall()
-        for row in rows:
-            settings_data[row['key']] = row['value']
-    except Exception as e:
-        print(f"[Manager.settings] Error loading settings: {e}")
-    
-    # آمار دیتابیس
+    for b in bk.list_backups(backup_dir):
+        backups.append({
+            'name': b.name,
+            'size': round(b.size_bytes / 1024, 1),  # KB
+            'date': f"{Gregorian(b.created_at.date()).persian_string()} - {b.created_at.strftime('%H:%M:%S')}",
+            'timestamp': b.created_at.timestamp(),
+        })
+
+    settings_data = {row['key']: row['value'] for row in db.execute("SELECT key, value FROM settings").fetchall()}
+
     db_stats = {
         'patients': db.execute("SELECT COUNT(*) FROM patients").fetchone()[0],
         'invoices': db.execute("SELECT COUNT(*) FROM invoices").fetchone()[0],
@@ -630,21 +583,18 @@ def settings():
         'procedures': db.execute("SELECT COUNT(*) FROM procedures").fetchone()[0],
         'users': db.execute("SELECT COUNT(*) FROM users").fetchone()[0],
     }
-    
-    # اندازه دیتابیس
-    db_path = Path(current_app.config.get('DATABASE_PATH'))
-    db_size = round(db_path.stat().st_size / (1024 * 1024), 2) if db_path.exists() else 0
-    
-    # اطلاعات شبکه
-    network_info = get_network_info()
-    
+
+    from pathlib import Path
+    p = Path(db_path)
+    db_size = round(p.stat().st_size / (1024 * 1024), 2) if p.exists() else 0
+
     return render_template(
         'manager/settings.html',
         backups=backups,
         settings=settings_data,
         db_stats=db_stats,
         db_size=db_size,
-        network_info=network_info
+        network_info=get_network_info()
     )
 
 
@@ -723,59 +673,46 @@ def reset_database():
 @bp.route('/settings/download/<backup_name>')
 @login_required
 def download_backup(backup_name):
-    """دانلود فایل بکاپ"""
+    """دانلود فایل بکاپ — فقط از پوشهٔ بکاپ و فقط با نام معتبر (SEC-02، DATA-03)."""
     if g.user['role'] != 'manager':
         return redirect(url_for('reception.index'))
-    
-    from pathlib import Path
+
     from flask import send_file
-    
-    backup_dir = Path(__file__).parent.parent.parent / 'backups'
-    backup_path = backup_dir / backup_name
-    
-    if backup_path.exists() and backup_name.endswith('.db'):
-        return send_file(
-            backup_path,
-            as_attachment=True,
-            download_name=backup_name
-        )
-    else:
+    from src.services import backup as bk
+
+    try:
+        path = bk.safe_backup_path(current_app.config.get('BACKUP_FOLDER'), backup_name)
+    except bk.BackupError:
+        path = None
+    if path is None or not path.exists():
         flash('فایل بکاپ یافت نشد', 'error')
         return redirect(url_for('manager.settings'))
+    log_activity(ActionType.BACKUP_DOWNLOAD, ActionCategory.SYSTEM, target_name=path.name)
+    return send_file(path, as_attachment=True, download_name=path.name)
 
 
 @bp.route('/settings/upload', methods=['POST'])
 @login_required
 def upload_backup():
-    """آپلود فایل بکاپ"""
+    """آپلود فایل بکاپ — فقط دیتابیس سالم حسابداری پذیرفته می‌شود."""
     if g.user['role'] != 'manager':
         return redirect(url_for('reception.index'))
-    
-    from pathlib import Path
-    
-    if 'backup_file' not in request.files:
+
+    from src.services import backup as bk
+
+    file = request.files.get('backup_file')
+    if file is None or not file.filename:
         flash('فایلی انتخاب نشده', 'error')
         return redirect(url_for('manager.settings'))
-    
-    file = request.files['backup_file']
-    if file.filename == '':
-        flash('فایلی انتخاب نشده', 'error')
-        return redirect(url_for('manager.settings'))
-    
-    if file and file.filename.endswith('.db'):
-        backup_dir = Path(__file__).parent.parent.parent / 'backups'
-        backup_dir.mkdir(exist_ok=True)
-        
-        # نام با timestamp برای جلوگیری از overwrite
-        timestamp = iran_now().strftime('%Y%m%d_%H%M%S')
-        safe_name = f"uploaded_{timestamp}.db"
-        backup_path = backup_dir / safe_name
-        
-        file.save(backup_path)
-        flash(f'فایل بکاپ آپلود شد: {safe_name}', 'success')
-    else:
+    if not file.filename.lower().endswith('.db'):
         flash('فقط فایل‌های .db مجاز هستند', 'error')
-    
+        return redirect(url_for('manager.settings'))
+    try:
+        saved = bk.save_uploaded_backup(current_app.config.get('BACKUP_FOLDER'), file)
+        log_activity(ActionType.BACKUP_UPLOAD, ActionCategory.SYSTEM, target_name=saved.name)
+        flash(f'فایل بکاپ آپلود شد: {saved.name}', 'success')
+    except bk.BackupError as e:
+        flash(str(e), 'error')
     return redirect(url_for('manager.settings'))
 
 

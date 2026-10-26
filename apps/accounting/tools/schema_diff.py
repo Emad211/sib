@@ -77,7 +77,8 @@ def dump(path: str) -> str:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     rows = conn.execute(
         "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL "
-        "AND name NOT LIKE 'sqlite_%' ORDER BY type, name"
+        "AND name NOT LIKE 'sqlite_%' "
+        "ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'view' THEN 2 ELSE 3 END, name"
     ).fetchall()
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     conn.close()
