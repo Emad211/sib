@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from src.config.settings import Config
 from src.adapters.sqlite.core import close_connection
+from src.services.auth_service import USER_ROLES
 
 
 def create_app(test_config=None):
@@ -132,8 +133,9 @@ def create_app(test_config=None):
             user = db.execute(
                 "SELECT * FROM users WHERE id = ?", (user_id,)
             ).fetchone()
-            # A deleted or deactivated account is logged out on its next request (SEC-04).
-            if user is None or not user["is_active"]:
+            # A deleted or deactivated account, or one with a retired role such as the old
+            # "doctor" login (Q-19), is logged out on its next request (SEC-04).
+            if user is None or not user["is_active"] or user["role"] not in USER_ROLES:
                 session.clear()
             else:
                 g.user = user
@@ -147,9 +149,6 @@ def create_app(test_config=None):
 
     from src.api.reception import bp as reception_bp
     app.register_blueprint(reception_bp)
-
-    from src.api.doctor import bp as doctor_bp
-    app.register_blueprint(doctor_bp)
 
     from src.api.manager import bp as manager_bp
     app.register_blueprint(manager_bp)

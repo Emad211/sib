@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, date
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
+from src.services.auth_service import USER_ROLES
 import jdatetime
 import csv
 import io
@@ -3133,7 +3134,9 @@ def users_management():
                 full_name = request.form.get('full_name', '').strip()
                 role = request.form.get('role', 'reception')
                 
-                if username and password and full_name:
+                if role not in USER_ROLES:
+                    flash('نقش کاربر نامعتبر است.', 'error')
+                elif username and password and full_name:
                     # چک کردن تکراری نبودن نام کاربری
                     existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
                     if existing:
@@ -3156,7 +3159,9 @@ def users_management():
                 is_active = request.form.get('is_active') == '1'
                 new_password = request.form.get('new_password', '').strip()
                 
-                if user_id and username and full_name:
+                if role not in USER_ROLES:
+                    flash('نقش کاربر نامعتبر است.', 'error')
+                elif user_id and username and full_name:
                     # چک کردن تکراری نبودن نام کاربری برای کاربر دیگر
                     existing = db.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, user_id)).fetchone()
                     if existing:
@@ -3191,42 +3196,16 @@ def users_management():
             if action == 'add':
                 full_name = request.form.get('full_name', '').strip()
                 staff_type = request.form.get('staff_type', 'doctor')
-                username = request.form.get('username', '').strip()
-                password = request.form.get('password', '').strip()
-                
-                if full_name:
-                    # Create staff record
-                    cur = db.execute(
+
+                if staff_type not in ('doctor', 'nurse'):
+                    flash('نوع کادر درمان نامعتبر است.', 'error')
+                elif full_name:
+                    db.execute(
                         "INSERT INTO medical_staff (full_name, staff_type, is_active) VALUES (?, ?, 1)",
                         (full_name, staff_type)
                     )
-                    staff_id = cur.lastrowid
                     db.commit()
-
-                    # Optionally create a linked doctor user account
-                    if staff_type == 'doctor' and (username or password):
-                        if not (username and password):
-                            flash('برای ساخت حساب پزشک، نام کاربری و رمز عبور هر دو لازم است.', 'error')
-                        else:
-                            existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
-                            if existing:
-                                flash(f'نام کاربری "{username}" قبلاً استفاده شده است.', 'error')
-                            else:
-                                from src.services.auth_service import AuthService
-                                auth_service = AuthService()
-                                created = auth_service.register_user(
-                                    username=username,
-                                    password=password,
-                                    role='doctor',
-                                    full_name=full_name,
-                                    staff_id=staff_id,
-                                )
-                                if created:
-                                    flash(f'پزشک "{full_name}" با حساب کاربری "{username}" اضافه شد.', 'success')
-                                else:
-                                    flash(f'پزشک "{full_name}" اضافه شد اما ساخت حساب کاربری ناموفق بود.', 'error')
-                    else:
-                        flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
+                    flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
             
             elif action == 'update':
                 staff_id = request.form.get('staff_id')

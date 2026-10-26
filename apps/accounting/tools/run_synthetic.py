@@ -3,7 +3,7 @@
     python tools/run_synthetic.py [DB_PATH] [--port 8081]
 
 Default DB: sib/_data/synthetic/clinic_new.db (create it with tools/make_synthetic_db.py).
-Logins: manager1 / reception1 / reception2 / doctor1, password `synthetic-pass`.
+Logins: manager1 / reception1 / reception2, password `synthetic-pass`.
 """
 
 import argparse

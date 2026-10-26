@@ -89,8 +89,3 @@ class AuthRepository:
     def get_reception_usernames(self) -> List[str]:
         users = self.get_all_users()
         return [u["username"] for u in users if u.get("role") == "reception" and u.get("is_active", 1)]
-
-    def get_doctor_usernames(self) -> List[str]:
-        """Get all active doctor usernames for dropdown."""
-        users = self.get_all_users()
-        return [u["username"] for u in users if u.get("role") == "doctor" and u.get("is_active", 1)]

@@ -4,16 +4,16 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/doctor/",
-   "status": 302
-  },
   "manager": {
    "location": "/manager/",
    "status": 302
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -22,10 +22,6 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/doctor/",
-   "status": 302
-  },
   "manager": {
    "location": "/manager/",
    "status": 302
@@ -33,19 +29,23 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /auth/login [auth.login]": {
   "anon": {
    "status": 200
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
+   "status": 200
+  },
+  "retired_doctor": {
    "status": 200
   }
  },
@@ -54,10 +54,6 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/auth/login",
-   "status": 302
-  },
   "manager": {
    "location": "/auth/login",
    "status": 302
@@ -65,22 +61,9 @@
   "reception": {
    "location": "/auth/login",
    "status": 302
-  }
- },
- "GET /doctor/ [doctor.index]": {
-  "anon": {
+  },
+  "retired_doctor": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "status": 200
-  },
-  "manager": {
-   "location": "/",
-   "status": 302
-  },
-  "reception": {
-   "location": "/",
    "status": 302
   }
  },
@@ -89,15 +72,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -106,14 +89,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/consumables/csv [manager.export_consumables_csv]": {
@@ -121,14 +105,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/invoices/csv [manager.export_invoices_csv]": {
@@ -136,14 +121,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/nursing/csv [manager.export_nursing_csv]": {
@@ -151,14 +137,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/patients/csv [manager.export_patients_csv]": {
@@ -166,14 +153,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/procedures/csv [manager.export_procedures_csv]": {
@@ -181,14 +169,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/users/csv [manager.export_users_csv]": {
@@ -196,14 +185,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/export/visits/csv [manager.export_visits_csv]": {
@@ -211,14 +201,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/insurance/<string:insurance_type>/nursing_exclusions [manager.get_nursing_exclusions]": {
@@ -226,14 +217,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/insurance_arrears [manager.insurance_arrears]": {
@@ -241,15 +233,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -258,14 +250,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/logs [manager.activity_logs]": {
@@ -273,15 +266,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -290,14 +283,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/logs/stats [manager.logs_stats]": {
@@ -305,14 +299,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/payroll [manager.payroll]": {
@@ -320,15 +315,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -337,15 +332,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -354,15 +349,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -371,15 +366,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -388,15 +383,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -405,15 +400,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -422,15 +417,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -439,15 +434,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -456,15 +451,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -473,25 +468,21 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/settings/download/<backup_name> [manager.download_backup]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -501,15 +492,15 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/staff [manager.staff]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -519,6 +510,10 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /manager/tariffs [manager.tariffs_index]": {
@@ -526,15 +521,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -543,15 +538,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -560,15 +555,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -577,15 +572,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -594,15 +589,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -611,14 +606,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/api/invoice/<int:invoice_id>/details [reception.get_invoice_details_api]": {
@@ -626,14 +622,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/api/shift/status [reception.get_shift_status]": {
@@ -641,14 +638,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/injections/new [reception.injections_new]": {
@@ -656,14 +654,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/ledgers [reception.combined_ledgers]": {
@@ -671,14 +670,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/my_shifts [reception.my_shifts_report]": {
@@ -686,16 +686,16 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/shift_performance",
-   "status": 302
-  },
   "manager": {
    "location": "/reception/shift_performance",
    "status": 302
   },
   "reception": {
    "location": "/reception/shift_performance",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -704,14 +704,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/nursing [reception.nursing_form]": {
@@ -719,16 +720,16 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/injections/new",
-   "status": 302
-  },
   "manager": {
    "location": "/reception/injections/new",
    "status": 302
   },
   "reception": {
    "location": "/reception/injections/new",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -737,16 +738,16 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/injections/new",
-   "status": 302
-  },
   "manager": {
    "location": "/reception/injections/new",
    "status": 302
   },
   "reception": {
    "location": "/reception/injections/new",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -755,14 +756,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/patients/<int:patient_id>/history [reception.patient_history]": {
@@ -770,14 +772,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/patients/list [reception.list_patients]": {
@@ -785,14 +788,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/procedures/new [reception.procedures_new]": {
@@ -800,14 +804,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/procedures_ledger [reception.procedures_ledger]": {
@@ -815,14 +820,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/search_patient [reception.search_patient]": {
@@ -830,14 +836,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "GET /reception/shift_performance [reception.shift_performance]": {
@@ -845,27 +852,28 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /auth/login [auth.login]": {
   "anon": {
    "status": 200
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
+   "status": 200
+  },
+  "retired_doctor": {
    "status": 200
   }
  },
@@ -874,14 +882,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 415
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/payroll [manager.payroll]": {
@@ -889,15 +898,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "location": "/reception/",
-   "status": 302
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -906,23 +915,20 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/settings [manager.settings]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -931,6 +937,10 @@
   },
   "reception": {
    "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
    "status": 302
   }
  },
@@ -939,23 +949,20 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 403
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 403
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/settings/upload [manager.upload_backup]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -965,15 +972,15 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/tariffs/consumables [manager.consumables_tariffs]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -983,15 +990,15 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/tariffs/insurance [manager.insurance_tariffs]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -1001,15 +1008,15 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/tariffs/nursing [manager.nursing_tariffs]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -1019,15 +1026,15 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /manager/users [manager.users_management]": {
   "anon": {
    "location": "/auth/login",
-   "status": 302
-  },
-  "doctor": {
-   "location": "/reception/",
    "status": 302
   },
   "manager": {
@@ -1037,6 +1044,10 @@
   "reception": {
    "location": "/reception/",
    "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/add_visit [reception.add_visit_to_invoice]": {
@@ -1044,14 +1055,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/api/shift/change [reception.change_shift]": {
@@ -1059,14 +1071,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/api/shift/dismiss_prompt [reception.dismiss_shift_prompt]": {
@@ -1074,14 +1087,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 200
-  },
   "manager": {
    "status": 200
   },
   "reception": {
    "status": 200
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/injections [reception.injections_submit]": {
@@ -1089,14 +1103,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/invoice/close [reception.close_invoice]": {
@@ -1104,14 +1119,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/invoice/open_existing [reception.open_invoice_existing]": {
@@ -1119,14 +1135,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/item/delete [reception.delete_item]": {
@@ -1134,14 +1151,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/item/payment [reception.set_item_payment]": {
@@ -1149,14 +1167,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/item/settle_all [reception.settle_all_items]": {
@@ -1164,14 +1183,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/new [reception.new_visit]": {
@@ -1179,14 +1199,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/nursing [reception.nursing_submit]": {
@@ -1194,14 +1215,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/procedures [reception.procedures_submit]": {
@@ -1209,14 +1231,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  },
  "POST /reception/shift_staff [reception.set_shift_staff_route]": {
@@ -1224,14 +1247,15 @@
    "location": "/auth/login",
    "status": 302
   },
-  "doctor": {
-   "status": 400
-  },
   "manager": {
    "status": 400
   },
   "reception": {
    "status": 400
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
   }
  }
 }

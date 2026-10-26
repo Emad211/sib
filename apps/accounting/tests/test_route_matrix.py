@@ -20,7 +20,9 @@ import pytest
 from conftest import login_as
 
 MATRIX_PATH = os.path.join(os.path.dirname(__file__), "route_matrix.json")
-ROLES = {"anon": None, "reception": "reception1", "doctor": "doctor1", "manager": "manager1"}
+# "retired_doctor" is a session for an account with the retired "doctor" role (Q-19): it must
+# behave exactly like "anon" everywhere (see test_retired_role_is_anonymous_everywhere).
+ROLES = {"anon": None, "reception": "reception1", "retired_doctor": "doctor1", "manager": "manager1"}
 SKIP_ENDPOINTS = {"static"}
 
 # Values for URL parameters; they exist in the synthetic DB (tools/make_synthetic_db.py).
@@ -128,3 +130,11 @@ def test_no_route_returns_server_error_for_logged_in_roles(synthetic_app):
 # BUG-01..04 fixed in ACC-1.9 (2026-10-26). Adding an entry here is never allowed:
 # a server error is a bug to fix, not a behaviour to pin.
 KNOWN_SERVER_ERRORS: list[str] = []
+
+
+def test_retired_role_is_anonymous_everywhere():
+    """Q-19: a session of a "doctor" account sees exactly what a logged-out visitor sees."""
+    with open(MATRIX_PATH, encoding="utf-8") as f:
+        expected = json.load(f)
+    leaks = [k for k, v in expected.items() if v["retired_doctor"] != v["anon"]]
+    assert not leaks, f"retired role differs from anon on: {leaks}"
