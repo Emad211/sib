@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -34,7 +35,10 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,150}\.db$")
 _STAMP = re.compile(r"(\d{8})_(\d{6})")
 
 # Retention for rotated kinds (auto + startup): newest per day/week/month.
-KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 14, 8, 12
+# 7 + 4 + 6 = at most 17 rotated copies (~1.8 GB at today's 108 MB database).
+KEEP_DAILY, KEEP_WEEKLY, KEEP_MONTHLY = 7, 4, 6
+# Never start a backup that would leave less than this much free disk space.
+MIN_FREE_AFTER_BACKUP = 500 * 1024 * 1024
 KEEP_PRE_MIGRATION = 5
 
 
@@ -96,6 +100,10 @@ def create_backup(
         raise BackupError("فایل دیتابیس پیدا نشد")
     out_dir = Path(backup_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    needed = src_path.stat().st_size + MIN_FREE_AFTER_BACKUP
+    if shutil.disk_usage(out_dir).free < needed:
+        log.error("backup skipped: not enough free disk space in %s", out_dir)
+        raise BackupError("فضای خالی دیسک برای پشتیبان کافی نیست. لطفاً فضای دیسک را آزاد کنید.")
     stamp = _timestamp(now)
     target = out_dir / f"backup_{kind}_{stamp}.db"
     n = 1

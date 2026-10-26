@@ -15,6 +15,7 @@ include = [
     "start.py",
     "tests/test_inline_scripts.py",
     "tools/run_synthetic.py",
+    "src/__version__.py",
     "src/config/settings.py",
     "src/adapters/sqlite/core.py",
     "src/adapters/sqlite/migrations/**/*.py",

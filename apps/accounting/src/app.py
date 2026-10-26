@@ -78,6 +78,12 @@ def create_app(test_config=None):
         configure_logging(os.path.join(os.path.dirname(os.path.abspath(db_path)), "logs"))
     _register_error_pages(app)
 
+    @app.context_processor
+    def _inject_version():
+        from src.__version__ import __version__
+
+        return {"app_version": __version__}
+
     # --------- دستورات CLI (برای خودت روی سرور) ---------
     import click
     from src.adapters.sqlite.core import init_db_command

@@ -594,6 +594,7 @@ def settings():
         settings=settings_data,
         db_stats=db_stats,
         db_size=db_size,
+        schema_version=db.execute("PRAGMA user_version").fetchone()[0],
         network_info=get_network_info()
     )
 

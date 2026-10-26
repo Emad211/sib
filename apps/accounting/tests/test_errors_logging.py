@@ -99,3 +99,15 @@ def test_startup_prepares_a_fresh_database(start_module, monkeypatch):
 
     assert Path(Config.DATABASE_PATH).exists()
     assert (Path(Config.DATABASE_PATH).parent / "logs" / "hesabdari.log").exists()
+
+
+def test_version_is_visible_on_login_and_settings(synthetic_app):
+    from src.__version__ import __version__
+    from src.adapters.sqlite.migrations import LATEST
+
+    fa = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    c = synthetic_app.test_client()
+    assert f"نسخه {__version__.translate(fa)}" in c.get("/auth/login").get_data(as_text=True)
+    login_as(c, synthetic_app, "manager1")
+    page = c.get("/manager/settings").get_data(as_text=True)
+    assert f"نسخهٔ دیتابیس {str(LATEST).translate(fa)}" in page

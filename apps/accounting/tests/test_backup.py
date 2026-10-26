@@ -79,6 +79,16 @@ def test_backup_of_missing_database_fails_cleanly(tmp_path):
         bk.create_backup(tmp_path / "nope.db", tmp_path / "b", bk.KIND_MANUAL)
 
 
+def test_backup_refuses_when_disk_space_is_low(tmp_path, monkeypatch):
+    db = str(tmp_path / "live.db")
+    _db_with_rows(db)
+    real = bk.shutil.disk_usage
+    monkeypatch.setattr(bk.shutil, "disk_usage", lambda p: real(p)._replace(free=1024))
+    with pytest.raises(bk.BackupError, match="فضای خالی دیسک"):
+        bk.create_backup(db, tmp_path / "b", bk.KIND_MANUAL)
+    assert not list((tmp_path / "b").glob("*.db*"))
+
+
 def test_verify_rejects_non_sqlite_and_foreign_databases(tmp_path):
     junk = tmp_path / "junk.db"
     junk.write_bytes(b"not a database at all")
