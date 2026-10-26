@@ -102,3 +102,11 @@ def test_identical_lines_show_once_with_times_n(synthetic_app):
     html = c.get(f"/reception/?invoice_id={inv}").get_data(as_text=True)
     assert html.count('class="group-row"') == 1 and "×۳" in html
     assert html.count('class="group-member g0"') == 3  # the single rows are still there (for paying / deleting one)
+
+
+def test_shift_report_prints_on_one_a5_sheet(synthetic_app):
+    c = synthetic_app.test_client()
+    login_as(c, synthetic_app, "reception1")
+    html = c.get("/reception/shift_performance?work_date=2026-09-24&shift=morning").get_data(as_text=True)
+    assert "size: A5 portrait" in html and 'class="print-columns"' in html
+    assert html.count('<div class="section-card">') >= 4
