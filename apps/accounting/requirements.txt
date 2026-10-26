@@ -1,5 +1,1 @@
-flask
-werkzeug
-bcrypt
-jdatetime
-pytest
+-r requirements.lock

@@ -30,7 +30,7 @@ MANIFEST
 #  Usually these files are written by a python script, and contain the binaries and other objects that PyInstaller has packaged into an executable.
 #  If you are using PyInstaller, you should also add the following to your .gitignore:
 *.manifest
-*.spec
+# *.spec  (HesabdariSib.spec is tracked on purpose)
 
 # Installer logs
 pip-log.txt

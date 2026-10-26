@@ -1,0 +1,1238 @@
+{
+ "GET / [dashboard.index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/doctor/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET / [index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/doctor/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /auth/login [auth.login]": {
+  "anon": {
+   "status": 200
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /auth/logout [auth.logout]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "reception": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
+ "GET /doctor/ [doctor.index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "location": "/",
+   "status": 302
+  },
+  "reception": {
+   "location": "/",
+   "status": 302
+  }
+ },
+ "GET /manager/ [manager.index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/api/chart-data [manager.chart_data]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/consumables/csv [manager.export_consumables_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/invoices/csv [manager.export_invoices_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/nursing/csv [manager.export_nursing_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/patients/csv [manager.export_patients_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/procedures/csv [manager.export_procedures_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/users/csv [manager.export_users_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/export/visits/csv [manager.export_visits_csv]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/insurance/<string:insurance_type>/nursing_exclusions [manager.get_nursing_exclusions]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/insurance_arrears [manager.insurance_arrears]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/insurance_arrears/export [manager.export_insurance_arrears]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "error": "AttributeError @ manager.py:2856",
+   "status": 500
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/logs [manager.activity_logs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/logs/export [manager.export_logs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/logs/stats [manager.logs_stats]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "GET /manager/payroll [manager.payroll]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports [manager.reports]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/consumables [manager.consumables_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/invoices [manager.invoices_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/nursing [manager.nursing_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/patients [manager.patients_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/procedures [manager.procedures_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/users [manager.users_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/reports/visits [manager.visits_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/settings [manager.settings]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/settings/download/<backup_name> [manager.download_backup]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/settings",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/staff [manager.staff]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "error": "TemplateNotFound @ manager.py:443",
+   "status": 500
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/tariffs [manager.tariffs_index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/tariffs/consumables [manager.consumables_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/tariffs/insurance [manager.insurance_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/tariffs/nursing [manager.nursing_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /manager/users [manager.users_management]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "GET /reception/ [reception.index]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/api/invoice/<int:invoice_id>/details [reception.get_invoice_details_api]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/api/shift/status [reception.get_shift_status]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/injections/new [reception.injections_new]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/ledgers [reception.combined_ledgers]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/my_shifts [reception.my_shifts_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "error": "TemplateNotFound @ reception.py:1495",
+   "status": 500
+  },
+  "manager": {
+   "error": "TemplateNotFound @ reception.py:1495",
+   "status": 500
+  },
+  "reception": {
+   "error": "TemplateNotFound @ reception.py:1495",
+   "status": 500
+  }
+ },
+ "GET /reception/new [reception.new_visit]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/nursing [reception.nursing_form]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/injections/new",
+   "status": 302
+  },
+  "manager": {
+   "location": "/reception/injections/new",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/injections/new",
+   "status": 302
+  }
+ },
+ "GET /reception/nursing/redirect [reception.nursing_redirect]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/injections/new",
+   "status": 302
+  },
+  "manager": {
+   "location": "/reception/injections/new",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/injections/new",
+   "status": 302
+  }
+ },
+ "GET /reception/nursing_ledger [reception.nursing_ledger]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/patients/<int:patient_id>/history [reception.patient_history]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/patients/list [reception.list_patients]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/procedures/new [reception.procedures_new]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/procedures_ledger [reception.procedures_ledger]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/search_patient [reception.search_patient]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "GET /reception/shift_performance [reception.shift_performance]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "POST /auth/login [auth.login]": {
+  "anon": {
+   "status": 200
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "POST /manager/insurance/<string:insurance_type>/nursing_exclusions [manager.set_nursing_exclusions]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 415
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "POST /manager/payroll [manager.payroll]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/payroll/calculate [manager.calculate_payroll]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "POST /manager/settings [manager.settings]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/settings",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/settings/reset-database [manager.reset_database]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 403
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 403
+  }
+ },
+ "POST /manager/settings/upload [manager.upload_backup]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/settings",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/tariffs/consumables [manager.consumables_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/tariffs/consumables",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/tariffs/insurance [manager.insurance_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/tariffs/insurance",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/tariffs/nursing [manager.nursing_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/tariffs/nursing",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /manager/users [manager.users_management]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/users",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  }
+ },
+ "POST /reception/add_visit [reception.add_visit_to_invoice]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/api/shift/change [reception.change_shift]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/api/shift/dismiss_prompt [reception.dismiss_shift_prompt]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 200
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "status": 200
+  }
+ },
+ "POST /reception/injections [reception.injections_submit]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/invoice/close [reception.close_invoice]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/invoice/open_existing [reception.open_invoice_existing]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/item/delete [reception.delete_item]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/item/payment [reception.set_item_payment]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/item/settle_all [reception.settle_all_items]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/new [reception.new_visit]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/nursing [reception.nursing_submit]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/procedures [reception.procedures_submit]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ },
+ "POST /reception/shift_staff [reception.set_shift_staff_route]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "doctor": {
+   "status": 400
+  },
+  "manager": {
+   "status": 400
+  },
+  "reception": {
+   "status": 400
+  }
+ }
+}

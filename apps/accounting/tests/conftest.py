@@ -45,6 +45,51 @@ def _guard_real_db():
         "A test wrote to the real production DB.")
 
 
+@pytest.fixture(scope="session")
+def synthetic_db_template(tmp_path_factory):
+    """One synthetic, production-shaped DB per test session (ACC-0.4). Never modified:
+    tests that need it get their own copy through `synthetic_app`."""
+    from tools.make_synthetic_db import build
+    path = str(tmp_path_factory.mktemp("synthetic") / "template.db")
+    build(path, days=14, per_day=20, seed=1405)
+    return path
+
+
+@pytest.fixture()
+def synthetic_app(tmp_path, synthetic_db_template):
+    """A Flask app bound to a private copy of the synthetic DB. Writes stay in this test."""
+    import shutil
+    temp_db = str(tmp_path / "synthetic.db")
+    shutil.copyfile(synthetic_db_template, temp_db)
+    assert os.path.abspath(temp_db) != os.path.abspath(_REAL_DB)
+
+    old_path, old_flag = Config.DATABASE_PATH, core._migrations_done
+    Config.DATABASE_PATH = temp_db
+    core._migrations_done = False
+    from src.app import create_app
+    # Same config the exe uses (Config), so routes see BACKUP_FOLDER etc. as in production.
+    cfg = {k: getattr(Config, k) for k in dir(Config) if k.isupper()}
+    cfg.update({"TESTING": True, "DATABASE_PATH": temp_db, "SECRET_KEY": "test-only",
+                "BACKUP_FOLDER": str(tmp_path / "backups")})
+    app = create_app(cfg)
+    try:
+        yield app
+    finally:
+        Config.DATABASE_PATH = old_path
+        core._migrations_done = old_flag
+
+
+def login_as(client, app, username):
+    """Put a real user's id into the session without going through the login form."""
+    import sqlite3
+    conn = sqlite3.connect(app.config["DATABASE_PATH"])
+    row = conn.execute("SELECT id, role FROM users WHERE username = ?", (username,)).fetchone()
+    conn.close()
+    assert row, f"no such user in synthetic DB: {username}"
+    with client.session_transaction() as s:
+        s["user_id"], s["role"] = row[0], row[1]
+
+
 @pytest.fixture()
 def webapp_db(tmp_path):
     """A fresh, isolated, schema-initialised webapp DB bound via Config.DATABASE_PATH.

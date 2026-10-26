@@ -1,0 +1,14 @@
+# Runtime dependencies, pinned to the versions bundled in HesabdariSib.exe
+# built from clinic_managment origin/main 89fcf258 (Python 3.13). See ADR-007.
+# Upgrade only in a dedicated PR with the full test suite + golden master.
+bcrypt==5.0.0
+blinker==1.9.0
+click==8.3.1
+colorama==0.4.6
+Flask==3.1.2
+itsdangerous==2.2.0
+jalali_core==1.0.0
+jdatetime==5.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+Werkzeug==3.1.3
