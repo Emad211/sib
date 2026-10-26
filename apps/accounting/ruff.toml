@@ -16,6 +16,8 @@ include = [
     "tests/test_inline_scripts.py",
     "tools/run_synthetic.py",
     "src/__version__.py",
+    "src/web/**/*.py",
+    "tests/test_csrf.py",
     "src/config/settings.py",
     "src/adapters/sqlite/core.py",
     "src/adapters/sqlite/migrations/**/*.py",

@@ -145,10 +145,13 @@ def run(snapshot: str) -> dict:
             client = app.test_client()
             with client.session_transaction() as s:
                 s["user_id"], s["role"] = manager_id, "manager"
+                s["_csrf"] = "golden-csrf"  # payroll POSTs go through the CSRF check (SEC-05)
             for req in plan:
                 key = f"{req['method']} {req['url']}"
                 t0 = _CLOCK[0]()
-                resp = client.open(req["url"], method=req["method"], data=req.get("data", {}))
+                resp = client.open(
+                    req["url"], method=req["method"], data=req.get("data", {}), headers={"X-CSRFToken": "golden-csrf"}
+                )
                 ms = round((_CLOCK[0]() - t0) * 1000)
                 body = resp.get_data()
                 text = body.decode("utf-8", errors="replace")
