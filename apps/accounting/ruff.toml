@@ -35,6 +35,17 @@ include = [
     "tests/test_exports.py",
     "tests/test_manager_insights.py",
     "tests/test_retired_doctor_role.py",
+    "tests/test_manager_authz.py",
+    # ACC-2.6: manager package. Left out (SQL strings with trailing spaces W291, unused locals F841/F541,
+    # fixing them would touch behaviour/queries): dashboard.py, exports.py, payroll.py
+    "src/api/manager/__init__.py",
+    "src/api/manager/_common.py",
+    "src/api/manager/arrears.py",
+    "src/api/manager/logs.py",
+    "src/api/manager/reports.py",
+    "src/api/manager/settings.py",
+    "src/api/manager/tariffs.py",
+    "src/api/manager/users.py",
 ]
 
 [lint]
