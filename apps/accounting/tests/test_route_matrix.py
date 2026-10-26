@@ -10,8 +10,10 @@ deliberate access-control decision and must be reviewed.
 """
 
 import json
+import logging
 import os
 import re
+import traceback
 from urllib.parse import urlparse
 
 import pytest
@@ -42,30 +44,40 @@ def _cells(app):
             yield f"{method} {rule.rule} [{rule.endpoint}]", method, _url_for_rule(rule)
 
 
+class _ErrorCapture(logging.Handler):
+    """Collects the exceptions the app's error handler logs to `hesabdari.errors`."""
+
+    def __init__(self):
+        super().__init__(logging.ERROR)
+        self.errors = []
+
+    def emit(self, record):
+        if not record.exc_info:
+            return
+        exc = record.exc_info[1]
+        tb = traceback.extract_tb(exc.__traceback__)
+        frame = next((f for f in reversed(tb) if os.sep + "src" + os.sep in f.filename), tb[-1])
+        self.errors.append(f"{type(exc).__name__} @ {os.path.basename(frame.filename)}:{frame.name}")
+
+
 def _observe(app, method, url, username):
     """Status (+ redirect path, + exception origin for 5xx) as production would see it."""
-    import traceback
-
-    from flask import got_request_exception
-
     app.config["PROPAGATE_EXCEPTIONS"] = False
-    caught = []
-
-    def _on_exc(sender, exception, **extra):
-        tb = traceback.extract_tb(exception.__traceback__)
-        frame = next((f for f in reversed(tb) if os.sep + "src" + os.sep in f.filename), tb[-1])
-        caught.append(f"{type(exception).__name__} @ {os.path.basename(frame.filename)}:{frame.name}")
-
-    client = app.test_client()
-    if username:
-        login_as(client, app, username)
-    with got_request_exception.connected_to(_on_exc, app):
+    capture = _ErrorCapture()
+    logger = logging.getLogger("hesabdari.errors")
+    logger.addHandler(capture)
+    try:
+        client = app.test_client()
+        if username:
+            login_as(client, app, username)
         resp = client.open(url, method=method, data={})
+    finally:
+        logger.removeHandler(capture)
     out = {"status": resp.status_code}
     if 300 <= resp.status_code < 400:
         out["location"] = urlparse(resp.headers.get("Location", "")).path
-    if caught:
-        out["error"] = caught[0]
+    if capture.errors:
+        out["error"] = capture.errors[0]
     return out
 
 
@@ -113,14 +125,6 @@ def test_no_route_returns_server_error_for_logged_in_roles(synthetic_app):
     )
 
 
-# Recorded 2026-10-26. Each entry is a bug tracked in docs/accounting/A01 (BUG-01..03).
-# Fixing one = remove it here in the same PR; adding one is never allowed.
-KNOWN_SERVER_ERRORS: list[str] = sorted(
-    [
-        "GET /manager/insurance_arrears/export [manager.export_insurance_arrears] [manager]",  # BUG-01
-        "GET /manager/staff [manager.staff] [manager]",  # BUG-02
-        "GET /reception/my_shifts [reception.my_shifts_report] [doctor]",  # BUG-03
-        "GET /reception/my_shifts [reception.my_shifts_report] [manager]",  # BUG-03
-        "GET /reception/my_shifts [reception.my_shifts_report] [reception]",  # BUG-03
-    ]
-)
+# BUG-01..04 fixed in ACC-1.9 (2026-10-26). Adding an entry here is never allowed:
+# a server error is a bug to fix, not a behaviour to pin.
+KNOWN_SERVER_ERRORS: list[str] = []

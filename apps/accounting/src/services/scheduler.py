@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 DAILY_HOUR = 4
 STARTUP_MAX_AGE = timedelta(hours=20)
 POLL_SECONDS = 60
+RETRY_AFTER_FAILURE = timedelta(minutes=30)
 
 
 class BackupScheduler:
@@ -30,6 +31,7 @@ class BackupScheduler:
         self.db_path: Path | None = None
         self.backup_dir: Path | None = None
         self._stop = threading.Event()
+        self._failed_at: datetime | None = None
         self.thread: threading.Thread | None = None
         if app is not None:
             self.init_app(app)
@@ -48,7 +50,7 @@ class BackupScheduler:
     # ---------------------------------------------------------------- decisions
     def _enabled(self) -> bool:
         try:
-            conn = sqlite3.connect(f"file:{self.db_path.as_posix()}?mode=ro", uri=True)
+            conn = sqlite3.connect(bk.ro_uri(self.db_path), uri=True)
             try:
                 row = conn.execute("SELECT value FROM settings WHERE key = 'auto_backup'").fetchone()
             finally:
@@ -64,12 +66,18 @@ class BackupScheduler:
         )
 
     def _make(self, kind: str, now: datetime):
-        made = bk.create_backup(self.db_path, self.backup_dir, kind, now=now)
+        try:
+            made = bk.create_backup(self.db_path, self.backup_dir, kind, now=now)
+        except Exception:
+            self._failed_at = now  # back off instead of retrying every minute
+            raise
+        self._failed_at = None
         bk.prune(self.backup_dir)
         return made
 
     def on_startup(self, now: datetime | None = None):
         now = now or iran_now()
+        bk.cleanup_leftovers(self.backup_dir)
         if not self._enabled() or not self.db_path.exists():
             return None
         age = bk.latest_backup_age(self.backup_dir, now)
@@ -80,6 +88,8 @@ class BackupScheduler:
     def tick(self, now: datetime | None = None):
         now = now or iran_now()
         if now.hour < DAILY_HOUR or not self._enabled() or self._taken_on(now.date()):
+            return None
+        if self._failed_at is not None and now - self._failed_at < RETRY_AFTER_FAILURE:
             return None
         return self._make(bk.KIND_AUTO, now)
 

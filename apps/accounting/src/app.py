@@ -35,24 +35,6 @@ def create_app(test_config=None):
         app.config.from_object(Config)
     else:
         app.config.from_mapping(test_config)
-    
-        # Diagnostic: log which database file is used and whether essential tables exist.
-        try:
-            from src.config.settings import Config as _Config
-            import sqlite3
-            db_path = _Config.DATABASE_PATH
-            print(f"[startup] Using database: {db_path}")
-            try:
-                conn = sqlite3.connect(db_path)
-                cur = conn.cursor()
-                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('payroll_settings','activity_logs')")
-                found = [r[0] for r in cur.fetchall()]
-                print(f"[startup] Found tables: {found}")
-                conn.close()
-            except Exception as e:
-                print(f"[startup] Error checking DB tables: {e}")
-        except Exception:
-            pass
 
     # ---- Security hardening (active only in PRODUCTION; local/.exe/LAN/test unchanged) ----
     from src.config.settings import DEFAULT_SECRET_KEY
@@ -61,10 +43,18 @@ def create_app(test_config=None):
             raise RuntimeError(
                 "PRODUCTION but SECRET_KEY is unset or the insecure default. "
                 "Set a strong SECRET_KEY environment variable before starting in production.")
+    # Desktop/LAN (the exe): never sign sessions with the public default key (SEC-01).
+    if (not app.config.get("PRODUCTION") and not app.config.get("TESTING", False)
+            and app.config.get("SECRET_KEY") in (None, DEFAULT_SECRET_KEY)):
+        from src.config.settings import load_or_create_install_secret
+        db_path = app.config.get("DATABASE_PATH") or Config.DATABASE_PATH
+        app.config["SECRET_KEY"] = load_or_create_install_secret(os.path.dirname(os.path.abspath(db_path)))
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    # Largest request body (backup uploads). The live database is ~110 MB in 2026.
+    app.config.setdefault("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024)
 
     # Respect environment for production vs development.
     # Use FLASK_ENV or APP_ENV to choose 'production' mode; otherwise fall back to config.
@@ -82,6 +72,19 @@ def create_app(test_config=None):
 
     # --------- Teardown دیتابیس ---------
     app.teardown_appcontext(close_connection)
+
+    # --------- لاگ فایل و صفحهٔ خطای فارسی (ACC-1.8) ---------
+    if not app.config.get("TESTING", False):
+        from src.config.logging_setup import configure_logging
+        db_path = app.config.get("DATABASE_PATH") or Config.DATABASE_PATH
+        configure_logging(os.path.join(os.path.dirname(os.path.abspath(db_path)), "logs"))
+    _register_error_pages(app)
+
+    @app.context_processor
+    def _inject_version():
+        from src.__version__ import __version__
+
+        return {"app_version": __version__}
 
     # --------- دستورات CLI (برای خودت روی سرور) ---------
     import click
@@ -120,13 +123,17 @@ def create_app(test_config=None):
             'open_invoices_count': 0
         }
 
-        if user_id is None:
-            g.user = None
-        else:
+        g.user = None
+        if user_id is not None:
             db = get_db()
-            g.user = db.execute(
+            user = db.execute(
                 "SELECT * FROM users WHERE id = ?", (user_id,)
             ).fetchone()
+            # A deleted or deactivated account is logged out on its next request (SEC-04).
+            if user is None or not user["is_active"]:
+                session.clear()
+            else:
+                g.user = user
 
     # --------- ثبت Blueprints ---------
     from src.api.auth import bp as auth_bp
@@ -199,6 +206,32 @@ def create_app(test_config=None):
         init_scheduler(app)
 
     return app
+
+
+def _register_error_pages(app):
+    """Persian error pages; every 5xx is logged with a short reference the user can report."""
+    import logging
+    import secrets
+
+    from flask import render_template, request
+    from werkzeug.exceptions import HTTPException
+
+    log = logging.getLogger("hesabdari.errors")
+
+    def _page(code, title, message, ref=None):
+        return render_template("errors/error.html", code=code, title=title, message=message, ref=ref), code
+
+    @app.errorhandler(404)
+    def not_found(_e):
+        return _page(404, "صفحه پیدا نشد", "آدرسی که باز کرده‌اید وجود ندارد.")
+
+    @app.errorhandler(Exception)
+    def unexpected(e):
+        if isinstance(e, HTTPException) and e.code < 500:
+            return e
+        ref = secrets.token_hex(4)
+        log.error("unhandled error ref=%s %s %s", ref, request.method, request.path, exc_info=e)
+        return _page(500, "خطای پیش‌بینی‌نشده", "مشکلی در برنامه پیش آمد و ثبت شد. لطفاً دوباره امتحان کنید.", ref)
 
 
 def open_browser():

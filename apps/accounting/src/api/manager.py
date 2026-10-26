@@ -427,7 +427,7 @@ def export_invoices_csv():
         writer.writerow([
             r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
             int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
-            (r.get('opened_by_name') or r.get('opened_by') or ''), (r.get('closed_by_name') or r.get('closed_by') or ''), r['patient_name'] or ''
+            (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
         ])
     resp = make_response(output.getvalue())
     resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
@@ -438,10 +438,10 @@ def export_invoices_csv():
 @bp.route('/staff')
 @login_required
 def staff():
-    """Staff management."""
+    """Staff are managed on the users page (BUG-02: manager/staff.html never existed)."""
     if g.user['role'] != 'manager':
         return redirect(url_for('reception.index'))
-    return render_template('manager/staff.html')
+    return redirect(url_for('manager.users_management'))
 
 
 def get_network_info():
@@ -536,6 +536,9 @@ def settings():
                 from src.adapters.sqlite.core import close_connection
                 close_connection(None)
                 safety = bk.restore_backup(db_path, backup_dir, backup_name)
+                # An older backup may have an older schema: migrate it now, not at the next restart.
+                from src.adapters.sqlite.core import ensure_database_ready
+                ensure_database_ready(db_path)
                 log_activity(
                     ActionType.BACKUP_RESTORE, ActionCategory.SYSTEM,
                     description=f'بازگردانی دیتابیس از {backup_name} (نسخهٔ قبلی: {safety.name})',
@@ -594,6 +597,7 @@ def settings():
         settings=settings_data,
         db_stats=db_stats,
         db_size=db_size,
+        schema_version=db.execute("PRAGMA user_version").fetchone()[0],
         network_info=get_network_info()
     )
 
@@ -601,73 +605,61 @@ def settings():
 @bp.route('/settings/reset-database', methods=['POST'])
 @login_required
 def reset_database():
-    """ریست کامل دیتابیس - حذف همه داده‌ها و ایجاد دیتابیس جدید با کاربر admin"""
+    """ریست کامل دیتابیس (ACC-1.6، SEC-03).
+
+    شرط‌ها: نقش مدیر، عبارت تأیید، و رمز عبور همین مدیر. پیش از هر چیز یک پشتیبان کامل
+    گرفته می‌شود. دیتابیس تازه در فایل موقت ساخته و با backup API جایگزین می‌شود؛ تنها کاربر
+    دیتابیس تازه همین مدیر با همان رمز است (دیگر admin/admin ساخته نمی‌شود).
+    """
     if g.user['role'] != 'manager':
         return jsonify({'success': False, 'error': 'دسترسی غیرمجاز'}), 403
-    
-    import os
-    import sys
-    from pathlib import Path
-    import bcrypt
-    
-    # تایید نهایی از request
-    confirm_code = request.form.get('confirm_code', '')
-    if confirm_code != 'DELETE_ALL_DATA':
+    if request.form.get('confirm_code', '') != 'DELETE_ALL_DATA':
         return jsonify({'success': False, 'error': 'کد تایید نامعتبر است'}), 400
-    
+
+    from src.services.auth_service import AuthService
+    if not AuthService().validate_manager(g.user['username'], request.form.get('password', '')):
+        return jsonify({'success': False, 'error': 'رمز عبور مدیر نادرست است'}), 403
+
+    import sqlite3
+    from pathlib import Path
+    from src.adapters.sqlite import core
+    from src.adapters.sqlite.migrations import MigrationError, run_migrations
+    from src.services import backup as bk
+
+    keep = {k: g.user[k] for k in ('username', 'password_hash', 'role', 'full_name')}
+    db_path = current_app.config.get('DATABASE_PATH')
+    backup_dir = current_app.config.get('BACKUP_FOLDER')
     try:
-        db_path = Path(current_app.config.get('DATABASE_PATH'))
-        
-        # پیدا کردن مسیر schema.sql در حالت‌های مختلف
-        if getattr(sys, 'frozen', False):
-            # حالت PyInstaller
-            meipass = getattr(sys, '_MEIPASS', None)
-            if meipass:
-                schema_path = Path(meipass) / 'src' / 'adapters' / 'sqlite' / 'schema.sql'
-                if not schema_path.exists():
-                    schema_path = Path(meipass) / 'schema.sql'
-            else:
-                schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
-        else:
-            # حالت سورس
-            schema_path = Path(__file__).parent.parent / 'adapters' / 'sqlite' / 'schema.sql'
-        
-        # بستن کانکشن فعلی
-        db = get_db()
-        db.close()
-        
-        # حذف فایل دیتابیس قدیمی
-        if db_path.exists():
-            os.remove(db_path)
-        
-        # ایجاد دیتابیس جدید
-        import sqlite3
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        
-        # اجرای schema
-        with open(schema_path, 'r', encoding='utf-8') as f:
-            schema_sql = f.read()
-        conn.executescript(schema_sql)
-        
-        # ایجاد کاربر admin با رمز admin - استفاده از bcrypt مثل سیستم اصلی
-        salt = bcrypt.gensalt()
-        password_hash = bcrypt.hashpw('admin'.encode('utf-8'), salt)
-        conn.execute("""
-            INSERT INTO users (username, password_hash, role, full_name, is_active)
-            VALUES (?, ?, ?, ?, ?)
-        """, ('admin', password_hash, 'manager', 'مدیر سیستم', 1))
-        
-        conn.commit()
-        conn.close()
-        
-        # لاگ اوت کردن کاربر فعلی
-        session.clear()
-        
-        return jsonify({'success': True, 'message': 'دیتابیس با موفقیت ریست شد. لطفاً دوباره وارد شوید.'})
-        
-    except Exception as e:
+        core.close_connection(None)
+        safety = bk.create_backup(db_path, backup_dir, bk.KIND_PRE_RESET)
+        import secrets
+        fresh = Path(backup_dir) / f".reset_{iran_now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.tmp"
+        conn = sqlite3.connect(fresh)
+        try:
+            core._load_schema_and_initialize(conn)
+            run_migrations(conn)
+            conn.execute(
+                "INSERT INTO users (username, password_hash, role, full_name, is_active) VALUES (?, ?, ?, ?, 1)",
+                (keep['username'], keep['password_hash'], keep['role'], keep['full_name']),
+            )
+            conn.commit()
+            bk.copy_database(bk.ro_uri(fresh), db_path, bk.DEFAULT_LOCK_TIMEOUT)
+        finally:
+            conn.close()  # before unlink: Windows cannot delete an open file
+            fresh.unlink(missing_ok=True)
+        bk.verify_database_file(db_path)
+    except bk.BackupError as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+    except (sqlite3.Error, MigrationError, OSError):
+        current_app.logger.exception("database reset failed")
+        return jsonify({'success': False,
+                        'error': 'ریست انجام نشد. دیتابیس فعلی دست نخورده است و پشتیبان پیش از ریست موجود است.'}), 500
+
+    log_activity(ActionType.DATABASE_RESET, ActionCategory.SYSTEM,
+                 description=f'ریست کامل دیتابیس؛ نسخهٔ قبلی در {safety.name}', target_name=safety.name)
+    session.clear()
+    return jsonify({'success': True,
+                    'message': f'دیتابیس ریست شد. نسخهٔ قبلی در «{safety.name}» ذخیره شد. لطفاً دوباره وارد شوید.'})
 
 
 @bp.route('/settings/download/<backup_name>')
@@ -708,7 +700,8 @@ def upload_backup():
         flash('فقط فایل‌های .db مجاز هستند', 'error')
         return redirect(url_for('manager.settings'))
     try:
-        saved = bk.save_uploaded_backup(current_app.config.get('BACKUP_FOLDER'), file)
+        saved = bk.save_uploaded_backup(current_app.config.get('BACKUP_FOLDER'), file,
+                                        size_hint=request.content_length)
         log_activity(ActionType.BACKUP_UPLOAD, ActionCategory.SYSTEM, target_name=saved.name)
         flash(f'فایل بکاپ آپلود شد: {saved.name}', 'success')
     except bk.BackupError as e:
@@ -2064,6 +2057,79 @@ def export_consumables_csv():
 
 # ===================== گزارش بیماران =====================
 
+def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_type=None):
+    """Rows of the patients report (page and CSV) — PERF-01 / ACC-1.10.
+
+    Previously 8 queries per patient (~20 s for 8 months of production data); now 8 queries
+    in total. Order and values are identical to the old loop (verified by the golden master):
+    patients appear in order of their first invoice (work_date, id), then a stable sort by
+    invoice count; totals keep the old int/float types (COALESCE(SUM(...), 0)).
+    """
+    rng = (start_date, end_date)
+    # Order of first appearance by (work_date, id) — exactly what the old
+    # `SELECT DISTINCT patient_id` returned through the work_date index, now explicit so a
+    # future index or query-plan change cannot reorder patients with equal counts.
+    patient_ids = [r['patient_id'] for r in db.execute(
+        """SELECT patient_id FROM (
+               SELECT patient_id, work_date, id,
+                      ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY work_date, id) AS rn
+               FROM invoices WHERE work_date BETWEEN ? AND ?)
+           WHERE rn = 1 ORDER BY work_date, id""", rng)]
+    in_range = "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?"
+
+    patients = {r['id']: r for r in db.execute(
+        f"SELECT id, name, family_name, national_id, phone_number FROM patients WHERE id IN ({in_range})", rng)}
+    inv = {r['patient_id']: r for r in db.execute(
+        """SELECT patient_id, COUNT(*) AS cnt, MAX(opened_at) AS last_date FROM invoices
+           WHERE work_date BETWEEN ? AND ? GROUP BY patient_id""", rng)}
+
+    def closed_sum(table, col):
+        return {r['patient_id']: r['total'] for r in db.execute(
+            f"""SELECT i.patient_id, COALESCE(SUM(x.{col}), 0) AS total FROM {table} x
+                JOIN invoices i ON i.id = x.invoice_id
+                WHERE i.work_date BETWEEN ? AND ? AND i.status = 'closed' GROUP BY i.patient_id""", rng)}
+
+    v_paid = closed_sum('visits', 'price')
+    inj_paid = closed_sum('injections', 'total_price')
+    pr_paid = closed_sum('procedures', 'price')
+    visits_count = {r['patient_id']: r['cnt'] for r in db.execute(
+        f"""SELECT i.patient_id, COUNT(*) AS cnt FROM visits v JOIN invoices i ON i.id = v.invoice_id
+            WHERE v.work_date BETWEEN ? AND ? AND i.patient_id IN ({in_range}) GROUP BY i.patient_id""",
+        rng + rng)}
+    last_ins = {r['patient_id']: r['insurance_type'] for r in db.execute(
+        f"""SELECT patient_id, insurance_type FROM (
+                SELECT i.patient_id, v.insurance_type,
+                       ROW_NUMBER() OVER (PARTITION BY i.patient_id ORDER BY v.visit_date DESC, v.id DESC) AS rn
+                FROM visits v JOIN invoices i ON i.id = v.invoice_id
+                WHERE i.patient_id IN ({in_range}))
+            WHERE rn = 1""", rng)}
+
+    rows = []
+    for pid in patient_ids:
+        patient = patients.get(pid)
+        if not patient:
+            continue
+        full_name = f"{patient['name']} {patient['family_name']}"
+        if search_name and search_name.lower() not in full_name.lower():
+            continue
+        ins_type = last_ins.get(pid)
+        if insurance_type and ins_type != insurance_type:
+            continue
+        rows.append({
+            'id': pid,
+            'full_name': full_name,
+            'national_id': patient['national_id'] or '',
+            'phone': patient['phone_number'] or '',
+            'insurance_type': ins_type,
+            'invoices_count': inv[pid]['cnt'],
+            'visits_count': visits_count.get(pid, 0),
+            'total_paid': v_paid.get(pid, 0) + inj_paid.get(pid, 0) + pr_paid.get(pid, 0),
+            'last_visit': inv[pid]['last_date'],
+        })
+    rows.sort(key=lambda x: x['invoices_count'], reverse=True)
+    return rows
+
+
 @bp.route('/reports/patients')
 @login_required
 def patients_report():
@@ -2105,89 +2171,7 @@ def patients_report():
     end_date = end_dt.strftime('%Y-%m-%d')
 
     # گرفتن بیماران که در بازه زمانی فاکتور داشتند
-    patient_ids_sql = """
-        SELECT DISTINCT patient_id FROM invoices
-        WHERE work_date BETWEEN ? AND ?
-    """
-    patient_ids = [r['patient_id'] for r in db.execute(patient_ids_sql, (start_date, end_date)).fetchall()]
-
-    results = []
-    for pid in patient_ids:
-        patient = db.execute("SELECT * FROM patients WHERE id = ?", (pid,)).fetchone()
-        if not patient:
-            continue
-
-        # ساخت نام کامل
-        full_name = f"{patient['name']} {patient['family_name']}"
-
-        # فیلترها
-        if search_name and search_name.lower() not in full_name.lower():
-            continue
-
-        # آمار مراجعات
-        invoices_count = db.execute("""
-            SELECT COUNT(*) as cnt FROM invoices
-            WHERE patient_id = ? AND work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['cnt']
-
-        # جمع پرداخت‌ها - بدون مصرفی
-        # Revenue = visits + injections + procedures (NOT consumables)
-        v_paid = db.execute("""
-            SELECT COALESCE(SUM(v.price), 0) as total FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        inj_paid = db.execute("""
-            SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj
-            JOIN invoices i ON i.id = inj.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        pr_paid = db.execute("""
-            SELECT COALESCE(SUM(pr.price), 0) as total FROM procedures pr
-            JOIN invoices i ON i.id = pr.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        total_paid = v_paid + inj_paid + pr_paid
-
-        # ویزیت‌ها
-        visits_count = db.execute("""
-            SELECT COUNT(*) as cnt FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ? AND v.work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['cnt']
-
-        # آخرین مراجعه
-        last_visit = db.execute("""
-            SELECT MAX(opened_at) as last_date FROM invoices
-            WHERE patient_id = ? AND work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['last_date']
-
-        # بیمه (از آخرین ویزیت)
-        last_ins = db.execute("""
-            SELECT v.insurance_type FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ?
-            ORDER BY v.visit_date DESC LIMIT 1
-        """, (pid,)).fetchone()
-        ins_type = last_ins['insurance_type'] if last_ins else None
-
-        if insurance_type and ins_type != insurance_type:
-            continue
-
-        results.append({
-            'id': pid,
-            'full_name': full_name,
-            'national_id': patient['national_id'] if patient['national_id'] else '',
-            'phone': patient['phone_number'] if patient['phone_number'] else '',
-            'insurance_type': ins_type,
-            'invoices_count': invoices_count,
-            'visits_count': visits_count,
-            'total_paid': total_paid,
-            'last_visit': last_visit,
-        })
-
-    # مرتب‌سازی بر اساس تعداد مراجعات
-    results.sort(key=lambda x: x['invoices_count'], reverse=True)
+    results = _patients_report_rows(db, start_date, end_date, search_name, insurance_type)
 
     total_patients = len(results)
     total_revenue = sum(r['total_paid'] for r in results)
@@ -2275,40 +2259,19 @@ def export_patients_csv():
     start_date = start_dt.strftime('%Y-%m-%d')
     end_date = end_dt.strftime('%Y-%m-%d')
 
-    patient_ids = [r['patient_id'] for r in db.execute("SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?", (start_date, end_date)).fetchall()]
-
-    data = []
-    for pid in patient_ids:
-        patient = db.execute("SELECT * FROM patients WHERE id = ?", (pid,)).fetchone()
-        if not patient:
-            continue
-        full_name = f"{patient['name']} {patient['family_name']}"
-        if search_name and search_name.lower() not in full_name.lower():
-            continue
-
-        invoices_count = db.execute("SELECT COUNT(*) as cnt FROM invoices WHERE patient_id = ? AND work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['cnt']
-        # Revenue = visits + injections + procedures (NOT consumables)
-        v_paid = db.execute("SELECT COALESCE(SUM(v.price), 0) as total FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        inj_paid = db.execute("SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj JOIN invoices i ON i.id = inj.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        pr_paid = db.execute("SELECT COALESCE(SUM(pr.price), 0) as total FROM procedures pr JOIN invoices i ON i.id = pr.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        total_paid = v_paid + inj_paid + pr_paid
-        visits_count = db.execute("SELECT COUNT(*) as cnt FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? AND v.work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['cnt']
-        last_visit = db.execute("SELECT MAX(opened_at) as last_date FROM invoices WHERE patient_id = ? AND work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['last_date']
-        last_ins = db.execute("SELECT v.insurance_type FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? ORDER BY v.visit_date DESC LIMIT 1", (pid,)).fetchone()
-        ins_type = last_ins['insurance_type'] if last_ins else ''
-        if insurance_type and ins_type != insurance_type:
-            continue
-
-        phone = patient['phone_number'] if patient['phone_number'] else ''
-        national_id = patient['national_id'] if patient['national_id'] else ''
-        data.append([full_name, national_id, phone, ins_type or '', invoices_count, visits_count, total_paid, last_visit or ''])
-
-    data.sort(key=lambda x: x[4], reverse=True)
+    data = [[r['full_name'], r['national_id'], r['phone'], r['insurance_type'] or '', r['invoices_count'],
+             r['visits_count'], r['total_paid'], r['last_visit'] or '']
+            for r in _patients_report_rows(db, start_date, end_date, search_name, insurance_type)]
     headers = ['نام بیمار', 'کد ملی', 'تلفن', 'بیمه', 'تعداد فاکتور', 'تعداد ویزیت', 'جمع پرداخت (تومان)', 'آخرین مراجعه']
     return make_csv_response(data, headers, 'patients_report.csv')
 
 
 # ==================== معوقات بیمه ====================
+
+def _nursing_exclusion_pairs(db):
+    """{(insurance_type, nursing_service_id)} — the whole table is a few rows."""
+    return {(r[0], r[1]) for r in db.execute("SELECT insurance_type, nursing_service_id FROM insurance_nursing_exclusions")}
+
 
 @bp.route('/insurance_arrears')
 @login_required
@@ -2525,6 +2488,7 @@ def insurance_arrears():
     # فقط بیمه‌هایی که پرستاری را پوشش می‌دهند (nursing_covers = true)
     nursing_arrears = []
 
+    excluded_pairs = _nursing_exclusion_pairs(db)  # once per request, not once per row (PERF-01)
     for i in injections:
         ins_type = i['insurance_type']
         ins_tariff = insurance_tariffs.get(ins_type, {})
@@ -2543,8 +2507,7 @@ def insurance_arrears():
         except Exception:
             svc_id = None
         if svc_id:
-            row = db.execute("SELECT 1 FROM insurance_nursing_exclusions WHERE insurance_type = ? AND nursing_service_id = ? LIMIT 1", (ins_type, svc_id)).fetchone()
-            if row:
+            if (ins_type, svc_id) in excluded_pairs:
                 excluded = True
 
         include = bool(ins_tariff.get('nursing_covers', False) and not excluded)
@@ -2783,6 +2746,7 @@ def export_insurance_arrears():
                 insurance_debt
             ])
     
+    excluded_pairs = _nursing_exclusion_pairs(db)  # once per request, not once per row (PERF-01)
     for i in injections:
         ins_type = i['insurance_type']
         ins_tariff = insurance_tariffs.get(ins_type, {})
@@ -2790,13 +2754,11 @@ def export_insurance_arrears():
         if not ins_tariff.get('nursing_covers', False):
             continue
         # If this injection's service is excluded for this insurance, skip it
-        svc_id = i.get('service_id')
+        svc_id = i['service_id']  # BUG-01: sqlite3.Row has no .get()
         excluded = False
         try:
-            if svc_id is not None:
-                row = db.execute("SELECT 1 FROM insurance_nursing_exclusions WHERE insurance_type = ? AND nursing_service_id = ? LIMIT 1", (ins_type, svc_id)).fetchone()
-                if row:
-                    excluded = True
+            if svc_id is not None and (ins_type, svc_id) in excluded_pairs:
+                excluded = True
         except Exception:
             excluded = False
         if excluded:

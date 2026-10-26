@@ -508,7 +508,7 @@
                 <div class="header-icon">⚙️</div>
                 <div>
                     <h1>تنظیمات سیستم</h1>
-                    <p>مدیریت تنظیمات، پشتیبان‌گیری و بازیابی داده‌ها</p>
+                    <p>مدیریت تنظیمات، پشتیبان‌گیری و بازیابی داده‌ها · نسخهٔ برنامه {{ app_version|fa_num }} · نسخهٔ دیتابیس {{ schema_version|fa_num }}</p>
                 </div>
             </div>
             <a href="{{ url_for('manager.index') }}" class="btn-back">← بازگشت به داشبورد</a>
@@ -567,7 +567,7 @@
 
                     <div class="info-box">
                         <span class="icon">ℹ️</span>
-                        بکاپ خودکار هفتگی فعال است. هر هفته یک بکاپ خودکار ذخیره می‌شود.
+                        پشتیبان خودکار روزانه فعال است: هر روز پس از ساعت ۴ صبح و هر بار که برنامه باز می‌شود (اگر آخرین پشتیبان قدیمی‌تر از ۲۰ ساعت باشد). ۷ نسخهٔ روزانه، ۴ هفتگی و ۶ ماهانه نگه داشته می‌شود؛ اگر فضای دیسک کم باشد، پشتیبان گرفته نمی‌شود و خطا در لاگ ثبت می‌شود.
                     </div>
 
                     <div class="upload-area">
@@ -879,7 +879,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
                         <input type="hidden" name="action" value="save_settings">
 
                         <div class="toggle-group">
-                            <span class="toggle-label">بکاپ خودکار هفتگی</span>
+                            <span class="toggle-label">پشتیبان خودکار روزانه</span>
                             <label class="toggle-switch">
                                 <input type="checkbox" name="auto_backup" value="1" {% if settings.get('auto_backup', '1') == '1' %}checked{% endif %}>
                                 <span class="toggle-slider"></span>
@@ -888,7 +888,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
 
                         <div class="info-box" style="margin-top: 1rem;">
                             <span class="icon">📅</span>
-                            بکاپ خودکار هر هفته (شنبه‌ها) ساعت ۳ صبح انجام می‌شود.
+                            پشتیبان خودکار هر روز پس از ساعت ۴ صبح و هنگام باز شدن برنامه گرفته می‌شود. هر پشتیبان پس از ساخت از نظر سلامت بررسی می‌شود.
                         </div>
 
                         <button type="submit" class="btn btn-primary" style="margin-top: 1.25rem;">
@@ -990,16 +990,33 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
             
             // اخطار سوم با تایپ کلمه
             const userInput = prompt('⚠️ تایید نهایی\n\nبرای تایید ریست دیتابیس، عبارت زیر را دقیقاً تایپ کنید:\n\nDELETE_ALL_DATA');
-            
+
             if (userInput !== 'DELETE_ALL_DATA') {
                 alert('عبارت وارد شده صحیح نیست. عملیات لغو شد.');
                 return;
             }
-            
-            // ارسال درخواست ریست
+
+            askManagerPassword(sendResetRequest);
+        }
+
+        // رمز مدیر در یک پنجرهٔ واقعی (فیلد password)، نه prompt که متن را نمایش می‌دهد
+        function askManagerPassword(onOk) {
+            const dlg = document.getElementById('reset-password-dialog');
+            const input = document.getElementById('reset-password-input');
+            input.value = '';
+            dlg.showModal();
+            input.focus();
+            dlg.onclose = () => {
+                if (dlg.returnValue === 'ok' && input.value) onOk(input.value);
+                input.value = '';
+            };
+        }
+
+        function sendResetRequest(password) {
             const formData = new FormData();
             formData.append('confirm_code', 'DELETE_ALL_DATA');
-            
+            formData.append('password', password);
+
             fetch('{{ url_for("manager.reset_database") }}', {
                 method: 'POST',
                 body: formData
@@ -1019,5 +1036,29 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
             });
         }
     </script>
+    <style>
+        #reset-password-dialog { margin:auto; inset:0; border:1px solid rgba(255,255,255,.12); border-radius:18px;
+            padding:24px; width:min(380px, calc(100vw - 32px)); background:#1e293b; color:#e2e8f0; font-family:inherit;
+            box-shadow:0 30px 60px -20px rgba(0,0,0,.6); }
+        #reset-password-dialog::backdrop { background:rgba(2,6,23,.65); backdrop-filter:blur(3px); }
+        #reset-password-dialog h3 { margin:0 0 8px; font-size:1.05rem; }
+        #reset-password-dialog p { margin:0 0 16px; color:#94a3b8; font-size:.88rem; line-height:1.8; }
+        #reset-password-dialog input { width:100%; padding:11px 14px; border-radius:12px; margin-bottom:18px;
+            border:1px solid rgba(255,255,255,.15); background:#0f172a; color:#f8fafc; font:inherit; direction:ltr; }
+        #reset-password-dialog input:focus { outline:2px solid #ef4444; outline-offset:1px; }
+        #reset-password-dialog .actions { display:flex; gap:10px; }
+    </style>
+    <dialog id="reset-password-dialog" aria-labelledby="reset-password-title">
+        <form method="dialog">
+            <h3 id="reset-password-title">تأیید با رمز عبور مدیر</h3>
+            <p>همهٔ داده‌ها پاک می‌شود. پیش از ریست، یک پشتیبان کامل و سالم به‌طور خودکار گرفته می‌شود.</p>
+            <input id="reset-password-input" type="password" autocomplete="current-password" required
+                   aria-label="رمز عبور مدیر">
+            <div class="actions">
+                <button value="ok" class="btn btn-danger">ریست کن</button>
+                <button value="cancel" formnovalidate class="btn btn-secondary">انصراف</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 </html>

@@ -46,7 +46,10 @@ def current_version(conn: sqlite3.Connection) -> int:
 
 def run_migrations(conn: sqlite3.Connection, backup: Callable[[], str | None] | None = None) -> MigrationReport:
     """Bring `conn` to LATEST. `backup` is called once, before the first pending step."""
-    start = current_version(conn)
+    try:
+        start = current_version(conn)
+    except sqlite3.OperationalError as e:
+        raise MigrationError(f"دیتابیس در دسترس نیست (احتمالاً برنامهٔ دیگری آن را قفل کرده است): {e}") from e
     report = MigrationReport(start, start)
     if start > LATEST:
         report.newer_than_code = True
@@ -71,7 +74,8 @@ def run_migrations(conn: sqlite3.Connection, backup: Callable[[], str | None] | 
                 conn.execute(f"PRAGMA user_version = {int(version)}")
                 conn.execute("COMMIT")
             except Exception as e:
-                conn.execute("ROLLBACK")
+                if conn.in_transaction:  # BEGIN itself may have failed (locked database)
+                    conn.execute("ROLLBACK")
                 raise MigrationError(
                     f"به‌روزرسانی دیتابیس در مرحلهٔ {version} ({name}) شکست خورد و هیچ تغییری ثبت نشد: {e}"
                 ) from e

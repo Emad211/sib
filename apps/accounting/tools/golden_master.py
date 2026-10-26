@@ -81,6 +81,7 @@ def request_plan(conn: sqlite3.Connection) -> list[dict]:
             plan.append({"method": "GET", "url": f"/manager/reports/{r}{q}"})
             plan.append({"method": "GET", "url": f"/manager/export/{r}/csv{q}"})
         plan.append({"method": "GET", "url": f"/manager/insurance_arrears{q}"})
+        plan.append({"method": "GET", "url": f"/manager/insurance_arrears/export{q}"})
         y1, m1, d1 = fr.split("/")
         y2, m2, d2 = to.split("/")
         plan.append(
