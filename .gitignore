@@ -1,0 +1,39 @@
+# --- دادهٔ واقعی بیمار: هرگز وارد گیت نشود ---
+_data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+backups/
+
+# --- محیط و ساخت ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+node_modules/
+*.spec.bak
+
+# --- کلیدها ---
+.env
+.env.*
+!.env.example
+secret_key.txt
+
+# --- ابزارها ---
+.vercel/
+.playwright-mcp/
+graphify-out/
+*.log
+
+# --- محلی ---
+.claude/
+*.zip
+voice-cache/

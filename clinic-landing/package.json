@@ -1,0 +1,28 @@
+{
+  "name": "clinic-landing",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "voice": "node scripts/build-voice.mjs",
+    "voice:samples": "node scripts/voice-samples.mjs",
+    "sfx": "node scripts/build-sfx.mjs",
+    "bake:logo": "node scripts/bake-logo.mjs"
+  },
+  "dependencies": {
+    "@mapbox/mapbox-gl-rtl-text": "^0.3.0",
+    "gsap": "^3.15.0",
+    "maplibre-gl": "^5.24.0",
+    "n8ao": "^2.0.1",
+    "postprocessing": "^6.39.5",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

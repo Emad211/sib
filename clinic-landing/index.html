@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#08331f">
+<title>درمانگاه شبانه‌روزی سیب | پیگیری دیابت و فشار خون</title>
+<meta name="description" content="بین دو ویزیت، حواسمان به شما هست. پزشک و پرستاری که قند و فشار شما را مرتب دنبال می‌کنند، به‌موقع تماس می‌گیرند و آزمایش‌ها را یادتان می‌اندازند.">
+<meta name="theme-color" content="#08331f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<link rel="preload" href="/hero-logo.bin" as="fetch" type="application/octet-stream" crossorigin>
+</head>
+<body>
+
+<!-- ============ آیکن‌ها ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/><path d="M5 12h3l1.5-2.5 2 5 1.5-2.5H19"/></symbol>
+  <symbol id="i-both" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5s4 4.3 4 7.3a4 4 0 0 1-8 0c0-3 4-7.3 4-7.3z"/><path d="M16.5 21s-5-3.1-5-7a2.8 2.8 0 0 1 5-1.8 2.8 2.8 0 0 1 5 1.8c0 3.9-5 7-5 7z"/></symbol>
+  <symbol id="i-family" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M2.5 20v-1.5A5.5 5.5 0 0 1 8 13a5.5 5.5 0 0 1 5.5 5.5V20"/><path d="M14 14.5a4.3 4.3 0 0 1 7.5 2.9V20"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h8M8 13h5"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M13 14h3M8 17h2"/></symbol>
+  <symbol id="i-pill" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="8.2" width="18.4" height="7.6" rx="3.8" transform="rotate(-45 12 12)"/><path d="m8.6 8.6 6.8 6.8"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="m7 15 4-4 3 3 5-6"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5A3 3 0 0 0 6.5 5 3 3 0 0 0 4 9a3 3 0 0 0 .5 5A3 3 0 0 0 8 18.5a3 3 0 0 0 4 .5"/><path d="M12 5.5A3 3 0 0 1 17.5 5 3 3 0 0 1 20 9a3 3 0 0 1-.5 5 3 3 0 0 1-3.5 4.5 3 3 0 0 1-4 .5V5.5"/></symbol>
+  <symbol id="i-kidney" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4C5.5 4 4 7.5 4 11.5S5.5 20 9 20c2.5 0 3.5-2 3.5-4 0-1.8-1.5-2.2-1.5-4s1.5-2.3 1.5-4C12.5 5.5 11 4 9 4z"/><path d="M15 4c3.5 0 5 3.5 5 7.5S18.5 20 15 20"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-foot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 21c-2.5 0-3.5-2-3.5-4.5 0-3 1-5 1-8.5C7 5.5 8.3 4 10 4s3 1.6 3 4.5c0 2.8-1.2 4.8-1.2 7.5 0 1.3.7 2 .7 3s-1 2-3 2z"/><circle cx="16" cy="5" r="1.2"/><circle cx="18" cy="8" r="1"/><circle cx="18.6" cy="11.2" r=".9"/></symbol>
+  <symbol id="i-stitch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19 19 4"/><path d="m6 13 5 5M9 10l5 5M12 7l5 5"/></symbol>
+  <symbol id="i-bandage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7.5" width="19" height="9" rx="4.5" transform="rotate(-35 12 12)"/><path d="M10.6 10.2h.01M13.4 13.8h.01M12.8 10h.01M11.2 14h.01"/></symbol>
+  <symbol id="i-ear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 9a5 5 0 0 1 10 0c0 3-2.5 4-3.5 5.5S12.8 18 11 19.5 6.5 20 6.5 18"/><path d="M10 9.5a2 2 0 0 1 4 0c0 1.2-1 1.5-1.5 2.2"/></symbol>
+  <symbol id="i-syringe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m18 2 4 4M20 4l-3.5 3.5M14 5l5 5M7 12l2 2M10 9l2 2"/><path d="M15.5 6.5 6 16l-2 4 4-2 9.5-9.5"/></symbol>
+  <symbol id="i-ecg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-5 3 10 3-8 2 3h6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17a8 8 0 1 1 16 0"/><path d="m12 17 3.5-5"/><circle cx="12" cy="17" r="1.2"/></symbol>
+  <symbol id="i-tube" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v13a2 2 0 0 0 4 0V3"/><path d="M10 11h4"/></symbol>
+  <symbol id="i-steth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="2"/></symbol>
+  <symbol id="i-cert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="13" rx="2"/><path d="M8 7h8M8 10h5"/><circle cx="12" cy="17.5" r="2.5"/><path d="m10.5 19.5-1 2.5M13.5 19.5l1 2.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></symbol>
+  <symbol id="i-cc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7.5 12h3M13.5 12h3M7.5 15.5h6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+  <symbol id="i-walk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-6.5L14 17v4M8 11l3-3.5 3.5 1.5 2 3.5 2.5 1M11 7.5 10 13"/></symbol>
+  <symbol id="i-bowl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11h17a8.5 8.5 0 0 1-17 0z"/><path d="M8 20h8M12 4c1.5 1.5 1.5 3.5 0 5M15.5 5c1 1 1 2.5 0 3.5"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-av-doc" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#dbeee3"/><path d="M6.5 40c.6-7.8 6-12.2 13.5-12.2S32.9 32.2 33.5 40z" fill="#fffdf8"/><path d="M17.2 28.4 20 33l2.8-4.6z" fill="#7fb8d6"/><path d="M15 29.5c-1.5 3-1.5 6 .5 7.5M25 29.5c1.5 3 1.5 5 0 6.5" fill="none" stroke="#24405e" stroke-width="1.1" stroke-linecap="round"/><circle cx="25" cy="36.3" r="1.2" fill="#24405e"/><ellipse cx="20" cy="20.5" rx="6.2" ry="7.2" fill="#d9a882"/><path d="M13.6 19.5c-.4-5.4 2.6-8.3 6.4-8.3s6.9 2.6 6.5 8.3c-.9-2.7-2.6-4.2-6.5-4.2s-5.6 1.5-6.4 4.2z" fill="#2a211c"/><path d="M14.2 22c.6 5 3 7 5.8 7s5.2-2 5.8-7c-1 2.5-3 3.4-5.8 3.4S15.2 24.5 14.2 22z" fill="#3a2d26" opacity=".85"/><circle cx="17.7" cy="20.2" r=".95" fill="#1d2422"/><circle cx="22.3" cy="20.2" r=".95" fill="#1d2422"/><path d="M18.2 24q1.8 1.2 3.6 0" fill="none" stroke="#1d2422" stroke-width=".9" stroke-linecap="round"/></symbol>
+  <symbol id="i-av-nurse" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#e0f4e6"/><path d="M6.5 40c.6-7.8 6-12.2 13.5-12.2S32.9 32.2 33.5 40z" fill="#fffdf8"/><path d="M17 30.5 20 36l3-5.5" fill="none" stroke="#1b9157" stroke-width="1.6" stroke-linecap="round"/><path d="M10.5 22.5C10.5 14.6 14.6 9 20 9s9.5 5.6 9.5 13.5c0 4.3-1.5 7.3-3 9.3h-13c-1.5-2-3-5-3-9.3z" fill="#24405e"/><ellipse cx="20" cy="21" rx="5.9" ry="7" fill="#e7b994"/><circle cx="17.8" cy="20.4" r=".95" fill="#1d2422"/><circle cx="22.2" cy="20.4" r=".95" fill="#1d2422"/><path d="M18 24.2q2 1.5 4 0" fill="none" stroke="#1d2422" stroke-width=".9" stroke-linecap="round"/></symbol>
+  <symbol id="i-av-reza" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#fbefd4"/><path d="M6.5 40c.6-7.8 6-12 13.5-12s12.9 4.2 13.5 12z" fill="#2f8f7c"/><path d="M16.5 28.5 20 32l3.5-3.5" fill="#fffdf8"/><rect x="17.6" y="25" width="4.8" height="4" rx="1.6" fill="#dca783"/><ellipse cx="20" cy="18.6" rx="7" ry="8" fill="#f0c7a2"/><path d="M12.9 17.5c-.4-5.4 2.7-8.8 7.1-8.8s7.5 3.4 7.1 8.8c-1-2.6-2.4-4-4.2-4.6-2 .8-4.4 1-7 .6-1.4.8-2.4 2.2-3 4z" fill="#8f8c86"/><circle cx="17.4" cy="18.6" r=".95" fill="#1d2422"/><circle cx="22.6" cy="18.6" r=".95" fill="#1d2422"/><path d="M16.4 22.4q3.6-1.6 7.2 0-1.8 1.3-3.6 1-1.8.3-3.6-1z" fill="#7d7a74"/><path d="M15.9 15.8h2.6M21.5 15.8h2.6" stroke="#6f6c66" stroke-width="1" stroke-linecap="round"/></symbol>
+</svg>
+
+<!-- ============ هدر ============ -->
+<header class="hdr" id="hdr">
+  <div class="wrap hdr-in">
+    <a href="#top" class="logo" aria-label="صفحهٔ اصلی">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span class="js-name">درمانگاه شبانه‌روزی سیب</span>
+    </a>
+    <nav class="nav" aria-label="منوی اصلی">
+      <a href="#story">داستان آقا رضا</a>
+      <a href="#program">برنامهٔ پیگیری</a>
+      <a href="#services">خدمات</a>
+      <a href="#faq">سؤالات</a>
+    </nav>
+    <div class="hdr-cta">
+      <a class="hdr-call js-tel-btn" href="tel:+981732233558" aria-label="تماس تلفنی با درمانگاه" title="تماس تلفنی"><svg><use href="#i-phone"/></svg></a>
+      <a href="#join" class="btn btn-primary btn-sm">درخواست تماس</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ هیرو ============ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-copy">
+      <h1>بین دو ویزیت،<br><em>حواسمان به شما هست.</em></h1>
+      <p class="hero-lead">یک پزشک و یک پرستار، قند و فشارتان را هفته به هفته دنبال می‌کنند؛ پیش از آنکه دیر شود خبرتان می‌کنند و نمی‌گذارند آزمایشی از قلم بیفتد.</p>
+
+      <form class="lead lead-bar js-lead" novalidate>
+        <div class="lead-body">
+          <div class="bar">
+            <label class="bar-fld" for="m-1"><span class="sr">شمارهٔ موبایل</span>
+              <svg><use href="#i-phone"/></svg><input id="m-1" type="tel" name="mobile" dir="ltr" inputmode="numeric" autocomplete="tel" placeholder="0912 345 6789" maxlength="16">
+            </label>
+            <button class="btn btn-primary lead-go" type="submit"><span>با من تماس بگیرید</span><svg><use href="#i-arrow"/></svg></button>
+          </div>
+          <div class="lead-msg" aria-live="polite"></div>
+          <div class="bar-who">
+            <span class="avs" aria-hidden="true"><svg><use href="#i-av-nurse"/></svg><svg><use href="#i-av-doc"/></svg></span>
+            <p><b>پرستار تیم پیگیری</b> خودش با شما تماس می‌گیرد.<small><svg><use href="#i-lock"/></svg>شماره‌تان فقط برای همین تماس به کار می‌رود.</small></p>
+          </div>
+        </div>
+        <div class="lead-ok" aria-live="polite">
+          <span class="ok-ic"><svg width="24" height="24"><use href="#i-tick"/></svg></span>
+          <div><b>شماره‌تان ثبت شد.</b><p>پرستار تیم پیگیری به‌زودی با شما تماس می‌گیرد.</p></div>
+        </div>
+      </form>
+    </div>
+
+    <div class="hero3d" id="hero3d" aria-hidden="true">
+      <div class="h3-glow"></div>
+      <span class="h3-fallback"></span>
+      <canvas></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ============ موشن‌گرافی ============ -->
+<section class="story sec" id="story">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">یک دقیقه، با صدا ببینید</span>
+      <h2>داستان آقا رضا</h2>
+      <p>از روزی که خیال می‌کرد حالش خوب است، تا روزی که قند و فشارش واقعاً سر جایش آمد.</p>
+    </div>
+
+    <div class="sp" id="sp" tabindex="0" data-state="idle" aria-label="فیلم کوتاه برنامهٔ پیگیری">
+      <div class="sp-stage">
+        <canvas class="sp-canvas" aria-hidden="true"></canvas>
+        <div class="sp-labels" aria-hidden="true"></div>
+        <div class="sp-kt" aria-hidden="true"></div>
+        <span class="sp-chapter" aria-hidden="true"></span>
+        <div class="sp-cap"><p class="sp-cap-text" aria-live="polite"></p></div>
+        <button class="sp-poster" type="button" aria-label="پخش فیلم">
+          <svg class="sp-pecg" viewBox="0 0 1000 200" preserveAspectRatio="none" aria-hidden="true"><path d="M1000 100 L640 100 L626 120 L610 24 L594 166 L582 100 L520 100 L504 82 L488 100 L0 100"/></svg>
+          <span class="sp-kicker">یک دقیقه · با صدا</span>
+          <span class="sp-play"><svg><use href="#i-play"/></svg></span>
+          <b>قند و فشارِ بالا، درد ندارند.</b>
+          <small>داستان آقا رضا را ببینید</small>
+        </button>
+        <div class="sp-bar">
+          <button class="sp-btn sp-toggle" type="button" aria-label="پخش"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
+          <div class="sp-track" role="slider" tabindex="0" aria-label="زمان" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="sp-fill"></div><div class="sp-chapters"></div></div>
+          <span class="sp-time">۰:۰۰</span>
+          <button class="sp-btn sp-cc" type="button" aria-pressed="true" aria-label="زیرنویس"><svg><use href="#i-cc"/></svg></button>
+          <button class="sp-btn sp-mute" type="button" aria-label="بی‌صدا"><svg class="i-sound"><use href="#i-sound"/></svg><svg class="i-muted"><use href="#i-muted"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ چرا پیگیری ============ -->
+<section class="sec problem" id="why">
+  <div class="wrap pr">
+    <div class="pr-copy">
+      <div class="pr-head rv">
+        <span class="eyebrow">چرا پیگیری؟</span>
+        <h2>دیابت و فشار خون<br>درد ندارند؛<br><em>عوارضشان دارد.</em></h2>
+        <p>سال‌ها بی‌صدا به قلب، مغز، کلیه، چشم و پا آسیب می‌زنند؛ وقتی نشانه‌ای پیدا شود، آسیب از مدت‌ها پیش شروع شده است.</p>
+      </div>
+
+      <div class="pr-half rv">
+        <b class="pr-ratio">۱ <small>از</small> ۲</b>
+        <div>
+          <div class="ppl" aria-hidden="true"><i></i><i class="g"></i><i></i><i class="g"></i><i></i><i class="g"></i><i></i><i class="g"></i><i></i><i class="g"></i></div>
+          <p>نفر مبتلا به فشار خون، <b>از بیماری‌اش خبر ندارد.</b></p>
+        </div>
+      </div>
+
+      <div class="pr-good rv">
+        <span class="pr-good-t"><svg><use href="#i-check"/></svg>و خبر خوب: هر عددی که پایین بیاید، یک خطر کم می‌شود.</span>
+        <div class="mt">
+          <b data-count="37" data-fmt="pct">۳۷٪</b>
+          <div><h3>عوارض کمتر در چشم و کلیه</h3><p>با هر یک واحد کاهش قند سه‌ماهه (HbA1c)</p><span class="mt-bar" style="--v:.37"><i></i></span></div>
+        </div>
+        <div class="mt">
+          <b data-count="27" data-fmt="pct">۲۷٪</b>
+          <div><h3>خطر کمتر سکتهٔ مغزی</h3><p>با ده واحد کاهش فشار خون</p><span class="mt-bar" style="--v:.27"><i></i></span></div>
+        </div>
+      </div>
+    </div>
+
+    <figure class="bodyfig rv" aria-label="اندام‌هایی که دیابت و فشار خون بی‌صدا به آن‌ها آسیب می‌زنند">
+      <div class="bf-box">
+        <svg class="bf-body" viewBox="0 0 200 440" aria-hidden="true">
+          <defs>
+            <linearGradient id="bfg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fe3a6"/><stop offset="1" stop-color="#1b9157"/></linearGradient>
+          </defs>
+          <g class="bf-fill" fill="url(#bfg)" stroke="url(#bfg)" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="100" cy="46" rx="24" ry="29" stroke="none"/>
+            <rect x="90" y="68" width="20" height="22" rx="7" stroke="none"/>
+            <path d="M58 98 Q100 84 142 98 L150 200 Q148 238 136 252 L64 252 Q52 238 50 200 Z" stroke="none"/>
+            <path d="M62 106 L45 178 L39 244" fill="none" stroke-width="20"/>
+            <path d="M138 106 L155 178 L161 244" fill="none" stroke-width="20"/>
+            <path d="M82 246 L78 340 L75 418" fill="none" stroke-width="28"/>
+            <path d="M118 246 L122 340 L125 418" fill="none" stroke-width="28"/>
+            <ellipse cx="70" cy="428" rx="17" ry="7" stroke="none"/>
+            <ellipse cx="130" cy="428" rx="17" ry="7" stroke="none"/>
+          </g>
+          <g class="bf-lines">
+            <path d="M96 34 H26"/><path d="M111 50 H176"/><path d="M112 128 H176"/><path d="M90 192 H26"/><path d="M128 426 H176"/>
+          </g>
+        </svg>
+        <span class="bf-scan" aria-hidden="true"></span>
+        <span class="hs" style="--x:48%;--y:7.7%"></span>
+        <span class="hs" style="--x:55.5%;--y:11.4%"></span>
+        <span class="hs" style="--x:56%;--y:29.1%"></span>
+        <span class="hs" style="--x:45%;--y:43.6%"></span>
+        <span class="hs" style="--x:64%;--y:96.8%"></span>
+        <span class="lb l" style="--y:7.7%"><svg><use href="#i-brain"/></svg><b>مغز</b><small>سکته</small></span>
+        <span class="lb r" style="--y:11.4%"><svg><use href="#i-eye"/></svg><b>چشم</b><small>کم‌بینایی</small></span>
+        <span class="lb r" style="--y:29.1%"><svg><use href="#i-heart"/></svg><b>قلب</b><small>سکتهٔ قلبی</small></span>
+        <span class="lb l" style="--y:43.6%"><svg><use href="#i-kidney"/></svg><b>کلیه</b><small>نارسایی</small></span>
+        <span class="lb r" style="--y:96.8%"><svg><use href="#i-foot"/></svg><b>پا</b><small>زخم دیابتی</small></span>
+      </div>
+      <figcaption>پیگیری منظم، از همهٔ این‌ها محافظت می‌کند.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============ برنامه ============ -->
+<section class="sec program" id="program">
+  <div class="wrap pst">
+    <div class="pst-copy">
+      <div class="sec-head rv">
+        <span class="eyebrow">عضویت در برنامهٔ پیگیری</span>
+        <h2>با عضویت، چه چیزی <em>دریافت می‌کنید؟</em></h2>
+        <p>هفت قاب کوتاه از روزهای عضویت؛ هرکدام یکی از کارهایی که واقعاً برایتان انجام می‌دهیم.</p>
+      </div>
+      <ol class="pst-hl rv" aria-label="فهرست قاب‌ها">
+        <li><button type="button" data-go="0"><span><svg><use href="#i-steth"/></svg></span>تیم شما</button></li>
+        <li><button type="button" data-go="1"><span><svg><use href="#i-chart"/></svg></span>عددها</button></li>
+        <li><button type="button" data-go="2"><span><svg><use href="#i-phone"/></svg></span>تماس</button></li>
+        <li><button type="button" data-go="3"><span><svg><use href="#i-cal"/></svg></span>آزمایش‌ها</button></li>
+        <li><button type="button" data-go="4"><span><svg><use href="#i-pill"/></svg></span>دارو</button></li>
+        <li><button type="button" data-go="5"><span><svg><use href="#i-bowl"/></svg></span>آموزش</button></li>
+        <li><button type="button" data-go="6"><span class="hl-logo"></span>عضویت</button></li>
+      </ol>
+    </div>
+
+    <div class="pst-stage">
+      <button class="pst-arrow prev" type="button" aria-label="قاب قبلی"><svg><use href="#i-arrow"/></svg></button>
+      <div class="phone">
+        <div class="ig" id="ig" tabindex="0" role="region" aria-roledescription="نمایش قاب‌ها" aria-label="قاب‌های برنامهٔ پیگیری">
+          <div class="ig-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <header class="ig-top">
+            <span class="ig-av"><span class="logo-mark"></span></span>
+            <b>درمانگاه سیب</b><svg class="ig-ver" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.5l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3 1 3-2.6 1.9-1 3-3.2-.1L12 22.5l-2.6-1.9-3.2.1-1-3L2.6 15.8l1-3-1-3 2.6-1.9 1-3 3.2.1z" fill="#3897f0"/><path d="m8 12.2 2.7 2.7L16.3 9.3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <small>برنامهٔ پیگیری</small>
+            <button class="ig-pp" type="button" aria-label="توقف و ادامه"><svg class="i-pa"><use href="#i-pause"/></svg><svg class="i-pl"><use href="#i-play"/></svg></button>
+          </header>
+
+          <div class="ig-slides">
+            <!-- ۱. تیم -->
+            <article class="st s-team" data-dur="6500" aria-label="۱ از ۷: تیم شما">
+              <span class="st-k a">قلب برنامه</span>
+              <div class="tm a" style="--d:.15s">
+                <figure><svg><use href="#i-av-doc"/></svg><figcaption>پزشک شما</figcaption></figure>
+                <svg class="tm-ecg" viewBox="0 0 120 40" aria-hidden="true"><path d="M2 22h30l6-10 8 22 7-28 6 16h59"/></svg>
+                <figure><svg><use href="#i-av-nurse"/></svg><figcaption>پرستار شما</figcaption></figure>
+              </div>
+              <h3 class="a" style="--d:.3s">یک پزشک و یک پرستار،<br><em>فقط برای شما</em></h3>
+              <p class="a" style="--d:.4s">از اولین ویزیت، پرونده‌تان دست کسانی است که عددها، داروها و هدف‌هایتان را می‌شناسند.</p>
+              <div class="bub in a" style="--d:1.1s">سلام آقا رضا، فشار امروزتون کمی بالا بود. داروی صبح رو خوردید؟</div>
+              <div class="bub out a" style="--d:2.2s">سلام. بله، ساعت هشت خوردم.</div>
+            </article>
+
+            <!-- ۲. عددها -->
+            <article class="st s-num" data-dur="7000" aria-label="۲ از ۷: عددهای شما">
+              <span class="st-k a">قند و فشار</span>
+              <h3 class="a" style="--d:.1s">عددهای شما،<br><em>هر هفته زیر نظر ماست</em></h3>
+              <div class="bp a" style="--d:.25s">
+                <small>فشار این هفته</small>
+                <b dir="ltr">128<i>/</i>80</b>
+                <span class="ok"><svg><use href="#i-tick"/></svg>در محدودهٔ هدف</span>
+                <svg class="bp-ch" viewBox="0 0 240 90" aria-hidden="true"><rect x="0" y="46" width="240" height="24" rx="8"/><path d="M8 14 C34 22 46 10 70 28 S104 42 128 48 S172 58 196 54 S224 56 232 57"/><circle cx="232" cy="57" r="5"/></svg>
+                <div class="bp-d"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div>
+              </div>
+              <div class="poll a" style="--d:.9s" data-x>
+                <p>امروز فشارتان را گرفتید؟</p>
+                <button type="button" style="--p:78%">بله<i>۷۸٪</i></button>
+                <button type="button" style="--p:22%">هنوز نه<i>۲۲٪</i></button>
+              </div>
+            </article>
+
+            <!-- ۳. تماس -->
+            <article class="st s-call" data-dur="6500" aria-label="۳ از ۷: تماس به‌موقع">
+              <span class="st-k a">تماس ورودی</span>
+              <div class="cl a" style="--d:.1s">
+                <span class="cl-av"><i></i><i></i><svg><use href="#i-av-nurse"/></svg></span>
+                <b>پرستار تیم پیگیری</b>
+                <small>درمانگاه سیب · در حال تماس…</small>
+              </div>
+              <div class="alrt a" style="--d:.6s"><svg><use href="#i-heart"/></svg><div><b>فشار <span dir="ltr">172/104</span></b><small>بیرون از محدوده · ۷:۴۰ صبح</small></div></div>
+              <h3 class="a" style="--d:.35s">عددتان بالا رفت؟<br><em>پیش از شما زنگ می‌زنیم</em></h3>
+              <p class="a" style="--d:.45s">پرستار خودش تماس می‌گیرد و با نظر پزشک، برنامه همان روز تنظیم می‌شود.</p>
+              <div class="cl-btns a" style="--d:.8s"><span class="no"><svg><use href="#i-phone"/></svg></span><span class="yes"><svg><use href="#i-phone"/></svg></span></div>
+            </article>
+
+            <!-- ۴. تقویم -->
+            <article class="st s-cal" data-dur="7000" aria-label="۴ از ۷: تقویم آزمایش و معاینه">
+              <span class="st-k a">تقویم سلامت</span>
+              <h3 class="a" style="--d:.1s">هیچ آزمایشی<br><em>یادتان نمی‌رود</em></h3>
+              <div class="cd a" style="--d:.25s">
+                <small>معاینهٔ چشم</small>
+                <div class="cd-n"><span><b>۱۲</b>روز</span><span><b>۰۴</b>ساعت</span><span><b class="cd-m">۳۰</b>دقیقه</span></div>
+                <em><svg><use href="#i-bell"/></svg>به‌موقع یادتان می‌اندازیم</em>
+              </div>
+              <ul class="ck">
+                <li class="a" style="--d:.7s"><i><svg><use href="#i-tick"/></svg></i>HbA1c<small>انجام شد</small></li>
+                <li class="a" style="--d:1.1s"><i><svg><use href="#i-tick"/></svg></i>چربی و کلیه<small>انجام شد</small></li>
+                <li class="a" style="--d:1.5s"><i><svg><use href="#i-tick"/></svg></i>معاینهٔ پا<small>انجام شد</small></li>
+                <li class="a nx" style="--d:1.9s"><i></i>نوار قلب<small>ماه آینده</small></li>
+              </ul>
+            </article>
+
+            <!-- ۵. دارو -->
+            <article class="st s-med" data-dur="6500" aria-label="۵ از ۷: دارو">
+              <div class="lk a"><small>شنبه، ۲۸ مهر</small><b>۸:۰۰</b></div>
+              <div class="nt a" style="--d:.5s"><span class="nt-i"><svg><use href="#i-pill"/></svg></span><div><b>وقت داروی صبح</b><small>داروی قند و فشار · بعد از صبحانه</small></div><time>الان</time></div>
+              <div class="nt a" style="--d:1.3s"><span class="nt-i g"><svg><use href="#i-check"/></svg></span><div><b>نسخه‌تان تمدید شد</b><small>۵ روز دارو مانده بود؛ هماهنگ کردیم</small></div><time>دیروز</time></div>
+              <h3 class="a" style="--d:.2s">داروهایتان<br><em>هیچ‌وقت تمام نمی‌شود</em></h3>
+              <div class="stk a" style="--d:1.8s"><span>داروی باقی‌مانده</span><div><i></i></div><small>۳۰ روز</small></div>
+            </article>
+
+            <!-- ۶. آموزش -->
+            <article class="st s-edu" data-dur="7500" aria-label="۶ از ۷: آموزش">
+              <span class="st-k a">یاد بگیریم</span>
+              <h3 class="a" style="--d:.1s">آموزش ساده،<br><em>برای شما و خانواده</em></h3>
+              <div class="quiz a" style="--d:.4s" data-x>
+                <p>قند ناشتای خوب، چند است؟</p>
+                <button type="button" data-ok>کمتر از ۱۳۰</button>
+                <button type="button">۱۵۰ تا ۲۰۰</button>
+                <button type="button">بالای ۲۰۰</button>
+              </div>
+              <ul class="tl">
+                <li class="a" style="--d:.8s"><svg><use href="#i-bowl"/></svg>تغذیه</li>
+                <li class="a" style="--d:.9s"><svg><use href="#i-walk"/></svg>تحرک</li>
+                <li class="a" style="--d:1s"><svg><use href="#i-foot"/></svg>مراقبت از پا</li>
+                <li class="a" style="--d:1.1s"><svg><use href="#i-gauge"/></svg>اندازه‌گیری در خانه</li>
+              </ul>
+            </article>
+
+            <!-- ۷. عضویت -->
+            <article class="st s-cta" data-dur="8000" aria-label="۷ از ۷: عضویت">
+              <span class="cta-logo a"><span class="logo-mark"></span></span>
+              <h3 class="a" style="--d:.15s">جای شما<br><em>کنار ما خالی است</em></h3>
+              <p class="a" style="--d:.3s">فقط شماره‌تان را بگذارید؛ بقیه‌اش با ما.</p>
+              <a class="lnk a" style="--d:.5s" href="#join" data-x><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>عضویت در برنامهٔ پیگیری</a>
+              <a class="cta-tel a js-tel-btn" style="--d:.65s" href="#" data-x><svg><use href="#i-phone"/></svg>یا همین الان زنگ بزنید</a>
+            </article>
+          </div>
+
+          <div class="ig-hint" aria-hidden="true"><span>قبلی</span><span>بعدی</span></div>
+
+          <footer class="ig-foot">
+            <a href="#join" class="ig-reply" data-x>پیام به درمانگاه سیب…</a>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-8-4.7-8-10.6A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8 2.9c0 5.9-8 10.6-8 10.6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.5 3 3 10.2l7 2.8m11.5-10L14 21l-4-8m11.5-10L10 13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          </footer>
+        </div>
+      </div>
+      <button class="pst-arrow next" type="button" aria-label="قاب بعدی"><svg><use href="#i-arrow"/></svg></button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ روال کار: حلقهٔ مراقبت (با اسکرول جلو می‌رود) ============ -->
+<section class="how" id="how">
+  <div class="how-pin">
+    <div class="wrap how-in">
+      <div class="how-copy">
+        <span class="eyebrow">روال کار</span>
+        <h2>حلقه‌ای که با هر دور <br><em>کامل‌تر می‌شود.</em></h2>
+        <p>پیگیری کاری یک‌باره نیست؛ چرخه‌ای است که تا رسیدن قند و فشار به هدف ادامه دارد، و بعد از آن هم.</p>
+        <ol class="how-steps" id="how-steps">
+          <li><button type="button" data-i="0"><span>۱</span>ثبت شماره</button></li>
+          <li><button type="button" data-i="1"><span>۲</span>تماس ما</button></li>
+          <li><button type="button" data-i="2"><span>۳</span>ویزیت اول</button></li>
+          <li><button type="button" data-i="3"><span>۴</span>اندازه‌گیری در خانه</button></li>
+          <li><button type="button" data-i="4"><span>۵</span>تماس و تنظیم</button></li>
+          <li><button type="button" data-i="5"><span>۶</span>بازبینی دوره‌ای</button></li>
+        </ol>
+      </div>
+      <div class="ring" id="ring">
+        <svg class="ring-svg" viewBox="0 0 400 400" aria-hidden="true">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7fe3a6"/><stop offset="1" stop-color="#1b9157"/></linearGradient>
+          </defs>
+          <circle class="ring-track" cx="200" cy="200" r="160"/>
+          <circle class="ring-dash" cx="200" cy="200" r="182"/>
+          <circle class="ring-prog" cx="200" cy="200" r="160" pathLength="100"/>
+        </svg>
+        <div class="ring-nodes" id="ring-nodes"></div>
+        <div class="ring-core" aria-live="polite">
+          <span class="ring-n">۱</span>
+          <b class="ring-t">ثبت شماره</b>
+          <p class="ring-d">شماره‌تان را همین‌جا می‌گذارید؛ کمتر از یک دقیقه.</p>
+        </div>
+      </div>
+      <div class="how-hint" aria-hidden="true"><span class="how-dots"><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="how-scroll">برای دیدن مرحله‌ها، صفحه را پایین بکشید</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="wrap" id="join">
+  <div class="band rv">
+    <div class="band-copy">
+      <h2>همین امروز،<br>عضو برنامه شوید.</h2>
+      <ol class="band-steps">
+        <li><span>۱</span>شماره را می‌گذارید</li>
+        <li><span>۲</span>با شما تماس می‌گیریم</li>
+        <li><span>۳</span>ویزیت اول و شروع برنامه</li>
+      </ol>
+    </div>
+    <form class="lead lead-card js-lead" novalidate>
+      <div class="lead-body">
+        <div class="lc-head">
+          <span class="lc-av"><svg><use href="#i-av-nurse"/></svg><i></i></span>
+          <div><b>پرستار تیم پیگیری</b><small>درمانگاه سیب · معمولاً همان روز تماس می‌گیرد</small></div>
+        </div>
+        <p class="lc-bub">سلام! شماره‌تان را بگذارید؛ خودم زنگ می‌زنم، برنامه را توضیح می‌دهم و برای ویزیت اول وقت می‌گذاریم.</p>
+        <label class="fld" for="m-2"><span class="fld-l">شمارهٔ موبایل</span>
+          <span class="fld-box"><svg><use href="#i-phone"/></svg><input id="m-2" type="tel" name="mobile" dir="ltr" inputmode="numeric" autocomplete="tel" placeholder="0912 345 6789" maxlength="16"></span>
+        </label>
+        <div class="lead-msg" aria-live="polite"></div>
+        <button class="btn btn-primary lead-go lead-full" type="submit"><span>ثبت درخواست تماس</span><svg><use href="#i-arrow"/></svg></button>
+        <p class="fine"><svg><use href="#i-lock"/></svg>شماره‌تان فقط برای تماس درمانگاه استفاده می‌شود.</p>
+      </div>
+      <div class="lead-ok" aria-live="polite">
+          <span class="ok-ic"><svg width="24" height="24"><use href="#i-tick"/></svg></span>
+          <div><b>شماره‌تان ثبت شد.</b><p>پرستار تیم پیگیری به‌زودی با شما تماس می‌گیرد.</p></div>
+        </div>
+    </form>
+  </div>
+</section>
+
+<!-- ============ سؤالات ============ -->
+<section class="sec faq-sec" id="faq">
+  <div class="wrap faq-in">
+    <div class="faq-side rv">
+      <span class="eyebrow">سؤالات رایج</span>
+      <h2>قبل از عضویت،<br>این‌ها را بدانید.</h2>
+      <p>جواب سؤالتان اینجا نیست؟ مستقیم بپرسید.</p>
+      <a class="btn btn-ghost js-tel-btn" href="tel:+981732233558"><svg><use href="#i-phone"/></svg><span class="js-tel" dir="ltr">۰۱۷-۳۲۲۳۳۵۵۸</span></a>
+    </div>
+    <div class="faq rv">
+      <details open><summary>دقیقاً چه کسی پیگیری‌ام را انجام می‌دهد؟</summary><p>پرستار تیم پیگیری، زیر نظر پزشک درمانگاه. او عددهای شما را می‌بیند، در صورت نیاز تماس می‌گیرد و هر تصمیمی دربارهٔ دارو را با پزشک هماهنگ می‌کند. هر بار با یک صدای آشنا حرف می‌زنید، نه یک مرکز تماس.</p></details>
+      <details><summary>عددهایم را چطور و هر چند وقت بفرستم؟</summary><p>با پیامک یا پیام‌رسان، در چند ثانیه. دفعات اندازه‌گیری را پزشک در ویزیت اول متناسب با شرایط شما تعیین می‌کند؛ معمولاً در شروع درمان یا بعد از تغییر دارو بیشتر است.</p></details>
+      <details><summary>با گوشی کار نمی‌کنم؛ باز هم می‌توانم عضو شوم؟</summary><p>بله. می‌توانید عددها را تلفنی بگویید، یا یکی از اعضای خانواده به‌جای شما بفرستد. برنامه را طوری چیده‌ایم که برای بزرگ‌ترها هم ساده باشد.</p></details>
+      <details><summary>برای پدر یا مادرم می‌توانم ثبت‌نام کنم؟</summary><p>حتماً. شمارهٔ خودتان را بگذارید و هنگام تماس بگویید برای چه کسی است. می‌توانیم تماس‌ها را با شما، با خود بیمار یا با هر دو هماهنگ کنیم تا شما هم در جریان باشید.</p></details>
+      <details><summary>دستگاه قند یا فشارسنج ندارم؛ چه کنم؟</summary><p>در ویزیت اول دربارهٔ انتخاب دستگاه و روش درست اندازه‌گیری راهنمایی‌تان می‌کنیم. تا آن موقع می‌توانید اندازه‌گیری را در درمانگاه انجام دهید؛ درمانگاه شبانه‌روزی باز است.</p></details>
+      <details><summary>پزشک متخصص خودم را دارم؛ باز هم به کارم می‌آید؟</summary><p>بله. برنامهٔ پیگیری جایگزین پزشک متخصص شما نیست؛ کنار او کار می‌کند و فاصلهٔ بین ویزیت‌ها را پر می‌کند. در صورت نیاز ارجاع هم هماهنگ می‌شود.</p></details>
+      <details><summary>هزینهٔ عضویت چقدر است؟</summary><p>هزینهٔ عضویت و ویزیت‌ها را همکاران ما هنگام تماس، دقیق و شفاف توضیح می‌دهند؛ پیش از هر تصمیمی همه‌چیز را می‌دانید.</p></details>
+      <details><summary>اگر عددم خیلی بالا باشد چه می‌شود؟</summary><p>تیم پیگیری با شما تماس می‌گیرد و با نظر پزشک، دربارهٔ تنظیم دارو یا مراجعهٔ حضوری تصمیم گرفته می‌شود. در علائم اورژانسی مانند درد قفسهٔ سینه، تنگی نفس یا ضعف ناگهانی یک طرف بدن، فوراً با ۱۱۵ تماس بگیرید.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ خدمات عمومی ============ -->
+<section class="svc-sec" id="services">
+  <div class="wrap">
+    <div class="svc-hero rv">
+      <div class="svc-hero-copy">
+        <span class="svc-open"><i></i>همین الان باز است</span>
+        <h2>درمانگاه سیب،<br><em>شب و روز، کنار شما.</em></h2>
+        <p>برای همهٔ اعضای خانواده؛ از بخیهٔ نیمه‌شب تا معاینهٔ دوره‌ای.</p>
+      </div>
+      <div class="svc-24"><b>۲۴</b><span>ساعته<small>هفت روز هفته، حتی روزهای تعطیل</small></span></div>
+    </div>
+
+    <div class="svc-grid">
+      <article class="svc-card svc-hl rv">
+        <span class="svc-ic"><svg><use href="#i-stitch"/></svg></span>
+        <div><h3>بخیه و ترمیم زخم</h3><p>بریدگی و زخم، به دست پزشک، در هر ساعت شبانه‌روز.</p></div>
+        <svg class="svc-wm" aria-hidden="true"><use href="#i-stitch"/></svg>
+      </article>
+      <article class="svc-card svc-hl rv">
+        <span class="svc-ic"><svg><use href="#i-bandage"/></svg></span>
+        <div><h3>پانسمان</h3><p>پانسمان و تعویض پانسمان انواع زخم، از جمله زخم پای دیابتی، تا بهبود کامل.</p></div>
+        <svg class="svc-wm" aria-hidden="true"><use href="#i-bandage"/></svg>
+      </article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-steth"/></svg></span><h3>ویزیت پزشک عمومی</h3><p>بدون نوبت قبلی</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-syringe"/></svg></span><h3>تزریقات و سرم</h3><p>در محیطی آرام</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-ear"/></svg></span><h3>شستشوی گوش</h3><p>سریع و بی‌خطر</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-ecg"/></svg></span><h3>نوار قلب</h3><p>در چند دقیقه</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-gauge"/></svg></span><h3>قند و فشار</h3><p>اندازه‌گیری فوری</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-tube"/></svg></span><h3>نمونه‌گیری آزمایش</h3><p>بدون رفت‌وآمد اضافه</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-clip"/></svg></span><h3>معاینهٔ دوره‌ای</h3><p>برای همهٔ سنین</p></article>
+      <article class="svc-card rv"><span class="svc-ic"><svg><use href="#i-cert"/></svg></span><h3>گواهی سلامت</h3><p>همان روز</p></article>
+    </div>
+
+    <div class="svc-visit rv">
+      <span class="svc-visit-ic"><svg><use href="#i-pin"/></svg></span>
+      <div><b>گرگان، سی‌متری رسالت، نبش رسالت ۳۶</b><small>شبانه‌روزی، همهٔ روزهای هفته</small></div>
+      <a class="btn btn-primary js-tel-btn" href="tel:+981732233558"><svg><use href="#i-phone"/></svg><span class="js-tel" dir="ltr">۰۱۷-۳۲۲۳۳۵۵۸</span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ نقشه ============ -->
+<section class="wrap map-sec" id="map">
+  <div class="map-card rv">
+    <div class="map-box" id="map-box" aria-label="نقشهٔ سه‌بعدی محل درمانگاه سیب"></div>
+    <div class="map-info">
+      <span class="eyebrow">مسیر درمانگاه</span>
+      <h2>گرگان، سی‌متری رسالت،<br>نبش رسالت ۳۶</h2>
+      <p>شبانه‌روزی، همهٔ روزهای هفته. نقشه را بکشید و بچرخانید.</p>
+      <a class="btn btn-primary" href="https://maps.app.goo.gl/zk6bjyZnNFEgDbBt9" target="_blank" rel="noopener"><svg><use href="#i-pin"/></svg>مسیریابی با نقشهٔ گوگل</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a href="#top" class="logo"><span class="logo-mark" aria-hidden="true"></span><span><span class="js-name">درمانگاه شبانه‌روزی سیب</span><small>پزشکی عمومی · پیگیری بیماری‌های مزمن</small></span></a>
+      <p style="margin-top:14px;font-size:14.5px;max-width:340px">مراقبت از بیماران دیابت و فشار خون، بعد از مطب هم ادامه دارد.</p>
+    </div>
+    <div>
+      <h4>تماس</h4>
+      <ul>
+        <li>تلفن: <a class="js-tel" href="tel:+981732233558" dir="ltr">۰۱۷-۳۲۲۳۳۵۵۸</a></li>
+        <li>نشانی: گرگان، سی‌متری رسالت، نبش رسالت ۳۶</li>
+        <li>ساعات کار: شبانه‌روزی، همهٔ روزهای هفته</li>
+      </ul>
+    </div>
+    <div>
+      <h4>دسترسی سریع</h4>
+      <ul>
+        <li><a href="#program">برنامهٔ پیگیری</a></li>
+        <li><a href="#services">خدمات عمومی</a></li>
+        <li><a href="#join">ثبت شماره</a></li>
+      </ul>
+    </div>
+    <div class="foot-bottom">© <span id="yr">۱۴۰۵</span> · <span class="js-name">درمانگاه شبانه‌روزی سیب</span> · این صفحه جایگزین مشاورهٔ پزشکی نیست.</div>
+  </div>
+</footer>
+
+<div class="mbar" id="mbar">
+  <a href="#join" class="btn btn-primary">درخواست تماس</a>
+  <a href="tel:+981732233558" class="btn btn-ghost js-tel-btn" aria-label="تماس تلفنی"><svg><use href="#i-phone"/></svg></a>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

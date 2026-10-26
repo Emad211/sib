@@ -1,0 +1,9 @@
+scripts
+README.md
+.env*
+node_modules
+dist
+voice-cache
+voice-samples
+dist
+CLAUDE.md
