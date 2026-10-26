@@ -1,13 +1,18 @@
 from typing import List, Dict, Optional
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.nursing_services_repo import usage_since
 
 class ConsumableTariffsRepository:
     def list_active(self, category: Optional[str] = None) -> List[Dict]:
         db = get_db()
+        usage = """SELECT t.id, t.name, t.default_price, t.category FROM consumable_tariffs t
+                   LEFT JOIN (SELECT item_name, COUNT(*) AS n FROM consumables_ledger WHERE work_date >= ? GROUP BY item_name) u
+                          ON u.item_name = t.name
+                   WHERE t.is_active = 1"""
         if category:
-            rows = db.execute("SELECT id, name, default_price, category FROM consumable_tariffs WHERE is_active = 1 AND category = ? ORDER BY name", (category,)).fetchall()
+            rows = db.execute(usage + " AND t.category = ? ORDER BY COALESCE(u.n, 0) DESC, t.name", (usage_since(), category)).fetchall()
         else:
-            rows = db.execute("SELECT id, name, default_price, category FROM consumable_tariffs WHERE is_active = 1 ORDER BY category, name").fetchall()
+            rows = db.execute(usage + " ORDER BY t.category, COALESCE(u.n, 0) DESC, t.name", (usage_since(),)).fetchall()
         return [dict(r) for r in rows]
 
     def create(self, name: str, default_price: float, category: str) -> int:

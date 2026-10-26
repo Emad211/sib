@@ -39,6 +39,7 @@ def index():
         from src.adapters.sqlite.payments_repo import InvoiceItemPaymentRepository
         pay_repo = InvoiceItemPaymentRepository()
         payments = pay_repo.get_payments_for_invoice(selected_invoice_id)
+        invoice_items = billing.group_items(invoice_items, payments)
     else:
         financials = None
         payments = []

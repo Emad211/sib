@@ -1,12 +1,19 @@
 from typing import List, Dict, Optional
 from src.adapters.sqlite.core import get_db
+from src.adapters.sqlite.nursing_services_repo import usage_since
 
 class ProcedureTariffsRepository:
     """Catalog repository for procedure tariffs."""
 
     def list_active(self) -> List[Dict]:
         db = get_db()
-        rows = db.execute("SELECT id, name, unit_price FROM procedure_tariffs WHERE is_active = 1 ORDER BY name").fetchall()
+        rows = db.execute(
+            """SELECT t.id, t.name, t.unit_price FROM procedure_tariffs t
+               LEFT JOIN (SELECT procedure_type, COUNT(*) AS n FROM procedures WHERE work_date >= ? GROUP BY procedure_type) u
+                      ON u.procedure_type = t.name
+               WHERE t.is_active = 1 ORDER BY COALESCE(u.n, 0) DESC, t.name""",
+            (usage_since(),),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def get(self, tariff_id: int) -> Optional[Dict]:

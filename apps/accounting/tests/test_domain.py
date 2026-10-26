@@ -255,3 +255,36 @@ def test_payment_type_rules():
     assert not billing.needs_payment_type(0) and not billing.needs_payment_type(None)
     assert billing.is_valid_payment_type("card") and billing.is_valid_payment_type("cash")
     assert not any(billing.is_valid_payment_type(x) for x in (None, "", "insurance", "CARD", "check"))
+
+
+def test_identical_invoice_lines_are_grouped_with_their_totals():
+    items = [
+        {"type": "injection", "id": 1, "description": "سرم", "recorded_price": 100, "patient_share": 100},
+        {"type": "visit", "id": 9, "description": "ویزیت", "recorded_price": 500, "patient_share": 200},
+        {"type": "injection", "id": 2, "description": "سرم", "recorded_price": 100, "patient_share": 100},
+        {
+            "type": "injection",
+            "id": 3,
+            "description": "سرم",
+            "recorded_price": 100,
+            "patient_share": 0,
+        },  # covered: other group
+        {"type": "injection", "id": 4, "description": "سرم", "recorded_price": 100, "patient_share": 100},
+    ]
+    payments = [
+        {"item_type": "injection", "item_id": 1, "is_paid": 1},
+        {"item_type": "injection", "item_id": 2, "is_paid": 0},
+    ]
+    out = billing.group_items(items, payments)
+    assert [it["id"] for it in out] == [1, 2, 4, 9, 3]  # each group contiguous, groups in first-seen order
+    head = out[0]
+    assert (
+        head["group_size"],
+        head["group_first"],
+        head["group_recorded_total"],
+        head["group_share_total"],
+        head["group_paid"],
+    ) == (3, True, 300.0, 300.0, 1)
+    assert [it["group_first"] for it in out[:3]] == [True, False, False]
+    assert out[3]["group_size"] == 1 and out[4]["group_size"] == 1
+    assert billing.group_items([]) == []

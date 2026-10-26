@@ -1215,6 +1215,11 @@
             padding-top: 1rem;
             border-top: 1px solid var(--border-color);
         }
+        /* ×N groups of identical invoice lines (FB-09) */
+        tr.group-row { background: rgba(99, 102, 241, 0.06); }
+        tr.group-row:hover { background: rgba(99, 102, 241, 0.12); }
+        .group-count { display: inline-block; margin-right: .35rem; padding: 0 .45rem; border-radius: 999px; background: var(--accent); color: #fff; font-size: .8rem; font-weight: 800; }
+        tr.group-member td:first-child { border-right: 3px solid var(--accent); }
     </style>
 </head>
 <body>
@@ -1444,7 +1449,20 @@
                         </thead>
                         <tbody>
                         {% for item in invoice_items %}
-                            <tr data-item-type="{{ item.type }}" data-item-id="{{ item.id }}" data-covered="{{ 1 if item.patient_share == 0 else 0 }}">
+                            {% if item.group_first and item.group_size > 1 %}
+                            <tr class="group-row" onclick="toggleItemGroup('{{ item.group_id }}', this)" title="برای دیدن تک‌تک ردیف‌ها کلیک کنید" style="cursor:pointer;">
+                                <td>{{ item.date | jalali_datetime }}</td>
+                                <td>{{ {'visit': 'ویزیت', 'injection': 'خدمات پرستاری', 'procedure': 'کار عملی', 'consumable': 'مصرفی/دارو'}.get(item.type, item.type) }}</td>
+                                <td><strong>{{ item.description or '—' }}</strong> <span class="group-count">×{{ item.group_size | fa_num }}</span></td>
+                                <td>{{ item.doctor_name or '—' }}</td>
+                                <td>{% if item.type != 'visit' %}{{ item.nurse_name or '—' }}{% else %}—{% endif %}</td>
+                                <td class="price-text">{{ item.group_recorded_total | fa_num }}</td>
+                                <td class="price-text">{{ item.group_share_total | fa_num }}</td>
+                                <td colspan="2">{{ item.group_paid | fa_num }} از {{ item.group_size | fa_num }} تسویه</td>
+                                <td class="group-toggle">▾</td>
+                            </tr>
+                            {% endif %}
+                            <tr data-item-type="{{ item.type }}" data-item-id="{{ item.id }}" data-covered="{{ 1 if item.patient_share == 0 else 0 }}"{% if item.group_size > 1 %} class="group-member {{ item.group_id }}" style="display:none;"{% endif %}>
                                 <td>{{ item.date | jalali_datetime }}</td>
                                 <td>
                                     <span class="type-badge {% if item.type == 'visit' %}visit{% elif item.type == 'injection' %}injection{% elif item.type == 'procedure' %}procedure{% elif item.type == 'consumable' %}consumable{% endif %}">
@@ -2085,6 +2103,12 @@
         }
         function togglePaid(itemType, itemId, checked, rowElem){ 
             updatePayment(itemType, itemId, rowElem.querySelector('select').value, rowElem, checked); 
+        }
+        function toggleItemGroup(groupId, headRow){
+            const rows = document.querySelectorAll('tr.group-member.' + groupId);
+            const open = rows.length && rows[0].style.display === 'none';
+            rows.forEach(r => { r.style.display = open ? '' : 'none'; });
+            const t = headRow.querySelector('.group-toggle'); if (t) t.textContent = open ? '▴' : '▾';
         }
         function deleteItem(itemType, itemId){
             if(!confirm('حذف؟')) return;
