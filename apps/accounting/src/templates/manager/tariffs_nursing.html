@@ -202,6 +202,8 @@
     </a>
   </div>
 
+  {% include 'manager/_flash.html' %}
+
   <div class="card">
     <div class="card-title">➕ افزودن خدمت جدید</div>
     <form method="post" class="add-form">
@@ -245,7 +247,7 @@
             {% endif %}
           </td>
           <td class="actions">
-            <button type="button" class="btn-edit" onclick="openEditModal({{ s.id }}, '{{ s.service_name }}', {{ s.unit_price }}, {{ s.is_active }})">ویرایش</button>
+            <button type="button" class="btn-edit" onclick='openEditModal({{ s.id }}, {{ s.service_name|tojson }}, {{ s.unit_price }}, {{ s.is_active }})'>ویرایش</button>
             <form method="post" style="display:inline;" onsubmit="return confirm('آیا از حذف این خدمت مطمئن هستید؟');">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="service_id" value="{{ s.id }}">

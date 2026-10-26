@@ -12,6 +12,7 @@ from flask import (
 from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.utils import format_jalali_datetime
+from src.domain.money import parse_amount
 from src.services import tariff_audit
 from src.services.exports import table_response
 
@@ -77,10 +78,10 @@ def nursing_tariffs():
         if action == "add":
             service_name = request.form.get("service_name", "").strip()
             unit_price = request.form.get("unit_price", "0")
-            try:
-                unit_price = float(unit_price.replace(",", ""))
-            except Exception:
-                unit_price = 0
+            unit_price = parse_amount(unit_price)
+            if unit_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.nursing_tariffs"))
 
             if service_name:
                 cur = db.execute(
@@ -96,10 +97,10 @@ def nursing_tariffs():
             service_name = request.form.get("service_name", "").strip()
             unit_price = request.form.get("unit_price", "0")
             is_active = request.form.get("is_active") == "1"
-            try:
-                unit_price = float(unit_price.replace(",", ""))
-            except Exception:
-                unit_price = 0
+            unit_price = parse_amount(unit_price)
+            if unit_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.nursing_tariffs"))
 
             if service_id and service_name:
                 old = db.execute("SELECT * FROM nursing_services WHERE id = ?", (service_id,)).fetchone()
@@ -157,10 +158,10 @@ def insurance_tariffs():
             tariff_price = request.form.get("tariff_price", "0")
             nursing_covers = request.form.get("nursing_covers") == "1"
             is_supplementary = request.form.get("is_supplementary") == "1"
-            try:
-                tariff_price = float(tariff_price.replace(",", ""))
-            except Exception:
-                tariff_price = 0
+            tariff_price = parse_amount(tariff_price)
+            if tariff_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.insurance_tariffs"))
 
             if insurance_type:
                 # چک کردن تکراری نبودن
@@ -195,10 +196,10 @@ def insurance_tariffs():
             nursing_covers = request.form.get("nursing_covers") == "1"
             is_active = request.form.get("is_active") == "1"
             is_supplementary = request.form.get("is_supplementary") == "1"
-            try:
-                tariff_price = float(tariff_price.replace(",", ""))
-            except Exception:
-                tariff_price = 0
+            tariff_price = parse_amount(tariff_price)
+            if tariff_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.insurance_tariffs"))
 
             if tariff_id and insurance_type:
                 old = db.execute("SELECT * FROM visit_tariffs WHERE id = ?", (tariff_id,)).fetchone()
@@ -253,10 +254,10 @@ def insurance_tariffs():
         elif action == "set_base":
             # تنظیم تعرفه پایه (ویزیت آزاد)
             base_price = request.form.get("base_visit_price", "0")
-            try:
-                base_price = float(base_price.replace(",", ""))
-            except Exception:
-                base_price = 0
+            base_price = parse_amount(base_price)
+            if base_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.insurance_tariffs"))
 
             # بررسی وجود تعرفه پایه
             existing_base = db.execute(
@@ -354,6 +355,21 @@ def set_nursing_exclusions(insurance_type: str):
     return jsonify({"success": True, "insurance_type": insurance_type, "service_ids": service_ids})
 
 
+def _stock_fields():
+    """acc_code (the stock item code the shift app counts) and stock_factor from the consumables form.
+
+    Returns (code_or_None, factor, error_or_None). An empty factor means 1.
+    """
+    code = request.form.get("acc_code", "").strip()
+    if len(code) > 40:
+        return None, 1.0, "کد کالا حداکثر ۴۰ نویسه است."
+    raw_factor = request.form.get("stock_factor", "").strip()
+    factor = 1.0 if raw_factor == "" else parse_amount(raw_factor)
+    if factor is None or factor <= 0:
+        return None, 1.0, "ضریب تبدیل باید عددی بزرگ‌تر از صفر باشد."
+    return (code or None), factor, None
+
+
 @bp.route("/tariffs/consumables", methods=["GET", "POST"])
 @login_required
 @manager_required(flash_message="دسترسی محدود")
@@ -369,10 +385,10 @@ def consumables_tariffs():
             name = request.form.get("name", "").strip()
             default_price = request.form.get("default_price", "0")
             category = request.form.get("category", "supply")
-            try:
-                default_price = float(default_price.replace(",", ""))
-            except Exception:
-                default_price = 0
+            default_price = parse_amount(default_price)
+            if default_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.consumables_tariffs"))
 
             if name:
                 # چک کردن تکراری نبودن
@@ -380,11 +396,22 @@ def consumables_tariffs():
                 if existing:
                     flash(f'مصرفی "{name}" قبلاً تعریف شده است.', "error")
                 else:
+                    acc_code, stock_factor, stock_error = _stock_fields()
+                    if stock_error:
+                        flash(stock_error, "error")
+                        return redirect(url_for("manager.consumables_tariffs"))
                     cur = db.execute(
-                        "INSERT INTO consumable_tariffs (name, default_price, category, is_active) VALUES (?, ?, ?, 1)",
-                        (name, default_price, category),
+                        "INSERT INTO consumable_tariffs (name, default_price, category, is_active, acc_code, stock_factor)"
+                        " VALUES (?, ?, ?, 1, ?, ?)",
+                        (name, default_price, category, acc_code, stock_factor),
                     )
-                    tariff_audit.record_created(db, "consumable", cur.lastrowid, name, {"price": default_price})
+                    tariff_audit.record_created(
+                        db,
+                        "consumable",
+                        cur.lastrowid,
+                        name,
+                        {"price": default_price, "acc_code": acc_code or "", "stock_factor": stock_factor},
+                    )
                     db.commit()
                     flash(f'مصرفی "{name}" با موفقیت اضافه شد.', "success")
 
@@ -394,16 +421,21 @@ def consumables_tariffs():
             default_price = request.form.get("default_price", "0")
             category = request.form.get("category", "supply")
             is_active = request.form.get("is_active") == "1"
-            try:
-                default_price = float(default_price.replace(",", ""))
-            except Exception:
-                default_price = 0
+            default_price = parse_amount(default_price)
+            if default_price is None:
+                flash("مبلغ نامعتبر است؛ فقط عدد وارد کنید.", "error")
+                return redirect(url_for("manager.consumables_tariffs"))
 
             if item_id and name:
+                acc_code, stock_factor, stock_error = _stock_fields()
+                if stock_error:
+                    flash(stock_error, "error")
+                    return redirect(url_for("manager.consumables_tariffs"))
                 old = db.execute("SELECT * FROM consumable_tariffs WHERE id = ?", (item_id,)).fetchone()
                 db.execute(
-                    "UPDATE consumable_tariffs SET name = ?, default_price = ?, category = ?, is_active = ? WHERE id = ?",
-                    (name, default_price, category, 1 if is_active else 0, item_id),
+                    "UPDATE consumable_tariffs SET name = ?, default_price = ?, category = ?, is_active = ?,"
+                    " acc_code = ?, stock_factor = ? WHERE id = ?",
+                    (name, default_price, category, 1 if is_active else 0, acc_code, stock_factor, item_id),
                 )
                 if old:
                     tariff_audit.record_update(
@@ -416,6 +448,11 @@ def consumables_tariffs():
                             "price": (old["default_price"], default_price),
                             "category": (old["category"], category),
                             "active": (old["is_active"], 1 if is_active else 0),
+                            "acc_code": (old["acc_code"] or "", acc_code or ""),
+                            "stock_factor": (
+                                old["stock_factor"] if old["stock_factor"] is not None else 1,
+                                stock_factor,
+                            ),
                         },
                     )
                 db.commit()

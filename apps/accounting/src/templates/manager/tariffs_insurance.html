@@ -313,6 +313,8 @@
     </a>
   </div>
 
+  {% include 'manager/_flash.html' %}
+
   <!-- تعرفه پایه (آزاد) -->
   <div class="base-card">
     <div class="base-card-title">⭐ تعرفه پایه (ویزیت آزاد)</div>
@@ -417,8 +419,8 @@
             {% endif %}
           </td>
           <td class="actions">
-            <button type="button" class="btn-edit" onclick="openExclusionsModal('{{ t.insurance_type }}')">⚙️ استثناها</button>
-            <button type="button" class="btn-edit" onclick="openEditModal({{ t.id }}, '{{ t.insurance_type }}', {{ t.tariff_price }}, {{ t.nursing_covers or 0 }}, {{ t.is_active }}, {{ t.is_supplementary }})">ویرایش</button>
+            <button type="button" class="btn-edit" onclick='openExclusionsModal({{ t.insurance_type|tojson }})'>⚙️ استثناها</button>
+            <button type="button" class="btn-edit" onclick='openEditModal({{ t.id }}, {{ t.insurance_type|tojson }}, {{ t.tariff_price }}, {{ t.nursing_covers or 0 }}, {{ t.is_active }}, {{ t.is_supplementary }})'>ویرایش</button>
             <form method="post" style="display:inline;" onsubmit="return confirm('آیا از حذف این بیمه مطمئن هستید؟');">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="tariff_id" value="{{ t.id }}">
