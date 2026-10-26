@@ -152,6 +152,7 @@
       <div style="font-size:.95rem;font-weight:800;">لیست مصرفی‌ها</div>
       <div style="display:flex;gap:.5rem;align-items:center;">
         <a href="{{ url_for('manager.export_consumables_csv', **active_filters) }}" class="btn-main" style="background:#059669;box-shadow:none;font-size:.75rem;padding:.4rem .8rem;">📥 CSV</a>
+        <a href="{{ url_for('manager.export_consumables_csv', format='xlsx', **active_filters) }}" class="btn-main" style="background:#059669;box-shadow:none;font-size:.75rem;padding:.4rem .8rem;">📥 Excel</a>
         <button type="button" onclick="printReport()" class="btn-main" style="background:#6366f1;box-shadow:none;font-size:.75rem;padding:.4rem .8rem;">🖨 چاپ/PDF</button>
         <span style="font-size:.75rem;color:#9ca3af;">{{ consumables|length }} رکورد</span>
       </div>

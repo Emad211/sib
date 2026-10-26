@@ -100,6 +100,23 @@
    "status": 302
   }
  },
+ "GET /manager/attention/<key> [manager.attention_detail]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "GET /manager/export/consumables/csv [manager.export_consumables_csv]": {
   "anon": {
    "location": "/auth/login",

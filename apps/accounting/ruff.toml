@@ -23,6 +23,11 @@ include = [
     "src/adapters/sqlite/migrations/**/*.py",
     "src/services/backup.py",
     "src/services/scheduler.py",
+    "src/services/exports.py",
+    "src/services/manager_insights.py",
+    "tests/test_exports.py",
+    "tests/test_manager_insights.py",
+    "tests/test_retired_doctor_role.py",
 ]
 
 [lint]

@@ -105,7 +105,9 @@ def create_app(test_config=None):
     @click.argument("role", default="reception")
     def create_user(username, password, role):
         service = AuthService()
-        if service.register_user(username, password, role):
+        if role not in USER_ROLES:
+            print(f"Unknown role {role!r}; use one of: {', '.join(USER_ROLES)}.")
+        elif service.register_user(username, password, role):
             print(f"User {username} created successfully.")
         else:
             print(f"User {username} already exists or error occurred.")

@@ -31,6 +31,7 @@ PATH_VALUES = {
     "patient_id": "1",
     "insurance_type": "تامین اجتماعی",
     "backup_name": "does-not-exist.db",
+    "key": "open_invoices",
 }
 
 

@@ -1,5 +1,5 @@
 from flask import (
-    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response, session, current_app
+    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response, session, current_app, abort
 )
 from src.api.auth import login_required
 from src.adapters.sqlite.core import get_db
@@ -8,9 +8,10 @@ from src.common.jalali import Gregorian
 from src.common.utils import iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
 from src.services.auth_service import USER_ROLES
+from src.__version__ import __version__
+from src.services import manager_insights as insights
+from src.services.exports import table_response
 import jdatetime
-import csv
-import io
 
 bp = Blueprint('manager', __name__, url_prefix='/manager')
 
@@ -174,7 +175,9 @@ def index():
     
     month_revenue = visits_month + injections_month + procedures_month
     
-    avg_daily = month_revenue / 30 if month_revenue > 0 else 0
+    # BIZ-03: this used to divide by a fixed 30, understating the average early in the month.
+    elapsed_days = max(1, jdatetime.date.fromgregorian(date=iran_now().date()).day)
+    avg_daily = month_revenue / elapsed_days if month_revenue > 0 else 0
 
     # Jalali today and preset ranges using server-side converter
     g_today = iran_now().date()
@@ -228,8 +231,27 @@ def index():
         month_invoices=month_invoices,
         month_revenue=month_revenue,
         avg_daily=avg_daily,
-        server_time=iran_now().isoformat()
+        server_time=iran_now().isoformat(),
+        attention=insights.attention_items(db, current_app.config.get('BACKUP_FOLDER')),
+        shifts=insights.recent_shifts(db, 3),
+        health=insights.system_health(db, current_app.config.get('DATABASE_PATH'),
+                                      current_app.config.get('BACKUP_FOLDER'), __version__),
     )
+
+
+@bp.route('/attention/<key>')
+@login_required
+def attention_detail(key):
+    """The rows behind one \"needs attention\" count; also CSV/Excel via ?format=."""
+    if g.user['role'] != 'manager':
+        return redirect(url_for('reception.index'))
+    found = insights.attention_detail(get_db(), key)
+    if found is None:
+        abort(404)
+    title, note, headers, rows = found
+    if request.args.get('format') in ('csv', 'xlsx'):
+        return table_response(rows, headers, f'attention_{key}', title)
+    return render_template('manager/attention.html', title=title, note=note, headers=headers, rows=rows, key=key)
 
 
 @bp.route('/reports')
@@ -421,19 +443,13 @@ def export_invoices_csv():
         ORDER BY i.opened_at DESC
     ''', params).fetchall()
 
-    output = io.StringIO(); output.write('\ufeff')
-    writer = csv.writer(output)
-    writer.writerow(['شماره فاکتور', 'زمان باز شدن', 'زمان بستن', 'وضعیت', 'مبلغ کل', 'بیمه', 'بیمه تکمیلی', 'پذیرش', 'بستن توسط', 'بیمار'])
-    for r in rows:
-        writer.writerow([
-            r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
-            int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
-            (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
-        ])
-    resp = make_response(output.getvalue())
-    resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    resp.headers['Content-Disposition'] = 'attachment; filename="invoices_report.csv"'
-    return resp
+    data = [[
+        r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
+        int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
+        (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
+    ] for r in rows]
+    headers = ['شماره فاکتور', 'زمان باز شدن', 'زمان بستن', 'وضعیت', 'مبلغ کل', 'بیمه', 'بیمه تکمیلی', 'پذیرش', 'بستن توسط', 'بیمار']
+    return make_csv_response(data, headers, 'invoices', plain_cols=(0,))
 
 
 @bp.route('/staff')
@@ -1526,20 +1542,9 @@ def users_report():
 
 # ===================== Export APIs =====================
 
-def make_csv_response(data, headers, filename):
-    """ساخت پاسخ CSV با پشتیبانی کامل فارسی (UTF-8 BOM)."""
-    output = io.StringIO()
-    # اضافه کردن BOM برای Excel
-    output.write('\ufeff')
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    for row in data:
-        writer.writerow(row)
-    
-    response = make_response(output.getvalue())
-    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+def make_csv_response(data, headers, filename, plain_cols=()):
+    """CSV by default, Excel with ?format=xlsx (services/exports.py)."""
+    return table_response(data, headers, filename, plain_cols=plain_cols)
 
 
 @bp.route('/export/users/csv')
@@ -2771,8 +2776,8 @@ def export_insurance_arrears():
             i['national_id'] or '',
             i['insurance_type'],
             i['injection_type'],
-            '-',
-            '0',
+            None,
+            0,
             service_price
         ])
     
@@ -3825,32 +3830,17 @@ def export_logs():
         date_from=date_from if date_from else None,
         date_to=date_to if date_to else None,
         search_text=search_text if search_text else None,
-        limit=10000
+        limit=1000000
     )
     
     # ساخت CSV با BOM برای پشتیبانی فارسی در Excel
-    output = io.StringIO()
-    output.write('\ufeff')  # UTF-8 BOM
-    writer = csv.writer(output)
-    writer.writerow(['تاریخ', 'کاربر', 'نوع عملیات', 'دسته', 'توضیحات', 'بیمار', 'فاکتور', 'مبلغ'])
-    
-    for log in logs:
-        writer.writerow([
-            log.get('created_at', ''),
-            log.get('username', ''),
-            log.get('action_type', ''),
-            log.get('action_category', ''),
-            log.get('description', ''),
-            log.get('patient_name', ''),
-            log.get('invoice_id', ''),
-            log.get('amount', ''),
-        ])
-    
-    output.seek(0)
-    response = make_response(output.getvalue())
-    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = f'attachment; filename=logs_{iran_now().strftime("%Y%m%d_%H%M%S")}.csv'
-    return response
+    data = [[
+        log.get('created_at', ''), log.get('username', ''), log.get('action_type', ''),
+        log.get('action_category', ''), log.get('description', ''), log.get('patient_name', ''),
+        log.get('invoice_id', ''), log.get('amount', ''),
+    ] for log in logs]
+    headers = ['تاریخ', 'کاربر', 'نوع عملیات', 'دسته', 'توضیحات', 'بیمار', 'فاکتور', 'مبلغ']
+    return make_csv_response(data, headers, 'activity_logs', plain_cols=(6,))
 
 
 @bp.route('/logs/stats')

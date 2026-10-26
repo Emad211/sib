@@ -133,6 +133,7 @@
   <!-- export -->
   <div class="export-btns">
     <a href="{{ url_for('manager.export_users_csv', **active_filters) }}" class="btn btn-outline">📥 دانلود CSV</a>
+        <a href="{{ url_for('manager.export_users_csv', format='xlsx', **active_filters) }}" class="btn btn-outline">📥 دانلود Excel</a>
     <button type="button" class="btn btn-outline" onclick="printReport()">🖨 چاپ / PDF</button>
   </div>
 
