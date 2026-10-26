@@ -34,16 +34,6 @@ def insurance_arrears():
 
     db = get_db()
 
-    # اطمینان از وجود ستون‌های جدید
-    try:
-        db.execute("ALTER TABLE visit_tariffs ADD COLUMN nursing_covers INTEGER DEFAULT 0")
-    except Exception:
-        logger.warning("insurance_arrears: ignored error", exc_info=True)
-    try:
-        db.execute("ALTER TABLE visit_tariffs ADD COLUMN is_base_tariff INTEGER DEFAULT 0")
-    except Exception:
-        logger.warning("insurance_arrears: ignored error", exc_info=True)
-
     # Jalali ranges for date picker
     g_today = iran_now().date()
     j_today = Gregorian(g_today).persian_tuple()

@@ -265,3 +265,18 @@ def test_patient_registrations_report_validity_not_values(path):
         (2, "u2", 0, 0, 0),
         (3, "u2", 0, 0, 1),
     ]
+
+
+def test_old_visit_tariffs_columns_are_added_by_the_migration_not_by_a_request(tmp_path):
+    """A very old backup without nursing_covers / is_base_tariff is fixed when it is restored."""
+    p = str(tmp_path / "old.db")
+    ensure_database_ready(p)
+    conn = sqlite3.connect(p)
+    conn.execute("ALTER TABLE visit_tariffs DROP COLUMN nursing_covers")
+    conn.execute("ALTER TABLE visit_tariffs DROP COLUMN is_base_tariff")
+    conn.commit()
+    m4.up(conn)
+    conn.commit()
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(visit_tariffs)")}
+    conn.close()
+    assert {"nursing_covers", "is_base_tariff"} <= cols

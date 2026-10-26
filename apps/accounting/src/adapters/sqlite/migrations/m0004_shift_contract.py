@@ -100,6 +100,11 @@ def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
 
 
 def up(conn: sqlite3.Connection) -> None:
+    # visit_tariffs columns that routes used to add at request time (swallowing the error when they
+    # already existed). Production has them; a very old restored backup may not.
+    for column in ("nursing_covers", "is_base_tariff"):
+        if not _has_column(conn, "visit_tariffs", column):
+            conn.execute(f"ALTER TABLE visit_tariffs ADD COLUMN {column} INTEGER DEFAULT 0")
     if not _has_column(conn, "consumable_tariffs", "acc_code"):
         conn.execute("ALTER TABLE consumable_tariffs ADD COLUMN acc_code TEXT")
     if not _has_column(conn, "consumable_tariffs", "stock_factor"):

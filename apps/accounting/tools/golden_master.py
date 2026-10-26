@@ -102,6 +102,45 @@ def request_plan(conn: sqlite3.Connection) -> list[dict]:
         )
     for t in ["revenue", "invoices", "patients", "visits", "injections", "procedures", "consumables", "services"]:
         plan.append({"method": "GET", "url": f"/manager/api/chart-data?from={full[0]}&to={full[1]}&type={t}"})
+    plan.extend(reception_plan(conn))
+    return plan
+
+
+def reception_plan(conn: sqlite3.Connection) -> list[dict]:
+    """Reception pages (read-only GETs), so a refactor of api/reception.py cannot go unnoticed.
+
+    The ledgers and the index depend on the user's *active shift*; each such request carries a `setup`
+    that puts the golden reception user on a given (work_date, shift) of the copy first.
+    """
+    plan: list[dict] = []
+    shifts = conn.execute(
+        "SELECT work_date, shift FROM invoices WHERE work_date IS NOT NULL AND shift IS NOT NULL "
+        "GROUP BY work_date, shift ORDER BY work_date DESC, CASE shift WHEN 'morning' THEN 0 WHEN 'evening' THEN 1 ELSE 2 END DESC LIMIT 8"
+    ).fetchall()
+    for work_date, shift in shifts:
+        setup = {"work_date": work_date, "shift": shift}
+        for url in (
+            f"/reception/shift_performance?work_date={work_date}&shift={shift}",
+            "/reception/",
+            "/reception/ledgers",
+            "/reception/nursing_ledger",
+            "/reception/procedures_ledger",
+            "/reception/api/shift/status",
+        ):
+            plan.append({"as": "reception", "setup": setup, "method": "GET", "url": url})
+    for (patient_id,) in conn.execute(
+        "SELECT patient_id FROM invoices GROUP BY patient_id ORDER BY COUNT(*) DESC, patient_id LIMIT 5"
+    ).fetchall():
+        plan.append({"as": "reception", "method": "GET", "url": f"/reception/patients/{patient_id}/history"})
+    plan.append({"as": "reception", "method": "GET", "url": "/reception/patients/list"})
+    plan.append({"as": "reception", "method": "GET", "url": "/reception/patients/list?q=%D9%85%D8%AD%D9%85%D8%AF"})
+    for (invoice_id,) in conn.execute(
+        "SELECT invoice_id FROM injections GROUP BY invoice_id ORDER BY COUNT(*) DESC, invoice_id DESC LIMIT 4"
+    ).fetchall():
+        plan.append({"as": "reception", "method": "GET", "url": f"/reception/api/invoice/{invoice_id}/details"})
+        plan.append({"as": "reception", "method": "GET", "url": f"/reception/?invoice_id={invoice_id}"})
+    for (invoice_id,) in conn.execute("SELECT id FROM invoices WHERE status = 'open' ORDER BY id LIMIT 3").fetchall():
+        plan.append({"as": "reception", "method": "GET", "url": f"/reception/?invoice_id={invoice_id}"})
     return plan
 
 
@@ -118,6 +157,9 @@ def run(snapshot: str) -> dict:
         plan = request_plan(conn)
         manager_id = conn.execute(
             "SELECT id FROM users WHERE role='manager' AND is_active=1 ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+        reception_id = conn.execute(
+            "SELECT id FROM users WHERE role='reception' AND is_active=1 ORDER BY id LIMIT 1"
         ).fetchone()[0]
         conn.close()
         src.close()
@@ -146,10 +188,22 @@ def run(snapshot: str) -> dict:
             with client.session_transaction() as s:
                 s["user_id"], s["role"] = manager_id, "manager"
                 s["_csrf"] = "golden-csrf"  # payroll POSTs go through the CSRF check (SEC-05)
+            reception_client = app.test_client()
+            with reception_client.session_transaction() as s:
+                s["user_id"], s["role"] = reception_id, "reception"
+                s["_csrf"] = "golden-csrf"
             for req in plan:
                 key = f"{req['method']} {req['url']}"
+                http = client
+                if req.get("as") == "reception":
+                    http = reception_client
+                    key = f"[reception] {key}"
+                    setup = req.get("setup")
+                    if setup:
+                        key = f"[reception {setup['work_date']} {setup['shift']}] {req['method']} {req['url']}"
+                        _put_active_shift(db_copy, reception_id, setup["work_date"], setup["shift"])
                 t0 = _CLOCK[0]()
-                resp = client.open(
+                resp = http.open(
                     req["url"], method=req["method"], data=req.get("data", {}), headers={"X-CSRFToken": "golden-csrf"}
                 )
                 ms = round((_CLOCK[0]() - t0) * 1000)
@@ -162,6 +216,17 @@ def run(snapshot: str) -> dict:
                     "ms": ms,
                 }
         return result
+
+
+def _put_active_shift(db_path: str, user_id: int, work_date: str, shift: str) -> None:
+    """Point the golden reception user at a (work_date, shift) of the *temporary copy*."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO user_active_shift (user_id, active_shift, work_date, shift_started_at) VALUES (?, ?, ?, ?)",
+        (user_id, shift, work_date, f"{work_date} 08:00:00"),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _baseline_path(snapshot: str) -> str:

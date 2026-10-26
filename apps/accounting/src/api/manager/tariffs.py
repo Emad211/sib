@@ -149,16 +149,6 @@ def insurance_tariffs():
 
     db = get_db()
 
-    # اطمینان از وجود ستون‌های جدید
-    try:
-        db.execute("ALTER TABLE visit_tariffs ADD COLUMN nursing_covers INTEGER DEFAULT 0")
-    except Exception:
-        logger.warning("insurance_tariffs: ignored error", exc_info=True)
-    try:
-        db.execute("ALTER TABLE visit_tariffs ADD COLUMN is_base_tariff INTEGER DEFAULT 0")
-    except Exception:
-        logger.warning("insurance_tariffs: ignored error", exc_info=True)
-
     if request.method == "POST":
         action = request.form.get("action")
 
