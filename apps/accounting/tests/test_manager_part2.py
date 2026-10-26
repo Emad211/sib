@@ -359,3 +359,16 @@ def test_attention_detail_links_invoice_numbers(synthetic_app):
     conn.close()
     html = mgr(synthetic_app).get("/manager/attention/open_invoices").get_data(as_text=True)
     assert f"/manager/invoice/{inv}/history" in html
+
+
+def test_invoice_history_works_for_an_invoice_with_no_events_and_no_patient_row(synthetic_app):
+    conn = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    inv = conn.execute(
+        "INSERT INTO invoices (patient_id, status, insurance_type, work_date, shift, opened_at, opened_by)"
+        " VALUES (987654, 'open', 'آزاد', '2026-09-24', 'morning', '2026-09-24 08:00:00', 'reception1')"
+    ).lastrowid
+    conn.commit()
+    conn.close()
+    r = mgr(synthetic_app).get(f"/manager/invoice/{inv}/history")
+    html = r.get_data(as_text=True)
+    assert r.status_code == 200 and "رویدادی ثبت نشده است" in html and "فاکتور آیتمی ندارد" in html

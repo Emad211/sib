@@ -257,9 +257,9 @@ def invoice_history(invoice_id):
         return redirect(url_for('reception.index'))
     db = get_db()
     inv = db.execute(
-        """SELECT i.*, p.full_name AS patient_name,
+        """SELECT i.*, COALESCE(p.full_name, '—') AS patient_name,
                   COALESCE(uo.full_name, i.opened_by) AS opened_by_fa, COALESCE(uc.full_name, i.closed_by) AS closed_by_fa
-           FROM invoices i JOIN patients p ON p.id = i.patient_id
+           FROM invoices i LEFT JOIN patients p ON p.id = i.patient_id
            LEFT JOIN users uo ON uo.username = i.opened_by LEFT JOIN users uc ON uc.username = i.closed_by
            WHERE i.id = ?""", (invoice_id,)).fetchone()
     if inv is None:
