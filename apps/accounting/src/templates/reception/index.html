@@ -1916,13 +1916,15 @@
                             {key:'supplementary_insurance', title:'تکمیلی'},
                             {key:'total_amount', title:'مبلغ', render:r=> r.total_amount? new Intl.NumberFormat('fa-IR').format(r.total_amount):'—'},
                             {key:'opened_at', title:'باز شدن'},
-                            {key:'closed_at', title:'بستن'}
+                            {key:'opened_by_name', title:'پذیرش (باز کرد)'},
+                            {key:'closed_at', title:'بستن'},
+                            {key:'closed_by_name', title:'پذیرش (بست)'}
                         ];
                         const visitCols = [
                             {key:'visit_date', title:'زمان'},
                             {key:'doctor_name', title:'پزشک'},
                             {key:'amount', title:'مبلغ', render:r=> r.amount? new Intl.NumberFormat('fa-IR').format(r.amount):'—'},
-                            {key:'status', title:'وضعیت'},
+                            {key:'reception_name', title:'پذیرش'},
                             {key:'invoice_id', title:'فاکتور'}
                         ];
                         const injCols = [
@@ -1931,6 +1933,7 @@
                             {key:'total_price', title:'مبلغ کل', render:r=> r.total_price? new Intl.NumberFormat('fa-IR').format(r.total_price):'—'},
                             {key:'doctor_name', title:'پزشک'},
                             {key:'nurse_name', title:'پرستار'},
+                            {key:'reception_name', title:'پذیرش'},
                             {key:'invoice_id', title:'فاکتور'}
                         ];
                         const procCols = [
@@ -1940,6 +1943,7 @@
                             {key:'performer_type', title:'انجام دهنده', render:r=> r.performer_type=='doctor'?'پزشک':(r.performer_type=='nurse'?'پرستار':'—')},
                             {key:'doctor_name', title:'پزشک'},
                             {key:'nurse_name', title:'پرستار'},
+                            {key:'reception_name', title:'پذیرش'},
                             {key:'invoice_id', title:'فاکتور'}
                         ];
                         const consCols = [
@@ -1949,6 +1953,7 @@
                             {key:'quantity', title:'تعداد'},
                             {key:'total_cost', title:'هزینه کل', render:r=> r.total_cost? new Intl.NumberFormat('fa-IR').format(r.total_cost):'—'},
                             {key:'patient_provided', title:'از بیمار؟', render:r=> r.patient_provided? '✔':'✖'},
+                            {key:'reception_name', title:'پذیرش'},
                             {key:'invoice_id', title:'فاکتور'}
                         ];
                         // Summary boxes

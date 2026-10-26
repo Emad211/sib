@@ -2,6 +2,7 @@
 
 import sqlite3
 
+import pytest
 from conftest import login_as, put_on_current_shift
 
 from src.domain import identity
@@ -258,8 +259,8 @@ def test_closing_twice_does_not_duplicate_lines(synthetic_app):
 
 def new_patient(c, **overrides):
     data = {
-        "name": "تست",
-        "family_name": "ثبت",
+        "name": "مهرداد",
+        "family_name": "کریمی",
         "phone": "09123456789",
         "national_id": "2170415981",
         "insurance_type": "آزاد",
@@ -272,7 +273,7 @@ def test_persian_digits_are_stored_as_ascii(synthetic_app):
     r = new_patient(reception(synthetic_app), phone="۰۹۱۲۳۴۵۶۷۸۹", national_id="۲۱۷۰۴۱۵۹۸۱")
     assert r.status_code == 200, r.get_json()
     assert q(
-        synthetic_app, "SELECT national_id, phone_number FROM patients WHERE name='تست' AND family_name='ثبت'"
+        synthetic_app, "SELECT national_id, phone_number FROM patients WHERE name='مهرداد' AND family_name='کریمی'"
     ) == [("2170415981", "09123456789")]
 
 
@@ -288,8 +289,9 @@ def test_invalid_identity_input_is_still_rejected(synthetic_app):
     assert new_patient(c, national_id="2170415982").status_code == 400
     assert new_patient(c, phone="9123456789").status_code == 400
     assert new_patient(c, national_id="").status_code == 400  # Iranian patients need an ID
-    foreign = new_patient(c, national_id="", is_foreign="on")
-    assert foreign.status_code == 200 and foreign.get_json()["success"]
+    assert new_patient(c, national_id="", is_foreign="on").status_code == 400  # foreigners need their code too (FB-03)
+    foreign = new_patient(c, national_id="p1234567", is_foreign="on", phone="09120000001")
+    assert foreign.status_code == 200, foreign.get_json()
 
 
 # --------------------------------------------------------------------------- the SQL rule matches the Python rule
@@ -327,3 +329,75 @@ def test_sql_national_id_rule_matches_the_python_rule(synthetic_app):
     for nid, flag in rows:
         assert bool(flag) == identity.is_valid_national_id(nid or ""), nid
     assert sum(flag for _, flag in rows) > 150  # the sample really contains valid ids
+
+
+# --------------------------------------------------------------------------- FB-03 / FB-04 / FB-05
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("name", "خ"),
+        ("name", "ا"),
+        ("name", "الف"),
+        ("family_name", "خ باقری"),
+        ("name", "Ali"),
+        ("name", "علی2"),
+        ("name", ""),
+    ],
+)
+def test_abbreviated_or_fake_names_are_refused(synthetic_app, field, value):
+    r = new_patient(reception(synthetic_app), **{field: value})
+    assert r.status_code == 400, r.get_json()
+
+
+def test_phone_is_required_for_everyone(synthetic_app):
+    assert new_patient(reception(synthetic_app), phone="").status_code == 400
+
+
+def test_arabic_letters_are_stored_as_persian(synthetic_app):
+    r = new_patient(reception(synthetic_app), name="علي", family_name="كريمي")
+    assert r.status_code == 200, r.get_json()
+    assert q(synthetic_app, "SELECT COUNT(*) FROM patients WHERE name='علی' AND family_name='کریمی'") == [(1,)]
+
+
+def test_a_known_id_with_another_name_asks_before_renaming_anyone(synthetic_app):
+    c = reception(synthetic_app)
+    assert new_patient(c).status_code == 200
+    r = new_patient(c, name="سارا", family_name="محمدی")  # same national id, other person typed
+    body = r.get_json()
+    assert r.status_code == 409 and body["need_confirm"] and body["matches"][0]["full_name"] == "مهرداد کریمی"
+    assert q(synthetic_app, "SELECT name FROM patients WHERE national_id='2170415981'") == [
+        ("مهرداد",)
+    ]  # nothing renamed
+    ok = new_patient(c, name="سارا", family_name="محمدی", confirm="1")
+    assert ok.status_code == 200
+    assert q(synthetic_app, "SELECT name, family_name FROM patients WHERE national_id='2170415981'") == [
+        ("سارا", "محمدی")
+    ]
+
+
+def test_the_same_id_and_name_is_a_returning_patient_not_a_conflict(synthetic_app):
+    c = reception(synthetic_app)
+    new_patient(c)
+    assert new_patient(c).status_code == 200
+
+
+def test_a_phone_used_by_another_patient_asks_first(synthetic_app):
+    c = reception(synthetic_app)
+    new_patient(c)
+    r = new_patient(c, name="نرگس", family_name="کریمی", national_id="2110530979")  # same phone, other person
+    assert r.status_code == 409 and "شماره همراه" in r.get_json()["error"]
+    assert new_patient(c, name="نرگس", family_name="کریمی", national_id="2110530979", confirm="1").status_code == 200
+
+
+def test_patient_history_names_the_receptionist(synthetic_app):
+    """FB-11: doctor and nurse were shown, the receptionist who registered it was not."""
+    c = reception(synthetic_app)
+    pid = q(synthetic_app, "SELECT patient_id FROM invoices WHERE opened_by IS NOT NULL LIMIT 1")[0][0]
+    data = c.get(f"/reception/patients/{pid}/history").get_json()
+    assert all("opened_by_name" in inv and "closed_by_name" in inv for inv in data["invoices"])
+    for key in ("visits", "injections", "procedures", "consumables"):
+        assert all("reception_name" in row for row in data.get(key, [])), key
+    html = c.get("/reception/").get_data(as_text=True)
+    assert html.count("{key:'reception_name', title:'پذیرش'}") == 4 and "پذیرش (باز کرد)" in html

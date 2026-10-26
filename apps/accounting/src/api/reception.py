@@ -166,38 +166,51 @@ def new_visit():
     try:
         from src.common.validators import validate_iranian_national_id, validate_iranian_phone
         
-        # Extract and validate form data
-        name = request.form.get('name', '').strip()
-        family_name = request.form.get('family_name', '').strip()
+        # Extract and validate form data (FB-03, FB-04, FB-05: everything is required, names are
+        # real names, foreigners give their universal code or passport, duplicates are checked)
+        from src.domain import identity
+        name = identity.normalize_person_name(request.form.get('name', ''))
+        family_name = identity.normalize_person_name(request.form.get('family_name', ''))
         phone = normalize_phone(request.form.get('phone', ''))
-        national_id = normalize_national_id(request.form.get('national_id', ''))
         is_foreign = request.form.get('is_foreign') == 'on'
+        national_id = (identity.normalize_foreign_id if is_foreign else normalize_national_id)(request.form.get('national_id', ''))
         insurance_type = request.form.get('insurance_type', '').strip()
         supp_insurance = request.form.get('supplementary_insurance', '').strip()
-        
-        # Validation: Required fields
-        if not name or not family_name:
-            return jsonify({'error': 'نام و نام خانوادگی الزامی است'}), 400
-        
-        # Validation: Phone number format
-        if phone and not validate_iranian_phone(phone):
+        confirmed = request.form.get('confirm') == '1'
+
+        for label, value in (('نام', name), ('نام خانوادگی', family_name)):
+            problem = identity.person_name_problem(value)
+            if problem:
+                return jsonify({'error': f'{label}: {problem}'}), 400
+
+        if not phone:
+            return jsonify({'error': 'شماره همراه الزامی است'}), 400
+        if not validate_iranian_phone(phone):
             return jsonify({'error': 'شماره همراه باید 11 رقم و با 09 شروع شود'}), 400
-        
-        # Validation: National ID for Iranian patients
-        if not is_foreign:
+
+        if is_foreign:
+            if not identity.is_valid_foreign_id(national_id):
+                return jsonify({'error': 'برای اتباع، کد فراگیر ۱۲ رقمی یا شمارهٔ گذرنامه الزامی است'}), 400
+        else:
             if not national_id:
                 return jsonify({'error': 'کدملی برای بیماران ایرانی اجباری است'}), 400
             if not validate_iranian_national_id(national_id):
                 return jsonify({'error': 'کدملی وارد شده نامعتبر است'}), 400
-        
+
         # Validation: Insurance type required
         if not insurance_type:
             return jsonify({'error': 'نوع بیمه الزامی است'}), 400
-        
+
         # Validation: Supplementary insurance requires a base insurance (not آزاد)
         if supp_insurance and supp_insurance != 'ندارد' and insurance_type == 'آزاد':
             return jsonify({'error': 'بیمه تکمیلی فقط برای بیماران دارای بیمه پایه قابل انتخاب است'}), 400
-        
+
+        if not confirmed:
+            from src.services.patient_matching import find_conflicts
+            conflicts = find_conflicts(_get_db(), name, family_name, national_id, phone)
+            if conflicts:
+                return jsonify({'error': conflicts['message'], 'need_confirm': True, 'matches': conflicts['matches']}), 409
+
         # Create or find patient, then open invoice
         invoice_id, patient_id = service.create_or_open_invoice(
             name=name,
@@ -313,17 +326,19 @@ def patient_history(patient_id: int):
     effective_supp = latest_inv['supplementary_insurance'] if latest_inv and latest_inv['supplementary_insurance'] else None
     # Invoices
     invoices = db.execute("""
-        SELECT id, status, insurance_type, supplementary_insurance, total_amount, opened_at, closed_at
+        SELECT id, status, insurance_type, supplementary_insurance, total_amount, opened_at, closed_at,
+               COALESCE(opened_by_name, opened_by) AS opened_by_name, COALESCE(closed_by_name, closed_by) AS closed_by_name
         FROM invoices WHERE patient_id = ? ORDER BY id DESC
     """, (patient_id,)).fetchall()
     # Visits
     visits = db.execute("""
-        SELECT id, visit_date, doctor_name, price AS amount, status, invoice_id, insurance_type, supplementary_insurance
+        SELECT id, visit_date, doctor_name, price AS amount, status, invoice_id, insurance_type, supplementary_insurance,
+               COALESCE((SELECT u.full_name FROM users u WHERE u.username = reception_user), reception_user) AS reception_name
         FROM visits WHERE patient_id = ? ORDER BY visit_date DESC
     """, (patient_id,)).fetchall()
     # Injections with doctor/nurse names
     injections = db.execute("""
-        SELECT i.id, i.injection_date, i.injection_type, i.unit_price, i.total_price, i.invoice_id, i.service_id, i.shift,
+        SELECT i.id, i.injection_date, i.injection_type, i.unit_price, i.total_price, i.invoice_id, i.service_id, i.shift, COALESCE((SELECT u.full_name FROM users u WHERE u.username = i.reception_user), i.reception_user) AS reception_name,
                COALESCE(inv_doc.full_name, shift_doc.full_name) AS doctor_name,
                COALESCE(inv_nurse.full_name, shift_nurse.full_name) AS nurse_name
         FROM injections i
@@ -337,7 +352,7 @@ def patient_history(patient_id: int):
     """, (patient_id,)).fetchall()
     # Procedures with performer info
     procedures = db.execute("""
-        SELECT pr.id, pr.procedure_date, pr.procedure_type, pr.price, pr.invoice_id,
+        SELECT pr.id, pr.procedure_date, pr.procedure_type, pr.price, pr.invoice_id, COALESCE((SELECT u.full_name FROM users u WHERE u.username = pr.reception_user), pr.reception_user) AS reception_name,
                pr.performer_type, pr.performer_id, pr.shift,
                COALESCE(inv_doc.full_name, shift_doc.full_name) AS doctor_name,
                COALESCE(inv_nurse.full_name, shift_nurse.full_name) AS nurse_name
@@ -352,7 +367,8 @@ def patient_history(patient_id: int):
     """, (patient_id,)).fetchall()
     # Consumables ledger
     consumables = db.execute("""
-        SELECT id, usage_date, item_name, category, quantity, unit_price, total_cost, patient_provided, invoice_id
+        SELECT id, usage_date, item_name, category, quantity, unit_price, total_cost, patient_provided, invoice_id,
+               COALESCE((SELECT u.full_name FROM users u WHERE u.username = reception_user), reception_user) AS reception_name
         FROM consumables_ledger WHERE patient_id = ? ORDER BY usage_date DESC
     """, (patient_id,)).fetchall()
     # Jalali formatting utility for Y-m-d H:M
