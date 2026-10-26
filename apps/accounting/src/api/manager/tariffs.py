@@ -486,3 +486,95 @@ def consumables_tariffs():
     return render_template(
         "manager/tariffs_consumables.html", items=items, drugs=drugs, supplies=supplies, category_filter=category_filter
     )
+
+
+# ==================== کارهای عملی (FB-08) ====================
+
+PROCEDURE_SUGGESTION_MIN_USES = 3
+
+
+def _procedure_suggestions(db):
+    """Names typed by hand in the past (most used first) with their most common price, not yet in
+    the catalog: one click adds them. 250 hand-typed variants existed before the catalog."""
+    rows = db.execute(
+        """SELECT p.procedure_type AS name, COUNT(*) AS uses,
+                  (SELECT p2.price FROM procedures p2 WHERE p2.procedure_type = p.procedure_type
+                   GROUP BY p2.price ORDER BY COUNT(*) DESC, p2.price LIMIT 1) AS common_price,
+                  COUNT(DISTINCT p.price) AS prices
+           FROM procedures p
+           WHERE p.procedure_type IS NOT NULL AND TRIM(p.procedure_type) != ''
+             AND p.procedure_type NOT IN (SELECT name FROM procedure_tariffs)
+           GROUP BY p.procedure_type HAVING COUNT(*) >= ?
+           ORDER BY uses DESC LIMIT 40""",
+        (PROCEDURE_SUGGESTION_MIN_USES,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@bp.route("/tariffs/procedures", methods=["GET", "POST"])
+@login_required
+@manager_required(flash_message="دسترسی محدود")
+def procedure_tariffs():
+    """تعرفهٔ کارهای عملی: reception picks from this list; the price comes from here (FB-08)."""
+    db = get_db()
+    if request.method == "POST":
+        action = request.form.get("action")
+        name = " ".join(request.form.get("name", "").split())
+        if action in ("add", "update"):
+            price = parse_amount(request.form.get("unit_price", ""))
+            if price is None or price <= 0:
+                flash("مبلغ نامعتبر است؛ فقط عدد بزرگ‌تر از صفر وارد کنید.", "error")
+                return redirect(url_for("manager.procedure_tariffs"))
+            if not name:
+                flash("عنوان کار عملی خالی است.", "error")
+                return redirect(url_for("manager.procedure_tariffs"))
+        if action == "add":
+            if db.execute("SELECT 1 FROM procedure_tariffs WHERE name = ?", (name,)).fetchone():
+                flash(f'کار عملی "{name}" قبلاً تعریف شده است.', "error")
+            else:
+                cur = db.execute(
+                    "INSERT INTO procedure_tariffs (name, unit_price, is_active) VALUES (?, ?, 1)", (name, price)
+                )
+                tariff_audit.record_created(db, "procedure", cur.lastrowid, name, {"price": price})
+                db.commit()
+                flash(f'کار عملی "{name}" اضافه شد.', "success")
+        elif action == "update":
+            item_id = request.form.get("item_id", type=int)
+            is_active = 1 if request.form.get("is_active") == "1" else 0
+            old = db.execute("SELECT * FROM procedure_tariffs WHERE id = ?", (item_id,)).fetchone()
+            if old:
+                db.execute(
+                    "UPDATE procedure_tariffs SET name = ?, unit_price = ?, is_active = ? WHERE id = ?",
+                    (name, price, is_active, item_id),
+                )
+                tariff_audit.record_update(
+                    db,
+                    "procedure",
+                    item_id,
+                    name,
+                    {
+                        "name": (old["name"], name),
+                        "price": (old["unit_price"], price),
+                        "active": (old["is_active"], is_active),
+                    },
+                )
+                db.commit()
+                flash("کار عملی به‌روزرسانی شد.", "success")
+        elif action == "deactivate":
+            item_id = request.form.get("item_id", type=int)
+            old = db.execute("SELECT * FROM procedure_tariffs WHERE id = ?", (item_id,)).fetchone()
+            if old and old["is_active"]:
+                db.execute("UPDATE procedure_tariffs SET is_active = 0 WHERE id = ?", (item_id,))
+                tariff_audit.record_update(db, "procedure", item_id, old["name"], {"active": (1, 0)})
+                db.commit()
+                flash(f'کار عملی "{old["name"]}" غیرفعال شد.', "success")
+        return redirect(url_for("manager.procedure_tariffs"))
+
+    items = [
+        dict(r)
+        for r in db.execute(
+            """SELECT t.*, (SELECT COUNT(*) FROM procedures p WHERE p.procedure_type = t.name) AS uses
+               FROM procedure_tariffs t ORDER BY t.is_active DESC, uses DESC, t.name"""
+        )
+    ]
+    return render_template("manager/tariffs_procedures.html", items=items, suggestions=_procedure_suggestions(db))

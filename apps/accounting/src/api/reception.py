@@ -1151,7 +1151,20 @@ def procedures_new():
     invoice_id = request.args.get('invoice_id', type=int)
     inv_repo = InvoiceRepository(); invoice = inv_repo.get_invoice_by_id(invoice_id) if invoice_id else None
     ct_repo = ConsumableTariffsRepository(); supplies = ct_repo.list_active('supply'); drugs = ct_repo.list_active('drug')
-    return render_template('reception/procedures_new.html', invoice=invoice, supplies=supplies, drugs=drugs)
+    # FB-08: procedures come from the manager's catalog; performer = a named doctor or the shift nurse
+    from src.adapters.sqlite.procedure_tariffs_repo import ProcedureTariffsRepository
+    from src.adapters.sqlite.shift_staff_repo import ShiftStaffRepository
+    from src.adapters.sqlite.core import get_db as _get_db
+    procedure_tariffs = ProcedureTariffsRepository().list_active()
+    db = _get_db()
+    doctors = [dict(r) for r in db.execute(
+        "SELECT id, full_name FROM medical_staff WHERE staff_type = 'doctor' AND is_active = 1 ORDER BY full_name")]
+    staff_repo = ShiftStaffRepository()
+    staff = staff_repo.get_shift_staff(None, staff_repo._current_shift()) or {}
+    nurse_row = db.execute("SELECT full_name FROM medical_staff WHERE id = ?", (staff.get('nurse_id'),)).fetchone() if staff.get('nurse_id') else None
+    return render_template('reception/procedures_new.html', invoice=invoice, supplies=supplies, drugs=drugs,
+                           procedure_tariffs=procedure_tariffs, doctors=doctors,
+                           shift_nurse=nurse_row['full_name'] if nurse_row else None)
 
 @bp.route('/procedures', methods=['POST'])
 @login_required
@@ -1195,17 +1208,54 @@ def procedures_submit():
     proc_repo = ProcedureRepository(); cons_repo = ConsumableLedgerRepository()
     created_procs = 0; created_cons = 0
     
-    # Add manual procedures
+    # Procedures (FB-08): when the manager has a catalog, only catalog items are accepted and the
+    # price comes from the catalog, never from the browser. With an empty catalog (first days after
+    # the update) the old manual entry keeps working so the desk is not blocked.
+    from src.adapters.sqlite.procedure_tariffs_repo import ProcedureTariffsRepository
+    catalog = {t['id']: t for t in ProcedureTariffsRepository().list_active()}
+    from src.adapters.sqlite.core import get_db as _get_db
+    db = _get_db()
+    lines = []
     for pr in procedures_payload:
-        name = (pr.get('name') or '').strip(); qty = int(pr.get('qty',0)); unit_price = float(pr.get('unit_price',0) or 0)
-        performer_type = (pr.get('performer_type') or '').strip().lower()
-        if performer_type not in ['doctor','nurse']:
+        try:
+            qty = int(pr.get('qty', 0))
+        except (TypeError, ValueError):
+            qty = 0
+        if qty < 1 or qty > 50:
+            return jsonify({'error': 'تعداد کار عملی باید بین ۱ و ۵۰ باشد'}), 400
+        if catalog:
+            try:
+                tariff = catalog.get(int(pr.get('tariff_id') or 0))
+            except (TypeError, ValueError):
+                tariff = None
+            if tariff is None:
+                return jsonify({'error': 'کار عملی را از فهرست تعرفه‌ها انتخاب کنید'}), 400
+            name, unit_price = tariff['name'], float(tariff['unit_price'] or 0)
+        else:
+            name = (pr.get('name') or '').strip()
+            unit_price = float(pr.get('unit_price', 0) or 0)
+            if not name or unit_price <= 0:
+                continue
+        performer = (pr.get('performer') or pr.get('performer_type') or '').strip().lower()
+        if performer.startswith('doctor:'):
+            try:
+                chosen = int(performer.split(':', 1)[1])
+            except ValueError:
+                chosen = 0
+            ok = db.execute("SELECT 1 FROM medical_staff WHERE id = ? AND staff_type = 'doctor' AND is_active = 1", (chosen,)).fetchone()
+            if not ok:
+                return jsonify({'error': 'پزشک انتخاب‌شده معتبر نیست'}), 400
+            performer_type, line_doctor, line_nurse = 'doctor', chosen, None
+        elif performer == 'nurse':
+            if not nurse_id:
+                return jsonify({'error': 'پرستار شیفت تعیین نشده است؛ ابتدا کادر شیفت را ثبت کنید'}), 400
+            performer_type, line_doctor, line_nurse = 'nurse', None, nurse_id
+        else:  # legacy 'doctor' / unknown: the shift doctor, as before
             performer_type = 'doctor' if doctor_id else 'nurse'
-        performer_id = doctor_id if performer_type=='doctor' else nurse_id
-        # فقط ID انجام‌دهنده واقعی را ثبت کن - برای جلوگیری از شمارش دوگانه در گزارش‌ها
-        actual_doctor_id = doctor_id if performer_type == 'doctor' else None
-        actual_nurse_id = nurse_id if performer_type == 'nurse' else None
-        if not name or unit_price <= 0 or qty < 1: continue
+            line_doctor = doctor_id if performer_type == 'doctor' else None
+            line_nurse = nurse_id if performer_type == 'nurse' else None
+        lines.append((name, unit_price, qty, performer_type, line_doctor, line_nurse))
+    for name, unit_price, qty, performer_type, line_doctor, line_nurse in lines:
         for _ in range(qty):
             proc_repo.add_procedure(
                 patient_id=invoice['patient_id'],
@@ -1215,9 +1265,9 @@ def procedures_submit():
                 invoice_id=invoice_id,
                 notes=notes,
                 performer_type=performer_type,
-                performer_id=performer_id,
-                doctor_id=actual_doctor_id,
-                nurse_id=actual_nurse_id
+                performer_id=line_doctor if performer_type == 'doctor' else line_nurse,
+                doctor_id=line_doctor,
+                nurse_id=line_nurse
             ); created_procs += 1
     # Add consumables ledger entries
     for item in consumables_payload:

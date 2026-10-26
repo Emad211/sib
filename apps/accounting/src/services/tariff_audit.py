@@ -16,6 +16,7 @@ KIND_LABELS = {
     "insurance": "تعرفهٔ بیمه / ویزیت",
     "consumable": "مصرفی",
     "exclusion": "استثنای پرستاری بیمه",
+    "procedure": "کار عملی",
 }
 ACTION_LABELS = {"create": "افزودن", "update": "ویرایش", "delete": "حذف"}
 FIELD_LABELS = {
