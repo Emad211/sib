@@ -31,6 +31,8 @@ include = [
     "tests/test_domain.py",
     "tests/test_payment_rules.py",
     "tests/test_shift_contract.py",
+    "tests/test_shift_handover.py",
+    "src/services/shift_handover.py",
     "tests/test_manager_part2.py",
     "tests/test_exports.py",
     "tests/test_manager_insights.py",

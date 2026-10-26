@@ -3,6 +3,7 @@ from flask import (
 )
 from src.api.auth import login_required
 from src.services.reception_service import ReceptionService
+from src.adapters.sqlite.core import get_db
 from src.domain import billing
 from src.domain.identity import normalize_national_id, normalize_phone
 from src.services.activity_logger import log_activity, ActionType, ActionCategory
@@ -156,6 +157,12 @@ def new_visit():
         return render_template('reception/new_visit.html', tariffs=tariffs, supplementary_insurances=supps)
     
     # POST: Create or find patient, then open invoice
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    allowed, reason = shift_handover.may_open_invoice(_get_db(), g.user['id'], _now())
+    if not allowed:
+        return jsonify({'error': reason}), 409
     try:
         from src.common.validators import validate_iranian_national_id, validate_iranian_phone
         
@@ -394,6 +401,12 @@ def patient_history(patient_id: int):
 @login_required
 def open_invoice_existing():
     """Directly open a new invoice for an existing patient id (used in history modal)."""
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    allowed, reason = shift_handover.may_open_invoice(_get_db(), g.user['id'], _now())
+    if not allowed:
+        return jsonify({'error': reason}), 409
     pid = request.form.get('patient_id', type=int)
     if not pid:
         return jsonify({'error': 'شناسه بیمار لازم است'}), 400
@@ -1961,7 +1974,13 @@ def get_shift_status():
         'night': 'شب'
     }
     
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+    from src.common.utils import iran_now as _now
+    handover = shift_handover.status(_get_db(), user_id, _now())
+
     return jsonify({
+        **handover,
         'active_shift': active_shift,
         'active_shift_fa': shift_names.get(active_shift, active_shift),
         'work_date': work_date,
@@ -1980,53 +1999,42 @@ def get_shift_status():
 @bp.route('/api/shift/change', methods=['POST'])
 @login_required
 def change_shift():
-    """
-    Change user's active shift (manual).
-    فاکتورهای باز مانعی برای تغییر شیفت نیستند.
+    """Start the shift the schedule says (FB-02). The requested shift is ignored: nobody picks one.
+
+    Refused while an invoice of another shift is still open (FB-01): its receptionist must settle
+    and close it first.
     """
     from src.adapters.sqlite.user_shift_repo import UserShiftRepository
-    
+    from src.common.utils import iran_now
+    from src.domain import shifts
+    from src.services import shift_handover
+    from src.adapters.sqlite.core import get_db as _get_db
+
+    db = _get_db()
     user_id = g.user['id']
-    shift_repo = UserShiftRepository()
-    
-    payload = request.get_json(silent=True) or {}
-    requested_shift = (payload.get('shift') or '').strip()
-    requested_work_date = (payload.get('work_date') or '').strip()
+    state = shift_handover.status(db, user_id, iran_now())
+    scheduled = (state['scheduled_shift'], state['scheduled_work_date'])
+    label = state['scheduled_shift_fa']
+    if state['standing'] == shifts.CURRENT:
+        return jsonify({'success': True, 'new_shift': scheduled[0], 'new_shift_fa': label, 'work_date': scheduled[1]})
 
-    allowed = {'morning', 'evening', 'night'}
-    if requested_shift not in allowed:
-        return jsonify({'error': 'شیفت نامعتبر است'}), 400
+    pending = shift_handover.blockers(db, scheduled)
+    if pending:
+        return jsonify({
+            'error': f'تا {len(pending)} فاکتور باز از شیفت قبل بسته نشود، شیفت {label} شروع نمی‌شود. '
+                     'پذیرشِ همان شیفت باید فاکتورها را تسویه و ببندد.',
+            'blockers': pending,
+        }), 409
 
-    if not requested_work_date:
-        from src.common.utils import iran_now
-        now = iran_now()
-        # Night shift spans two calendar dates (starts ~19:30 and ends ~07:30).
-        # If user selects night shift after midnight and before 07:30, the work_date
-        # should remain the previous day.
-        if requested_shift == 'night' and (now.hour, now.minute) < (7, 30):
-            requested_work_date = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            requested_work_date = now.strftime('%Y-%m-%d')
-
-    # Update user's active shift
-    shift_repo.set_user_active_shift(user_id, requested_shift, requested_work_date)
-    
-    # Log the shift change
-    shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
+    UserShiftRepository().set_user_active_shift(user_id, scheduled[0], scheduled[1])
     log_activity(
         action_type=ActionType.SHIFT_STAFF_SET,
         action_category=ActionCategory.SHIFT,
-        description=f'تغییر شیفت به شیفت {shift_names.get(requested_shift, requested_shift)}',
+        description=f'شروع شیفت {label}',
         target_type='user_shift',
-        new_value=f'{requested_shift}:{requested_work_date}'
+        new_value=f'{scheduled[0]}:{scheduled[1]}'
     )
-    
-    return jsonify({
-        'success': True,
-        'new_shift': requested_shift,
-        'new_shift_fa': shift_names.get(requested_shift, requested_shift),
-        'work_date': requested_work_date
-    })
+    return jsonify({'success': True, 'new_shift': scheduled[0], 'new_shift_fa': label, 'work_date': scheduled[1]})
 
 
 @bp.route('/api/shift/dismiss_prompt', methods=['POST'])

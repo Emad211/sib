@@ -1314,8 +1314,8 @@
                     <span class="shift-text">{{ 'شیفت صبح' if ss.active_shift=='morning' else ('شیفت عصر' if ss.active_shift=='evening' else 'شیفت شب') }}</span>
                 </div>
 
-                <button onclick="changeShiftManual()" style="background: var(--accent); color: white; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                    🔄 <span>تغییر شیفت دستی</span>
+                <button id="start-shift-btn" onclick="changeShiftManual()" style="display:none; background: var(--accent); color: white; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: bold; cursor: pointer; align-items: center; gap: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    ▶ <span id="start-shift-label">شروع شیفت</span>
                 </button>
 
                 <span id="open-invoices-count-badge" title="فاکتورهای باز" style="{{ 'display:inline-block;' if ss.open_invoices_count and ss.open_invoices_count > 0 else 'display:none;' }} background:#fef2f2; color:#b91c1c; border-radius:12px; padding:0.2rem 0.6rem; font-size:0.8rem; font-weight:700; border: 1px solid #fee2e2;">
@@ -1332,7 +1332,7 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
                     <h2 style="margin:0; font-size:1.4rem; font-weight: 900; color:var(--text-dark); display: flex; align-items: center; gap: 0.75rem;">
                         <span style="background: var(--sidebar-accent); padding: 0.5rem; border-radius: 12px;">🔄</span>
-                        تغییر شیفت کاری
+                        شروع شیفت
                     </h2>
                     <button class="btn-icon" onclick="hideShiftChangeModal()" style="background: transparent; color: var(--text-muted);">✖</button>
                 </div>
@@ -1343,22 +1343,13 @@
                     </p>
                 </div>
 
-                <div class="shift-card-grid">
-                    <div class="shift-select-card morning modal-shift-btn" onclick="confirmShiftChange('morning')">
-                        <span class="icon">☀️</span>
-                        <span class="name">شیفت صبح</span>
-                        <span class="time-range">۰۷:۳۰ تا ۱۳:۳۰</span>
+                <div style="text-align:center; margin-bottom: 1.5rem;">
+                    <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">
+                        شیفت از روی ساعت تعیین می‌شود (صبح ۰۷:۳۰، عصر ۱۳:۳۰، شب ۱۹:۳۰ تا ۰۷:۳۰ فردا).
                     </div>
-                    <div class="shift-select-card evening modal-shift-btn" onclick="confirmShiftChange('evening')">
-                        <span class="icon">🌅</span>
-                        <span class="name">شیفت عصر</span>
-                        <span class="time-range">۱۳:۳۰ تا ۱۹:۳۰</span>
-                    </div>
-                    <div class="shift-select-card night modal-shift-btn" onclick="confirmShiftChange('night')">
-                        <span class="icon">🌙</span>
-                        <span class="name">شیفت شب</span>
-                        <span class="time-range">۱۹:۳۰ تا ۰۷:۳۰</span>
-                    </div>
+                    <button class="nav-btn primary" id="confirm-start-shift" style="width:auto; padding:0.8rem 2rem;" onclick="confirmShiftChange()">
+                        ▶ شروع شیفت <span id="modal-scheduled-shift"></span>
+                    </button>
                 </div>
 
                 <div id="modal-open-invoices-warning" style="display:none; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); border-radius: 16px; padding: 1rem; margin-bottom: 1.5rem; text-align: right;">
@@ -1367,7 +1358,7 @@
                     </div>
                     <div id="modal-open-invoices-list" style="font-size:0.85rem; color:var(--text-dark); line-height: 1.6; font-weight: 600;"></div>
                     <div style="font-size:0.8rem; color:var(--danger); margin-top: 0.75rem; font-weight: 700; border-top: 1px solid rgba(239, 68, 68, 0.2); padding-top: 0.5rem;">
-                        لطفاً قبل از تغییر شیفت، تمامی فاکتورهای باز را تسویه یا ابطال کنید.
+                        پذیرشِ همان شیفت باید این فاکتورها را تسویه و ببندد؛ بعد شیفت جدید شروع می‌شود.
                     </div>
                 </div>
 
@@ -1613,7 +1604,14 @@
             if (iconEl) iconEl.textContent = shiftIcons[data.active_shift] || '🕐';
             
             // Display shift name only (removed Gregorian date)
-            if (textEl) textEl.textContent = (shiftNames[data.active_shift] || data.active_shift_fa);
+            if (textEl) textEl.textContent = (shiftNames[data.active_shift] || data.active_shift_fa)
+                + (data.handed_over ? ' (تحویل داده شد)' : (data.standing === 'finishing' ? ' (در حال اتمام)' : ''));
+
+            // Offer to start the scheduled shift (FB-02); never switch on our own
+            const startBtn = document.getElementById('start-shift-btn');
+            const startLabel = document.getElementById('start-shift-label');
+            if (startBtn) startBtn.style.display = data.needs_start ? 'flex' : 'none';
+            if (startLabel) startLabel.textContent = 'شروع شیفت ' + (data.scheduled_shift_fa || '');
 
             // Update open invoices count badge
             const openCount = Number(data.open_invoices_count || 0);
@@ -1631,16 +1629,25 @@
         function showShiftChangeModal(data) {
             const modal = document.getElementById('shift-change-modal');
             const currentShiftEl = document.getElementById('modal-current-shift');
+            const scheduledEl = document.getElementById('modal-scheduled-shift');
             const warningDiv = document.getElementById('modal-open-invoices-warning');
-            const shiftButtons = Array.from(document.querySelectorAll('.modal-shift-btn'));
-            
             if (currentShiftEl) currentShiftEl.textContent = data.active_shift_fa;
-
-            // فاکتورهای باز دیگر مانع تغییر شیفت نیستند
+            if (scheduledEl) scheduledEl.textContent = data.scheduled_shift_fa || '';
             if (warningDiv) warningDiv.style.display = 'none';
-            shiftButtons.forEach(btn => btn.classList.remove('disabled'));
-            
             if (modal) modal.style.display = 'flex';
+        }
+
+        function showShiftBlockers(blockers) {
+            const warningDiv = document.getElementById('modal-open-invoices-warning');
+            const list = document.getElementById('modal-open-invoices-list');
+            if (!warningDiv || !list) return;
+            list.textContent = '';
+            blockers.forEach(b => {
+                const row = document.createElement('div');
+                row.textContent = 'فاکتور ' + b.invoice_id + ' — ' + b.who + ' — شیفت ' + b.shift_fa + ' ' + b.work_date_fa;
+                list.appendChild(row);
+            });
+            warningDiv.style.display = 'block';
         }
 
         function hideShiftChangeModal() {
@@ -1648,26 +1655,23 @@
             if (modal) modal.style.display = 'none';
         }
 
-        function confirmShiftChange(shiftKey) {
+        function confirmShiftChange() {
             fetch('{{ url_for("reception.change_shift") }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ shift: shiftKey }),
+                body: JSON.stringify({}),
                 credentials: 'same-origin'
             })
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.message || data.error);
-                    return;
-                }
-                // Success - reload page
+            .then(r => r.json().then(data => ({ status: r.status, data })))
+            .then(({ status, data }) => {
+                if (status === 409 && data.blockers) { showShiftBlockers(data.blockers); return; }
+                if (data.error) { alert(data.error); return; }
                 hideShiftChangeModal();
                 window.location.reload();
             })
             .catch(err => {
-                console.error('Shift change error:', err);
-                alert('خطا در تغییر شیفت');
+                console.error('Shift start error:', err);
+                alert('خطا در شروع شیفت');
             });
         }
 

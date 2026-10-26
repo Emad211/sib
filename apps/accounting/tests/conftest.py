@@ -144,3 +144,21 @@ def webapp_db(tmp_path):
         ctx.pop()
         Config.DATABASE_PATH = old_path
         core._migrations_done = old_flag
+
+
+def put_on_current_shift(app, username):
+    """Make `username` the person on the scheduled shift right now (FB-02), as 'start shift' would."""
+    import sqlite3
+
+    from src.common.utils import iran_now
+    from src.domain.shifts import scheduled_shift
+
+    shift, work_date = scheduled_shift(iran_now())
+    conn = sqlite3.connect(app.config["DATABASE_PATH"])
+    uid = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
+    conn.execute(
+        "INSERT OR REPLACE INTO user_active_shift (user_id, active_shift, work_date) VALUES (?, ?, ?)",
+        (uid, shift, work_date),
+    )
+    conn.commit()
+    conn.close()

@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from conftest import login_as
+from conftest import login_as, put_on_current_shift
 
 from src.domain import identity
 
@@ -27,6 +27,7 @@ def run(app, sql, *args):
 def reception(app):
     c = app.test_client()
     login_as(c, app, "reception1")
+    put_on_current_shift(app, "reception1")
     return c
 
 
