@@ -1,0 +1,302 @@
+{% extends 'layouts/base.html' %}
+{% block title %}خدمات پرستاری{% endblock %}
+{% block content %}
+<style>
+  body { background: linear-gradient(135deg,#eef2ff,#f8fafc); }
+  .nursing-title { font-size:1.4rem;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:.6rem; }
+  .nursing-title:before { content:'💉';font-size:1.4rem; }
+  .card { border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; }
+  .card-header { background:linear-gradient(90deg,#6366f1 0%, #8b5cf6 100%); color:#fff; font-weight:600; }
+  #servicesTable tbody tr:hover { background:#f1f5f9; cursor:pointer; }
+  #selectedTable tbody tr { transition:background .2s; }
+  #selectedTable tbody tr:hover { background:#f8fafc; }
+  .badge.bg-info { background:#6366f1 !important; }
+  .tab-active { background:#6366f1 !important; color:#fff !important; }
+  #consTable tbody tr:hover { background:#f1f5f9; }
+  .cons-remove, .remove-btn { font-weight:700; }
+  .summary-badge { background:#0ea5e9; padding:.45rem .75rem; border-radius:8px; color:#fff; font-weight:600; }
+  .shadow-soft { box-shadow:0 6px 18px -6px rgba(0,0,0,.08); }
+</style>
+<div class="container rtl" dir="rtl" style="max-width:1200px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="nursing-title">ثبت خدمات پرستاری</h2>
+    {% if selected_invoice %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('reception.index', invoice_id=selected_invoice.id) }}">⬅ بازگشت</a>
+    {% endif %}
+  </div>
+  {% if not selected_invoice %}
+    <div class="alert alert-warning">ابتدا یک فاکتور فعال انتخاب کنید.</div>
+  {% else %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body py-2 d-flex justify-content-between align-items-center">
+        <div>
+          <strong>فاکتور #{{ selected_invoice.id }}</strong>
+          <span class="text-muted">بیمار: {{ selected_invoice.patient_name }} {{ selected_invoice.patient_family_name }}</span>
+        </div>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('reception.index', invoice_id=selected_invoice.id) }}">بازگشت به داشبورد</a>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <span>لیست خدمات فعال</span>
+            <input id="searchBox" type="text" class="form-control form-control-sm" placeholder="جستجو..." style="max-width:180px;">
+          </div>
+          <div class="table-responsive" style="max-height:420px;">
+            <table class="table table-sm table-hover" id="servicesTable">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:45%">عنوان</th>
+                  <th style="width:20%">قیمت واحد</th>
+                  <th style="width:20%">تعداد</th>
+                  <th style="width:15%">افزودن</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for s in services %}
+                <tr data-name="{{ s.service_name }}">
+                  <td>{{ s.service_name }}</td>
+                  <td>{{ '%.0f'|format(s.unit_price) }}</td>
+                  <td><input type="number" min="1" value="1" class="form-control form-control-sm qty-input" style="width:70px;"></td>
+                  <td><button class="btn btn-success btn-sm add-btn" data-id="{{ s.id }}" data-name="{{ s.service_name }}" data-price="{{ s.unit_price }}">+</button></td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <form id="nursingForm" class="card h-100 d-flex flex-column shadow-soft">
+          <div class="card-header">خدمات و مصرفی‌های انتخاب شده</div>
+          <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:380px;">
+              <table class="table table-sm mb-0" id="selectedTable">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width:40%">عنوان</th>
+                    <th style="width:15%">قیمت واحد</th>
+                    <th style="width:15%">تعداد</th>
+                    <th style="width:15%">جمع</th>
+                    <th style="width:15%">حذف</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="p-3 border-top" style="background:#f9fafb;">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>مصرفی ها / داروها</strong>
+                <div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary tab-active" id="tabSupply">مصرفی</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="tabDrug">دارو</button>
+                </div>
+              </div>
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-4">
+                  <label class="form-label mb-1">نام</label>
+                  <input type="text" id="consName" class="form-control form-control-sm" placeholder="مثلاً سرنگ" />
+                </div>
+                <div class="col-2">
+                  <label class="form-label mb-1">تعداد</label>
+                  <input type="number" min="1" id="consQty" class="form-control form-control-sm" value="1" />
+                </div>
+                <div class="col-2">
+                  <label class="form-label mb-1">قیمت واحد</label>
+                  <input type="number" min="0" id="consPrice" class="form-control form-control-sm" value="0" />
+                </div>
+                <div class="col-2">
+                  <label class="form-label mb-1">دسته</label>
+                  <input type="text" id="consCat" class="form-control form-control-sm" value="supply" readonly />
+                </div>
+                <div class="col-2">
+                  <button type="button" class="btn btn-sm btn-success w-100" id="addConsumableBtn">افزودن</button>
+                </div>
+              </div>
+              <div class="table-responsive" style="max-height:160px;">
+                <table class="table table-sm" id="consTable">
+                  <thead class="table-light">
+                    <tr>
+                      <th>نام</th><th>دسته</th><th>تعداد</th><th>قیمت واحد</th><th>جمع</th><th>حذف</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div class="px-3 pt-2">
+            <label class="form-label">یادداشت:</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="یادداشت اختیاری"></textarea>
+          </div>
+          <div class="card-footer d-flex justify-content-between align-items-center">
+            <div class="d-flex flex-column gap-1">
+              <span class="summary-badge">جمع کل: <span id="grandTotal">0</span></span>
+            </div>
+            <div>
+              <input type="hidden" name="invoice_id" value="{{ selected_invoice.id }}">
+              <button type="button" id="submitBtn" class="btn btn-primary">ثبت خدمات</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<script>
+(function(){
+  const searchBox = document.getElementById('searchBox');
+  const servicesTable = document.getElementById('servicesTable');
+  const selectedBody = document.querySelector('#selectedTable tbody');
+  const grandTotalEl = document.getElementById('grandTotal');
+  const consTableBody = document.querySelector('#consTable tbody');
+  let activeCategory = 'supply';
+
+  function recalc(){
+    let total = 0;
+    selectedBody.querySelectorAll('tr').forEach(tr => {
+      const price = parseFloat(tr.querySelector('.sel-price').textContent);
+      const qty = parseInt(tr.querySelector('.sel-qty').value || '1');
+      const rowTotal = price * qty;
+      tr.querySelector('.sel-total').textContent = rowTotal.toFixed(0);
+      total += rowTotal;
+    });
+    consTableBody.querySelectorAll('tr').forEach(tr => {
+      const qty = parseFloat(tr.querySelector('.cons-qty').textContent);
+      const price = parseFloat(tr.querySelector('.cons-price').textContent);
+      const rowTotal = qty * price;
+      tr.querySelector('.cons-total').textContent = rowTotal.toFixed(0);
+      total += rowTotal;
+    });
+    grandTotalEl.textContent = total.toFixed(0);
+  }
+
+  servicesTable.addEventListener('click', e => {
+    if(e.target.classList.contains('add-btn')){
+      const id = e.target.dataset.id;
+      const name = e.target.dataset.name;
+      const price = parseFloat(e.target.dataset.price);
+      const qtyInput = e.target.closest('tr').querySelector('.qty-input');
+      const qty = parseInt(qtyInput.value || '1');
+      // Check if already selected -> increment
+      const existing = selectedBody.querySelector(`tr[data-id="${id}"]`);
+      if(existing){
+        const eqty = existing.querySelector('.sel-qty');
+        eqty.value = parseInt(eqty.value) + qty;
+        recalc();
+        return;
+      }
+      const tr = document.createElement('tr');
+      tr.dataset.id = id;
+      tr.innerHTML = `
+        <td>${name}</td>
+        <td class="sel-price">${price.toFixed(0)}</td>
+        <td><input type="number" min="1" value="${qty}" class="form-control form-control-sm sel-qty" style="width:70px;"></td>
+        <td class="sel-total">0</td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm remove-btn">×</button></td>
+      `;
+      selectedBody.appendChild(tr);
+      recalc();
+    }
+  });
+
+  selectedBody.addEventListener('input', e => {
+    if(e.target.classList.contains('sel-qty')){
+      if(parseInt(e.target.value) < 1) e.target.value = 1;
+      recalc();
+    }
+  });
+  selectedBody.addEventListener('click', e => {
+    if(e.target.classList.contains('remove-btn')){
+      e.target.closest('tr').remove();
+      recalc();
+    }
+  });
+
+  searchBox.addEventListener('input', () => {
+    const q = searchBox.value.trim();
+    servicesTable.querySelectorAll('tbody tr').forEach(tr => {
+      const name = tr.dataset.name;
+      tr.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+  });
+
+  document.getElementById('submitBtn').addEventListener('click', () => {
+    const invoiceId = document.querySelector('input[name="invoice_id"]').value;
+    const notes = document.querySelector('textarea[name="notes"]').value.trim();
+    if(!invoiceId){
+      alert('فاکتور انتخاب نشده است');
+      return;
+    }
+    const pairs = [];
+    selectedBody.querySelectorAll('tr').forEach(tr => {
+      const sid = tr.dataset.id;
+      const qty = tr.querySelector('.sel-qty').value;
+      pairs.push(`${sid}:${qty}`);
+    });
+    // Build consumables string
+    const consParts = [];
+    consTableBody.querySelectorAll('tr').forEach(tr => {
+      const name = tr.querySelector('.cons-name').textContent;
+      const cat = tr.querySelector('.cons-cat').textContent;
+      const qty = tr.querySelector('.cons-qty').textContent;
+      const price = tr.querySelector('.cons-price').textContent;
+      consParts.push(`${name}|${cat}|${qty}|${price}`);
+    });
+    if(!pairs.length && !consParts.length){
+      alert('هیچ موردی انتخاب نشده است');
+      return;
+    }
+    const params = { invoice_id: invoiceId, notes: notes };
+    if(pairs.length) params.services = pairs.join(',');
+    if(consParts.length) params.consumables = consParts.join(',');
+    fetch("{{ url_for('reception.nursing_submit') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params)
+    }).then(r => r.json()).then(data => {
+      if(data.success){
+        alert('ثبت شد: خدمات ' + (data.created_services||0) + ' / مصرفی ' + (data.created_consumables||0));
+        window.location = "{{ url_for('reception.index') }}?invoice_id=" + invoiceId;
+      } else {
+        alert(data.error || 'خطا در ثبت');
+      }
+    }).catch(err => alert('خطای شبکه')); 
+  });
+
+  // Consumables handling
+  document.getElementById('tabSupply').addEventListener('click', () => {
+    activeCategory='supply';
+    document.getElementById('consCat').value='supply';
+  });
+  document.getElementById('tabDrug').addEventListener('click', () => {
+    activeCategory='drug';
+    document.getElementById('consCat').value='drug';
+  });
+  document.getElementById('addConsumableBtn').addEventListener('click', () => {
+    const name = document.getElementById('consName').value.trim();
+    const qty = parseFloat(document.getElementById('consQty').value || '1');
+    const price = parseFloat(document.getElementById('consPrice').value || '0');
+    const cat = document.getElementById('consCat').value;
+    if(!name){ alert('نام وارد شود'); return; }
+    if(qty <= 0){ alert('تعداد معتبر نیست'); return; }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class='cons-name'>${name}</td><td class='cons-cat'>${cat}</td><td class='cons-qty'>${qty}</td><td class='cons-price'>${price.toFixed(0)}</td><td class='cons-total'>0</td><td><button type='button' class='btn btn-sm btn-outline-danger cons-remove'>×</button></td>`;
+    consTableBody.appendChild(tr);
+    recalc();
+    document.getElementById('consName').value='';
+    document.getElementById('consQty').value='1';
+    document.getElementById('consPrice').value='0';
+  });
+  consTableBody.addEventListener('click', e => {
+    if(e.target.classList.contains('cons-remove')){
+      e.target.closest('tr').remove();
+      recalc();
+    }
+  });
+})();
+</script>
+{% endblock %}

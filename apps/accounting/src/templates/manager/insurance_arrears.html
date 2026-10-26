@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>معوقات بیمه</title>
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { 
+    font-family: 'Vazirmatn', sans-serif; 
+    background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+    color: #e5e7eb; 
+    padding: 2rem; 
+    min-height: 100vh; 
+  }
+  .page { max-width: 1400px; margin: 0 auto; }
+  .page-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 2rem; 
+    flex-wrap: wrap; 
+    gap: 1rem; 
+  }
+  .page-header h1 { 
+    font-size: 1.6rem; 
+    font-weight: 900; 
+    color: #f1f5f9; 
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .btn-back { 
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(59,130,246,0.3);
+    color: #93c5fd; 
+    padding: 0.7rem 1.2rem; 
+    border-radius: 12px; 
+    text-decoration: none; 
+    font-size: 0.9rem;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  .btn-back:hover { 
+    background: rgba(59,130,246,0.2);
+    border-color: #3b82f6;
+    color: #f1f5f9;
+    transform: translateX(4px);
+  }
+
+  /* Summary Cards */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .summary-card {
+    background: rgba(15,23,42,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 18px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 20px 50px rgba(0,0,0,.3);
+  }
+  .summary-card.total {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.1));
+    border: 2px solid rgba(251, 191, 36, 0.4);
+  }
+  .summary-card-title {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .summary-card.total .summary-card-title { color: #fcd34d; }
+  .summary-card-value {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #f1f5f9;
+    font-family: monospace;
+  }
+  .summary-card.total .summary-card-value { color: #fbbf24; }
+  .summary-card-sub {
+    font-size: 0.8rem;
+    color: #64748b;
+    margin-top: 0.3rem;
+  }
+
+  /* Filters */
+  .filter-card {
+    background: rgba(15,23,42,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 18px;
+    padding: 1.5rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 1.5rem;
+  }
+  .filter-row {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+  }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .filter-group label {
+    font-size: 0.75rem;
+    color: #93c5fd;
+    font-weight: 600;
+  }
+  .filter-group select, .filter-group input {
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 8px;
+    padding: 0.55rem 0.7rem;
+    color: #f1f5f9;
+    font-size: 0.9rem;
+    min-width: 65px;
+    transition: all 0.2s;
+  }
+  .filter-group select:focus, .filter-group input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 10px rgba(59,130,246,0.3);
+  }
+  .quick-chips {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .chip {
+    background: rgba(59,130,246,0.15);
+    border: 1px solid rgba(59,130,246,0.3);
+    color: #93c5fd;
+    padding: 0.4rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .chip:hover {
+    background: rgba(59,130,246,0.3);
+    border-color: #3b82f6;
+    color: #f1f5f9;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .field label {
+    font-size: 0.85rem;
+    color: #93c5fd;
+    font-weight: 600;
+  }
+  .field input, .field select {
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+    color: #f1f5f9;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 12px rgba(59,130,246,0.3);
+  }
+  .btn-filter {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border: none;
+    padding: 0.7rem 1.4rem;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  .btn-filter:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(59,130,246,0.4);
+  }
+  .btn-export {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.7rem 1.4rem;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+  }
+  .btn-export:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+  }
+  .btn-reset {
+    background: rgba(30,41,59,0.8);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8;
+    padding: 0.7rem 1.4rem;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+  }
+  .btn-reset:hover {
+    background: rgba(51,65,85,0.8);
+    color: #f1f5f9;
+  }
+
+  /* Insurance Summary Table */
+  .card {
+    background: rgba(15,23,42,0.85);
+    backdrop-filter: blur(16px);
+    border-radius: 18px;
+    padding: 1.5rem 1.8rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 1.5rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+  }
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #93c5fd;
+    margin-bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 0.8rem;
+  }
+  th, td {
+    padding: 0.9rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  th {
+    color: #93c5fd;
+    font-size: 0.85rem;
+    font-weight: 700;
+    background: rgba(30,41,59,0.5);
+  }
+  td {
+    color: #f1f5f9;
+    font-size: 0.95rem;
+  }
+  tbody tr {
+    transition: background 0.15s;
+  }
+  tbody tr:nth-child(even) {
+    background: rgba(15,23,42,0.5);
+  }
+  tbody tr:hover {
+    background: rgba(59,130,246,0.12);
+  }
+  .price {
+    font-family: monospace;
+    direction: ltr;
+    text-align: center;
+    color: #34d399;
+    font-weight: 700;
+  }
+  .debt {
+    font-family: monospace;
+    direction: ltr;
+    text-align: center;
+    color: #fbbf24;
+    font-weight: 700;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #64748b;
+    font-size: 1rem;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 0.5rem;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 0.7rem 1.2rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 10px 10px 0 0;
+    transition: all 0.2s;
+  }
+  .tab-btn:hover {
+    color: #f1f5f9;
+    background: rgba(255,255,255,0.05);
+  }
+  .tab-btn.active {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+    border-bottom: 2px solid #3b82f6;
+  }
+  .tab-content {
+    display: none;
+  }
+  .tab-content.active {
+    display: block;
+  }
+
+  /* Badge */
+  .badge {
+    padding: 0.3rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+  .badge-visit { background: rgba(59, 130, 246, 0.25); color: #93c5fd; }
+  .badge-nursing { background: rgba(168, 85, 247, 0.25); color: #c4b5fd; }
+  .badge-insurance { background: rgba(16, 185, 129, 0.25); color: #6ee7b7; }
+
+  /* Base tariff info */
+  .base-info {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+  .base-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .base-info-label {
+    font-size: 0.8rem;
+    color: #a7f3d0;
+    font-weight: 600;
+  }
+  .base-info-value {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #6ee7b7;
+    font-family: monospace;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-header">
+    <h1>💰 معوقات بیمه</h1>
+    <a href="{{ url_for('manager.index') }}" class="btn-back">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:18px;height:18px;"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+      بازگشت به داشبورد
+    </a>
+  </div>
+
+  <!-- Base Tariff Info -->
+  <div class="base-info">
+    <div class="base-info-item">
+      <span class="base-info-label">تعرفه پایه ویزیت (آزاد)</span>
+      <span class="base-info-value">{{ '{:,}'.format(base_visit_price|int) }} تومان</span>
+    </div>
+    <div style="flex:1;"></div>
+    <a href="{{ url_for('manager.insurance_tariffs') }}" style="color:#6ee7b7;font-size:0.9rem;text-decoration:none;display:flex;align-items:center;gap:0.5rem;">
+      ⚙️ ویرایش تعرفه‌ها
+    </a>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid">
+    <div class="summary-card total">
+      <div class="summary-card-title">📊 جمع کل معوقات</div>
+      <div class="summary-card-value">{{ '{:,}'.format(total_debt|int) }}</div>
+      <div class="summary-card-sub">تومان</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">🩺 معوقات ویزیت (بیمه پایه)</div>
+      <div class="summary-card-value">{{ '{:,}'.format(total_visit_debt|int) }}</div>
+      <div class="summary-card-sub">{{ visit_arrears|length }} مورد</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">🔄 معوقات بیمه تکمیلی</div>
+      <div class="summary-card-value">{{ '{:,}'.format((total_supplementary_debt or 0)|int) }}</div>
+      <div class="summary-card-sub">{{ (supplementary_arrears or [])|length }} مورد</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">💉 معوقات پرستاری</div>
+      <div class="summary-card-value">{{ '{:,}'.format(total_nursing_debt|int) }}</div>
+      <div class="summary-card-sub">{{ nursing_arrears|length }} مورد</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-card">
+    <form method="get">
+      <div class="filter-row">
+        <!-- تاریخ از -->
+        <div class="filter-group">
+          <label>از (سال)</label>
+          <select id="fromY"></select>
+        </div>
+        <div class="filter-group">
+          <label>ماه</label>
+          <select id="fromM"></select>
+        </div>
+        <div class="filter-group">
+          <label>روز</label>
+          <select id="fromD"></select>
+        </div>
+        <!-- تاریخ تا -->
+        <div class="filter-group">
+          <label>تا (سال)</label>
+          <select id="toY"></select>
+        </div>
+        <div class="filter-group">
+          <label>ماه</label>
+          <select id="toM"></select>
+        </div>
+        <div class="filter-group">
+          <label>روز</label>
+          <select id="toD"></select>
+        </div>
+        <input type="hidden" name="from" id="hiddenFrom" value="{{ active_filters.get('from', '') }}">
+        <input type="hidden" name="to" id="hiddenTo" value="{{ active_filters.get('to', '') }}">
+
+        <!-- نوع بیمه -->
+        <div class="filter-group">
+          <label>نوع بیمه</label>
+          <select name="insurance" style="min-width:120px;">
+            <option value="">همه بیمه‌ها</option>
+            {% for ins in all_insurances %}
+            <option value="{{ ins }}" {% if insurance_filter == ins %}selected{% endif %}>{{ ins }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <button type="submit" class="btn-filter">🔍 اعمال فیلتر</button>
+        <a href="{{ url_for('manager.insurance_arrears') }}" class="btn-reset">پاک کردن</a>
+      </div>
+      <div class="quick-chips">
+        <span class="chip" data-range="today">امروز</span>
+        <span class="chip" data-range="r7">۷ روز اخیر</span>
+        <span class="chip" data-range="r30">۳۰ روز اخیر</span>
+        <span class="chip" data-range="r90">۹۰ روز اخیر</span>
+        <a href="{{ url_for('manager.export_insurance_arrears') }}?from={{ active_filters.get('from', '') }}&to={{ active_filters.get('to', '') }}&insurance={{ insurance_filter or '' }}" class="btn-export" style="margin-right:auto;">
+          📥 خروجی CSV
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Insurance Summary -->
+  <div class="card">
+    <div class="card-title">📋 خلاصه معوقات به تفکیک بیمه</div>
+    {% if summary_by_insurance %}
+    <table>
+      <thead>
+        <tr>
+          <th>نوع بیمه</th>
+          <th>تعداد ویزیت (پایه)</th>
+          <th>معوقه ویزیت (تومان)</th>
+          <th>تعداد تکمیلی</th>
+          <th>معوقه تکمیلی (تومان)</th>
+          <th>تعداد پرستاری</th>
+          <th>معوقه پرستاری (تومان)</th>
+          <th>جمع کل (تومان)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ins, data in summary_by_insurance.items() %}
+        <tr>
+          <td>
+            <span class="badge badge-insurance">{{ ins }}</span>
+            {% if data.is_supplementary %}<small style="color:#f59e0b;margin-right:0.5rem;">(تکمیلی)</small>{% endif %}
+          </td>
+          <td>{{ data.visit_count }}</td>
+          <td class="debt">{{ '{:,}'.format(data.visit_debt|int) }}</td>
+          <td>{{ data.supplementary_count or 0 }}</td>
+          <td class="debt">{{ '{:,}'.format((data.supplementary_debt or 0)|int) }}</td>
+          <td>{{ data.nursing_count }}</td>
+          <td class="debt">{{ '{:,}'.format(data.nursing_debt|int) }}</td>
+          <td class="debt" style="font-size:1.1rem;">{{ '{:,}'.format(data.total_debt|int) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">هیچ معوقه‌ای یافت نشد.</div>
+    {% endif %}
+  </div>
+
+  <!-- Detailed Tabs -->
+  <div class="card">
+    <div class="tabs">
+      <button type="button" class="tab-btn active" onclick="showTab('visits')">🩺 ویزیت - بیمه پایه ({{ visit_arrears|length }})</button>
+      <button type="button" class="tab-btn" onclick="showTab('supplementary')">🔄 ویزیت - بیمه تکمیلی ({{ (supplementary_arrears or [])|length }})</button>
+      <button type="button" class="tab-btn" onclick="showTab('nursing')">💉 پرستاری ({{ nursing_arrears|length }})</button>
+    </div>
+
+    <div id="tab-visits" class="tab-content active">
+      {% if visit_arrears %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>تاریخ</th>
+            <th>بیمار</th>
+            <th>کد ملی</th>
+            <th>بیمه پایه</th>
+            <th>تعرفه پایه</th>
+            <th>سهم بیمار</th>
+            <th>معوقه بیمه پایه</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for arr in visit_arrears %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ arr.date|jalali_datetime if arr.date else '-' }}</td>
+            <td>{{ arr.patient_name }}</td>
+            <td>{{ arr.national_id or '-' }}</td>
+            <td><span class="badge badge-insurance">{{ arr.insurance_type }}</span></td>
+            <td class="price">{{ '{:,}'.format(arr.base_price|int) }}</td>
+            <td class="price">{{ '{:,}'.format(arr.patient_paid|int) }}</td>
+            <td class="debt">{{ '{:,}'.format(arr.insurance_debt|int) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">هیچ معوقه ویزیتی از بیمه پایه یافت نشد.</div>
+      {% endif %}
+    </div>
+
+    <!-- تب بیمه تکمیلی -->
+    <div id="tab-supplementary" class="tab-content">
+      {% if supplementary_arrears %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>تاریخ</th>
+            <th>بیمار</th>
+            <th>کد ملی</th>
+            <th>بیمه تکمیلی</th>
+            <th>بیمه پایه</th>
+            <th>سهم بیمار (از پایه)</th>
+            <th>سهم نهایی بیمار</th>
+            <th>معوقه تکمیلی</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for arr in supplementary_arrears %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ arr.date|jalali_datetime if arr.date else '-' }}</td>
+            <td>{{ arr.patient_name }}</td>
+            <td>{{ arr.national_id or '-' }}</td>
+            <td><span class="badge badge-insurance" style="background:rgba(245,158,11,0.25);color:#fbbf24;">{{ arr.insurance_type }}</span></td>
+            <td><span class="badge badge-insurance">{{ arr.base_insurance }}</span></td>
+            <td class="price">{{ '{:,}'.format(arr.base_price|int) }}</td>
+            <td class="price">{{ '{:,}'.format(arr.patient_paid|int) }}</td>
+            <td class="debt">{{ '{:,}'.format(arr.insurance_debt|int) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">هیچ معوقه‌ای از بیمه تکمیلی یافت نشد.</div>
+      {% endif %}
+    </div>
+
+    <div id="tab-nursing" class="tab-content">
+      {% if nursing_arrears %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>تاریخ</th>
+            <th>بیمار</th>
+            <th>کد ملی</th>
+            <th>بیمه</th>
+            <th>نوع خدمت</th>
+            <th>مبلغ خدمت</th>
+            <th>توضیح</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for arr in nursing_arrears %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ arr.date|jalali_datetime if arr.date else '-' }}</td>
+            <td>{{ arr.patient_name }}</td>
+            <td>{{ arr.national_id or '-' }}</td>
+            <td><span class="badge badge-insurance">{{ arr.insurance_type }}</span></td>
+            <td><span class="badge badge-nursing">{{ arr.type_fa }}</span></td>
+            <td class="debt">{{ '{:,}'.format(arr.service_price|int) }}</td>
+            <td style="font-size:0.8rem;color:#94a3b8;">بیمه پوشش می‌دهد</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state">هیچ معوقه پرستاری یافت نشد.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+const JALALI_RANGES = {{ jalali_ranges|tojson }};
+
+function pad(n){ return n < 10 ? '0'+n : ''+n; }
+
+function populateDateSelects(){
+  const today = JALALI_RANGES.today;
+  const years = [];
+  for(let y = today.y - 5; y <= today.y + 1; y++) years.push(y);
+  const months = Array.from({length:12},(_,i)=>i+1);
+  const days = Array.from({length:31},(_,i)=>i+1);
+
+  ['from','to'].forEach(prefix => {
+    const yEl = document.getElementById(prefix+'Y');
+    const mEl = document.getElementById(prefix+'M');
+    const dEl = document.getElementById(prefix+'D');
+    yEl.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');
+    mEl.innerHTML = months.map(m=>`<option value="${m}">${pad(m)}</option>`).join('');
+    dEl.innerHTML = days.map(d=>`<option value="${d}">${pad(d)}</option>`).join('');
+  });
+}
+
+function applyHiddenToSelects(){
+  const fromVal = document.getElementById('hiddenFrom').value;
+  const toVal = document.getElementById('hiddenTo').value;
+  if(fromVal){
+    const p = fromVal.split('/');
+    document.getElementById('fromY').value = p[0];
+    document.getElementById('fromM').value = parseInt(p[1]);
+    document.getElementById('fromD').value = parseInt(p[2]);
+  } else {
+    const r = JALALI_RANGES.r7;
+    document.getElementById('fromY').value = r.from.y;
+    document.getElementById('fromM').value = r.from.m;
+    document.getElementById('fromD').value = r.from.d;
+  }
+  if(toVal){
+    const p = toVal.split('/');
+    document.getElementById('toY').value = p[0];
+    document.getElementById('toM').value = parseInt(p[1]);
+    document.getElementById('toD').value = parseInt(p[2]);
+  } else {
+    const t = JALALI_RANGES.today;
+    document.getElementById('toY').value = t.y;
+    document.getElementById('toM').value = t.m;
+    document.getElementById('toD').value = t.d;
+  }
+}
+
+function syncHiddenDates(){
+  const fy = document.getElementById('fromY').value;
+  const fm = pad(parseInt(document.getElementById('fromM').value));
+  const fd = pad(parseInt(document.getElementById('fromD').value));
+  const ty = document.getElementById('toY').value;
+  const tm = pad(parseInt(document.getElementById('toM').value));
+  const td = pad(parseInt(document.getElementById('toD').value));
+  document.getElementById('hiddenFrom').value = `${fy}/${fm}/${fd}`;
+  document.getElementById('hiddenTo').value = `${ty}/${tm}/${td}`;
+}
+
+function setQuickRange(key){
+  if(key === 'today'){
+    const t = JALALI_RANGES.today;
+    document.getElementById('fromY').value = t.y;
+    document.getElementById('fromM').value = t.m;
+    document.getElementById('fromD').value = t.d;
+    document.getElementById('toY').value = t.y;
+    document.getElementById('toM').value = t.m;
+    document.getElementById('toD').value = t.d;
+  } else {
+    const r = JALALI_RANGES[key];
+    document.getElementById('fromY').value = r.from.y;
+    document.getElementById('fromM').value = r.from.m;
+    document.getElementById('fromD').value = r.from.d;
+    document.getElementById('toY').value = r.to.y;
+    document.getElementById('toM').value = r.to.m;
+    document.getElementById('toD').value = r.to.d;
+  }
+  syncHiddenDates();
+}
+
+function showTab(tabName) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tabName).classList.add('active');
+  event.target.classList.add('active');
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  populateDateSelects();
+  applyHiddenToSelects();
+  
+  // Quick chips
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', function(){
+      setQuickRange(this.dataset.range);
+    });
+  });
+  
+  // Sync before submit
+  document.querySelector('form').addEventListener('submit', syncHiddenDates);
+  
+  // Sync on date change
+  ['fromY','fromM','fromD','toY','toM','toD'].forEach(id => {
+    document.getElementById(id).addEventListener('change', syncHiddenDates);
+  });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ویزیت جدید - سیستم درمانگاه</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        /* تم مینیمال و مدرن */
+        :root { --bg-grad-start:#6366f1; --bg-grad-end:#818cf8; --card-bg:#ffffff; --text:#111827; --muted:#6b7280; --border:#d1d5db; --accent:#6366f1; }
+        body.theme-dark { --bg-grad-start:#0d1117; --bg-grad-end:#030712; --card-bg:#1f2937; --text:#f9fafb; --muted:#94a3b8; --border:#374151; --accent:#818cf8; }
+        body { font-family: Tahoma, 'Segoe UI', sans-serif; background: linear-gradient(135deg, var(--bg-grad-start) 0%, var(--bg-grad-end) 100%); min-height: 100vh; padding: 2rem 1rem; color: var(--text); transition:.3s; }
+        
+        .container { max-width: 700px; margin: 0 auto; }
+        
+        /* Form Card */
+        .form-card { background: var(--card-bg); border-radius: 16px; padding: 2rem; box-shadow: 0 8px 28px -4px rgba(0,0,0,0.35); border:1px solid var(--border); transition:.3s; }
+        .form-header { text-align: center; margin-bottom: 2rem; }
+        .form-title { font-size: 1.7rem; font-weight: 800; color: var(--text); margin-bottom: 0.5rem; }
+        .form-subtitle { color: var(--muted); font-size: 1rem; }
+        
+        /* Form Fields */
+        .form-group { margin-bottom: 1.25rem; }
+        .form-label { display: block; font-weight: 600; color: var(--text); margin-bottom: 0.5rem; font-size: 0.95rem; }
+        .form-label .required { color: #ef4444; margin-right: 2px; }
+        .form-input, .form-select { width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--border); border-radius: 10px; font-size: 1rem; transition: all 0.3s; background: var(--card-bg); color: var(--text); }
+        .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.25); }
+        .form-input::placeholder { color: #9ca3af; }
+        .form-input.error, .form-select.error { border-color: #ef4444; }
+        .form-hint { font-size: 0.85rem; color: #6b7280; margin-top: 0.3rem; display: block; }
+        .form-hint.error { color: #ef4444; }
+        .form-hint.success { color: #059669; font-weight: 600; }
+        
+        /* Checkbox */
+        .checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+        .checkbox-input { width: 20px; height: 20px; cursor: pointer; accent-color: #667eea; }
+        .checkbox-label { font-weight: 600; color: var(--text); cursor: pointer; user-select: none; }
+        
+        /* Price Display */
+        .price-card { background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; text-align: center; }
+        .price-label { font-size: 0.9rem; color: #166534; font-weight: 600; margin-bottom: 0.3rem; }
+        .price-value { font-size: 1.5rem; font-weight: 700; color: #15803d; }
+        
+        /* Buttons */
+        .form-actions { display: flex; gap: 1rem; margin-top: 2rem; }
+        .btn { flex: 1; padding: 0.9rem 1.5rem; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; text-decoration: none; display: inline-block; text-align: center; }
+        .btn-primary { background: linear-gradient(135deg, var(--accent) 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: var(--card-bg); color: var(--text); border: 2px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); }
+        
+        /* Alert Messages */
+        .alert { padding: 1rem 1.25rem; border-radius: 10px; margin-bottom: 1.5rem; font-weight: 500; display: none; }
+        .alert.show { display: block; }
+        .alert-error { background: #fee2e2; color: #991b1b; border: 2px solid #fca5a5; }
+        .alert-success { background: #d1fae5; color: #065f46; border: 2px solid #6ee7b7; }
+        
+        /* Divider */
+        .divider { height: 1px; background: linear-gradient(90deg, transparent, #e5e7eb, transparent); margin: 1.5rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="form-card">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:.5rem;">
+                <button id="themeToggleVisit" style="background:#eef2ff;color:#1e293b;border:1px solid var(--border);padding:.45rem .9rem;border-radius:8px;font-weight:700;font-size:.7rem;cursor:pointer;">🌙 تم شب</button>
+            </div>
+            <div class="form-header">
+                <div class="form-title">📋 باز کردن فاکتور جدید</div>
+                <div class="form-subtitle">اطلاعات بیمار و بیمه را برای باز کردن فاکتور وارد کنید</div>
+            </div>
+
+            <!-- Alert Messages -->
+            <div class="alert alert-error" id="error-alert"></div>
+            <div class="alert alert-success" id="success-alert"></div>
+
+            <form id="visit-form" method="POST">
+                <!-- Patient Name -->
+                <div class="form-group">
+                    <label class="form-label" for="name">
+                        <span class="required">*</span>
+                        نام بیمار:
+                    </label>
+                    <input type="text" class="form-input" id="name" name="name" placeholder="نام" required>
+                </div>
+
+                <!-- Family Name -->
+                <div class="form-group">
+                    <label class="form-label" for="family_name">
+                        <span class="required">*</span>
+                        نام خانوادگی:
+                    </label>
+                    <input type="text" class="form-input" id="family_name" name="family_name" placeholder="نام خانوادگی" required>
+                </div>
+
+                <!-- Phone Number -->
+                <div class="form-group">
+                    <label class="form-label" for="phone">شماره همراه:</label>
+                    <input type="text" class="form-input" id="phone" name="phone" placeholder="09123456789" maxlength="11" pattern="09[0-9]{9}">
+                    <span class="form-hint">شماره همراه باید 11 رقم و با 09 شروع شود</span>
+                </div>
+
+                <!-- Foreign National Checkbox -->
+                <div class="checkbox-group">
+                    <input type="checkbox" class="checkbox-input" id="is_foreign" name="is_foreign">
+                    <label class="checkbox-label" for="is_foreign">بیمار خارجی (بدون کدملی)</label>
+                </div>
+
+                <!-- National ID with Live Search -->
+                <div class="form-group" id="national-id-group">
+                    <label class="form-label" for="national_id">
+                        <span class="required">*</span>
+                        کدملی:
+                    </label>
+                    <div style="position:relative;">
+                        <input type="text" class="form-input" id="national_id" name="national_id" placeholder="1234567890" maxlength="10" pattern="[0-9]{10}" autocomplete="off">
+                        <span id="national-id-search-indicator" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:1.2rem;display:none;">⏳</span>
+                    </div>
+                    <span class="form-hint" id="national-id-hint">کدملی باید 10 رقم باشد — با وارد کردن کدملی، بیمار قبلی به صورت خودکار شناسایی می‌شود</span>
+                    <!-- Patient Found Card -->
+                    <div id="patient-found-card" style="display:none; margin-top:0.75rem; padding:0.9rem 1rem; background:linear-gradient(135deg,#dcfce7,#bbf7d0); border:2px solid #86efac; border-radius:10px;">
+                        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+                            <span style="font-size:1.3rem;">✅</span>
+                            <strong style="color:#166534;font-size:1rem;">بیمار قبلی شناسایی شد!</strong>
+                        </div>
+                        <div id="patient-found-name" style="color:#15803d;font-weight:700;font-size:1.05rem;"></div>
+                        <div id="patient-found-details" style="color:#166534;font-size:0.85rem;margin-top:0.3rem;"></div>
+                        <input type="hidden" id="existing_patient_id" name="existing_patient_id" value="">
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Insurance Type -->
+                <div class="form-group">
+                    <label class="form-label" for="insurance_type">
+                        <span class="required">*</span>
+                        نوع بیمه:
+                    </label>
+                    <select class="form-select" id="insurance_type" name="insurance_type" required>
+                        <option value="">— انتخاب نوع بیمه —</option>
+                        {% for tariff in tariffs %}
+                        <option value="{{ tariff.insurance_type }}" data-price="{{ tariff.tariff_price }}">{{ tariff.insurance_type }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Supplementary Insurance -->
+                <div class="form-group">
+                    <label class="form-label" for="supplementary_insurance">بیمه تکمیلی:</label>
+                    <select class="form-select" id="supplementary_insurance" name="supplementary_insurance">
+                        <option value="">ندارد</option>
+                        {% if supplementary_insurances %}
+                            {% for s in supplementary_insurances %}
+                                <option value="{{ s.insurance_type }}" data-price="{{ s.tariff_price }}" data-nursing="{{ s.nursing_tariff }}">{{ s.insurance_type }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+
+                <!-- Price Display -->
+                <div class="price-card" id="price-display" style="display: none;">
+                    <div class="price-label">تعرفه ویزیت</div>
+                    <div class="price-value" id="price-value">0 تومان</div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="submit-btn">
+                        ✅ باز کردن فاکتور
+                    </button>
+                    <a href="{{ url_for('reception.index') }}" class="btn btn-secondary">
+                        ❌ انصراف
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggle (shared with reception pages)
+        const themeBtn = document.getElementById('themeToggleVisit');
+        function applyVisitTheme(){ const t = localStorage.getItem('receptionTheme')||'light'; if(t==='dark'){ document.body.classList.add('theme-dark'); themeBtn.textContent='☀️ تم روز'; } else { document.body.classList.remove('theme-dark'); themeBtn.textContent='🌙 تم شب'; } }
+        applyVisitTheme();
+        themeBtn.addEventListener('click',()=>{ const isDark=document.body.classList.toggle('theme-dark'); localStorage.setItem('receptionTheme', isDark?'dark':'light'); applyVisitTheme(); });
+        // Iranian National ID Validation
+        function validateNationalId(nationalId) {
+            if (!nationalId || nationalId.length !== 10) return false;
+            if (!/^\d+$/.test(nationalId)) return false;
+            
+            // Check for repeated digits (like 0000000000 or 1111111111)
+            if (new Set(nationalId).size === 1) return false;
+            
+            // Calculate check digit
+            const check = parseInt(nationalId[9]);
+            let sum = 0;
+            for (let i = 0; i < 9; i++) {
+                sum += parseInt(nationalId[i]) * (10 - i);
+            }
+            const remainder = sum % 11;
+            
+            if (remainder < 2) {
+                return check === remainder;
+            } else {
+                return check === 11 - remainder;
+            }
+        }
+
+        // Toggle national ID field based on foreign checkbox
+        const isForeignCheckbox = document.getElementById('is_foreign');
+        const nationalIdGroup = document.getElementById('national-id-group');
+        const nationalIdInput = document.getElementById('national_id');
+        const patientFoundCard = document.getElementById('patient-found-card');
+        const patientFoundName = document.getElementById('patient-found-name');
+        const patientFoundDetails = document.getElementById('patient-found-details');
+        const existingPatientIdInput = document.getElementById('existing_patient_id');
+        const searchIndicator = document.getElementById('national-id-search-indicator');
+        const nationalIdHint = document.getElementById('national-id-hint');
+        let searchTimeout = null;
+        let lastSearchedId = '';
+
+        isForeignCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                nationalIdGroup.style.display = 'none';
+                nationalIdInput.removeAttribute('required');
+                nationalIdInput.value = '';
+                hidePatientFound();
+            } else {
+                nationalIdGroup.style.display = 'block';
+                nationalIdInput.setAttribute('required', 'required');
+            }
+        });
+
+        function hidePatientFound() {
+            patientFoundCard.style.display = 'none';
+            existingPatientIdInput.value = '';
+        }
+
+        function showPatientFound(patient) {
+            patientFoundName.textContent = `${patient.name} ${patient.family_name}`;
+            let details = [];
+            if (patient.phone_number) details.push(`📞 ${patient.phone_number}`);
+            if (patient.insurance_type) details.push(`🏥 بیمه: ${patient.insurance_type}`);
+            patientFoundDetails.textContent = details.join(' — ');
+            patientFoundCard.style.display = 'block';
+            existingPatientIdInput.value = patient.id || '';
+
+            // Auto-fill form fields
+            document.getElementById('name').value = patient.name || '';
+            document.getElementById('family_name').value = patient.family_name || '';
+            document.getElementById('phone').value = patient.phone_number || '';
+            if (patient.insurance_type) {
+                const sel = document.getElementById('insurance_type');
+                for (let i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value === patient.insurance_type) {
+                        sel.selectedIndex = i;
+                        updatePrice();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Live search when national_id changes
+        nationalIdInput.addEventListener('input', function() {
+            const val = this.value.trim();
+            hidePatientFound();
+
+            // Clear previous timeout
+            if (searchTimeout) clearTimeout(searchTimeout);
+
+            // Only search if 10 digits and valid format
+            if (val.length === 10 && /^\d{10}$/.test(val) && val !== lastSearchedId) {
+                searchIndicator.style.display = 'inline';
+                searchTimeout = setTimeout(async () => {
+                    lastSearchedId = val;
+                    try {
+                        const resp = await fetch(`{{ url_for('reception.search_patient') }}?national_id=${encodeURIComponent(val)}`, {credentials:'same-origin'});
+                        const data = await resp.json();
+                        searchIndicator.style.display = 'none';
+                        if (data.found && data.patient) {
+                            showPatientFound(data.patient);
+                            nationalIdHint.textContent = '✅ بیمار قبلی پیدا شد — اطلاعات به صورت خودکار پر شد';
+                            nationalIdHint.classList.add('success');
+                            nationalIdHint.classList.remove('error');
+                        } else {
+                            nationalIdHint.textContent = 'بیمار جدید — لطفاً اطلاعات را کامل کنید';
+                            nationalIdHint.classList.remove('success','error');
+                        }
+                    } catch (err) {
+                        searchIndicator.style.display = 'none';
+                        console.error(err);
+                    }
+                }, 400);
+            } else {
+                searchIndicator.style.display = 'none';
+                if (val.length < 10) {
+                    nationalIdHint.textContent = 'کدملی باید 10 رقم باشد';
+                    nationalIdHint.classList.remove('success','error');
+                }
+            }
+        });
+
+        // Update price display based on insurance selection
+        const insuranceSelect = document.getElementById('insurance_type');
+        const suppInsuranceSelect = document.getElementById('supplementary_insurance');
+        const priceDisplay = document.getElementById('price-display');
+        const priceValue = document.getElementById('price-value');
+
+        // Disable supplementary insurance if base insurance is 'آزاد' or empty
+        function updateSupplementaryAvailability() {
+            const baseInsurance = insuranceSelect.value;
+            const isBaseInsuranceValid = baseInsurance && baseInsurance !== 'آزاد';
+            
+            suppInsuranceSelect.disabled = !isBaseInsuranceValid;
+            if (!isBaseInsuranceValid) {
+                suppInsuranceSelect.value = '';  // Reset to 'ندارد'
+                suppInsuranceSelect.style.opacity = '0.5';
+                suppInsuranceSelect.style.cursor = 'not-allowed';
+            } else {
+                suppInsuranceSelect.style.opacity = '1';
+                suppInsuranceSelect.style.cursor = 'pointer';
+            }
+        }
+
+        function updatePrice() {
+            const selectedOption = insuranceSelect.options[insuranceSelect.selectedIndex];
+            const suppInsurance = suppInsuranceSelect.value;
+            
+            // Also update supplementary availability
+            updateSupplementaryAvailability();
+
+            if (selectedOption && selectedOption.value) {
+                // If a supplementary insurance is selected and provides a price, prefer it
+                let usePrice = parseFloat(selectedOption.dataset.price || 0);
+                let label = 'تعرفه ویزیت';
+                if (suppInsurance) {
+                    const suppOpt = suppInsuranceSelect.options[suppInsuranceSelect.selectedIndex];
+                    if (suppOpt && suppOpt.dataset && typeof suppOpt.dataset.price !== 'undefined') {
+                        const sPrice = parseFloat(suppOpt.dataset.price);
+                        if (!isNaN(sPrice)) {
+                            usePrice = sPrice;
+                            label = 'تعرفه ویزیت (با تکمیلی)';
+                        }
+                    }
+                }
+
+                priceDisplay.style.display = 'block';
+                const formattedPrice = new Intl.NumberFormat('fa-IR').format(usePrice);
+                priceValue.textContent = formattedPrice + ' تومان';
+                priceValue.parentElement.style.background = 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)';
+                priceValue.parentElement.style.borderColor = '#86efac';
+                document.querySelector('.price-label').textContent = label;
+            } else {
+                priceDisplay.style.display = 'none';
+            }
+        }
+
+        insuranceSelect.addEventListener('change', updatePrice);
+        suppInsuranceSelect.addEventListener('change', updatePrice);
+        
+        // Initialize supplementary availability on page load
+        updateSupplementaryAvailability();
+
+        // Form validation and submission
+        const form = document.getElementById('visit-form');
+        const errorAlert = document.getElementById('error-alert');
+        const successAlert = document.getElementById('success-alert');
+        const submitBtn = document.getElementById('submit-btn');
+
+        function showError(message) {
+            errorAlert.textContent = message;
+            errorAlert.classList.add('show');
+            successAlert.classList.remove('show');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function showSuccess(message) {
+            successAlert.textContent = message;
+            successAlert.classList.add('show');
+            errorAlert.classList.remove('show');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            errorAlert.classList.remove('show');
+            successAlert.classList.remove('show');
+
+            // Get form data
+            const formData = new FormData(form);
+            const name = formData.get('name').trim();
+            const familyName = formData.get('family_name').trim();
+            const phone = formData.get('phone').trim();
+            const nationalId = formData.get('national_id').trim();
+            const isForeign = formData.get('is_foreign') === 'on';
+            const insuranceType = formData.get('insurance_type');
+            const suppInsurance = formData.get('supplementary_insurance');
+
+            // Validate required fields
+            if (!name || !familyName) {
+                showError('❌ نام و نام خانوادگی را وارد کنید');
+                return;
+            }
+
+            // Validate phone number
+            if (phone && (phone.length !== 11 || !phone.startsWith('09') || !/^\d+$/.test(phone))) {
+                showError('❌ شماره همراه باید 11 رقم و با 09 شروع شود');
+                return;
+            }
+
+            // Validate national ID for Iranian patients
+            if (!isForeign) {
+                if (!nationalId) {
+                    showError('❌ کدملی برای بیماران ایرانی اجباری است');
+                    return;
+                }
+                if (nationalId.length !== 10 || !/^\d+$/.test(nationalId)) {
+                    showError('❌ کدملی باید 10 رقم باشد');
+                    return;
+                }
+                // Validate Iranian national ID with check digit
+                if (!validateNationalId(nationalId)) {
+                    showError('❌ کدملی وارد شده نامعتبر است');
+                    return;
+                }
+            }
+
+            // Validate insurance type
+            if (!insuranceType) {
+                showError('❌ لطفاً نوع بیمه را انتخاب کنید');
+                return;
+            }
+
+            // Submit form
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ در حال باز کردن فاکتور...';
+
+            try {
+                const response = await fetch('{{ url_for("reception.new_visit") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams(formData)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showSuccess('✅ فاکتور با موفقیت باز شد');
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("reception.index") }}';
+                    }, 1000);
+                } else {
+                    showError('❌ ' + (result.error || 'خطا در باز کردن فاکتور'));
+                }
+            } catch (error) {
+                showError('❌ خطا در ارتباط با سرور');
+                console.error(error);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '✅ باز کردن فاکتور';
+            }
+        });
+    </script>
+</body>
+</html>
