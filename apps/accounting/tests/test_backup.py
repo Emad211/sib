@@ -281,3 +281,139 @@ def test_non_manager_cannot_touch_backups(synthetic_app):
     assert not os.path.exists(synthetic_app.config["BACKUP_FOLDER"]) or not list(
         _backup_dir(synthetic_app).glob("*.db")
     )
+
+
+def test_restoring_an_old_schema_backup_is_migrated_immediately(synthetic_app):
+    """Review finding: restoring a pre-migration (v0) backup must not leave the running
+    program on an old schema until the next restart."""
+    from src.adapters.sqlite.migrations import LATEST
+
+    c = _manager(synthetic_app)
+    folder = _backup_dir(synthetic_app)
+    folder.mkdir(exist_ok=True)
+    old = folder / "backup_manual_20260101_000000.db"
+    src = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    dst = sqlite3.connect(old)
+    src.backup(dst)
+    src.close()
+    dst.execute("DROP INDEX idx_invoices_work_date_status")
+    dst.execute("PRAGMA user_version = 0")
+    dst.commit()
+    dst.close()
+    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": old.name})
+    conn = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == LATEST
+    assert conn.execute("SELECT 1 FROM sqlite_master WHERE name='idx_invoices_work_date_status'").fetchone()
+    conn.close()
+
+
+def test_restore_while_database_is_locked_fails_cleanly(tmp_path):
+    db = str(tmp_path / "live.db")
+    folder = tmp_path / "b"
+    _db_with_rows(db, 3)
+    saved = bk.create_backup(db, folder, bk.KIND_MANUAL)
+    blocker = sqlite3.connect(db)
+    blocker.execute("BEGIN EXCLUSIVE")
+    try:
+        with pytest.raises(bk.BackupError, match="مشغول"):
+            bk.restore_backup(db, folder, saved.name, lock_timeout=0.2)
+    finally:
+        blocker.rollback()
+        blocker.close()
+    assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM invoices").fetchone()[0] == 3
+
+
+# --------------------------------------------------------------------------- review hardening
+
+
+def test_paths_with_hash_percent_and_spaces_work(tmp_path):
+    folder = tmp_path / "Clinic #1 100% ?" if os.name != "nt" else tmp_path / "Clinic #1 100%"
+    folder.mkdir()
+    db = str(folder / "live.db")
+    _db_with_rows(db, 4)
+    made = bk.create_backup(db, folder / "b", bk.KIND_MANUAL)
+    bk.verify_database_file(made)
+    bk.restore_backup(db, folder / "b", made.name)
+    assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM invoices").fetchone()[0] == 4
+
+
+def test_failed_copy_leaves_no_partial_file(tmp_path):
+    db = str(tmp_path / "live.db")
+    _db_with_rows(db)
+    blocker = sqlite3.connect(db)
+    blocker.execute("BEGIN EXCLUSIVE")
+    try:
+        with pytest.raises(bk.BackupError, match="مشغول"):
+            bk.create_backup(db, tmp_path / "b", bk.KIND_MANUAL, lock_timeout=0.2)
+    finally:
+        blocker.rollback()
+        blocker.close()
+    assert not list((tmp_path / "b").iterdir())
+
+
+def test_leftover_temp_files_are_cleaned(tmp_path):
+    (tmp_path / "backup_auto_20260101_040000.db.partial").write_bytes(b"x")
+    (tmp_path / ".reset_20260101_040000_ab12cd34.tmp").write_bytes(b"x")
+    (tmp_path / "backup_manual_20260101_040000.db").write_bytes(b"keep")
+    assert len(bk.cleanup_leftovers(tmp_path)) == 2
+    assert [p.name for p in tmp_path.iterdir()] == ["backup_manual_20260101_040000.db"]
+
+
+def test_future_dated_backup_does_not_suppress_startup_backup(tmp_path):
+    (tmp_path / "backup_auto_20300101_040000.db").write_bytes(b"x")  # clock was wrong once
+    assert bk.latest_backup_age(tmp_path, now=datetime(2026, 9, 24, 10, 0)) is None
+    (tmp_path / "backup_auto_20260924_040000.db").write_bytes(b"x")
+    assert bk.latest_backup_age(tmp_path, now=datetime(2026, 9, 24, 10, 0)) == timedelta(hours=6)
+
+
+def test_two_uploads_in_the_same_second_both_survive(tmp_path, monkeypatch, synthetic_app):
+    monkeypatch.setattr(bk, "_timestamp", lambda now=None: "20260101_120000")
+    with open(synthetic_app.config["DATABASE_PATH"], "rb") as f:
+        good = f.read()
+
+    class Upload:
+        def save(self, path):
+            Path(path).write_bytes(good)
+
+    a = bk.save_uploaded_backup(tmp_path, Upload())
+    b = bk.save_uploaded_backup(tmp_path, Upload())
+    assert a != b and a.exists() and b.exists()
+
+
+def test_scheduler_backs_off_after_a_failure(tmp_path, monkeypatch):
+    from src.services.scheduler import BackupScheduler
+
+    db = str(tmp_path / "live.db")
+    _db_with_rows(db)
+    sched = BackupScheduler.for_paths(db, str(tmp_path / "b"))
+    calls = []
+
+    def boom(*a, **k):
+        calls.append(1)
+        raise bk.BackupError("disk")
+
+    monkeypatch.setattr(bk, "create_backup", boom)
+    with pytest.raises(bk.BackupError):
+        sched.tick(now=datetime(2026, 9, 24, 5, 0))
+    assert sched.tick(now=datetime(2026, 9, 24, 5, 1)) is None
+    assert sched.tick(now=datetime(2026, 9, 24, 5, 20)) is None
+    assert len(calls) == 1
+    with pytest.raises(bk.BackupError):
+        sched.tick(now=datetime(2026, 9, 24, 5, 31))
+    assert len(calls) == 2
+
+
+def test_reset_failure_answers_json_and_keeps_data(synthetic_app, monkeypatch):
+    from tools.make_synthetic_db import TEST_PASSWORD
+
+    def locked(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(bk, "copy_database", locked)
+    c = _manager(synthetic_app)
+    r = c.post("/manager/settings/reset-database", data={"confirm_code": "DELETE_ALL_DATA", "password": TEST_PASSWORD})
+    assert r.status_code == 500 and r.is_json and "دست نخورده" in r.get_json()["error"]
+    conn = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    assert conn.execute("SELECT COUNT(*) FROM invoices").fetchone()[0] > 0
+    conn.close()
+    assert not list(_backup_dir(synthetic_app).glob(".reset_*"))

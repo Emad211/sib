@@ -158,3 +158,16 @@ def test_get_db_runs_migrations_once_per_process(synthetic_app):
         db = core.get_db()
         assert db.execute("PRAGMA user_version").fetchone()[0] == LATEST
         assert core._migrations_done
+
+
+def test_locked_database_gives_a_clear_migration_error(v0_db):
+    blocker = sqlite3.connect(v0_db)
+    blocker.execute("BEGIN EXCLUSIVE")
+    conn = sqlite3.connect(v0_db, timeout=0.1)
+    try:
+        with pytest.raises(MigrationError, match="قفل|مرحلهٔ"):
+            run_migrations(conn)
+    finally:
+        blocker.rollback()
+        blocker.close()
+        conn.close()

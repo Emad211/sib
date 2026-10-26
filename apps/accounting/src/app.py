@@ -53,6 +53,8 @@ def create_app(test_config=None):
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = bool(app.config.get("PRODUCTION"))
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    # Largest request body (backup uploads). The live database is ~110 MB in 2026.
+    app.config.setdefault("MAX_CONTENT_LENGTH", 1024 * 1024 * 1024)
 
     # Respect environment for production vs development.
     # Use FLASK_ENV or APP_ENV to choose 'production' mode; otherwise fall back to config.

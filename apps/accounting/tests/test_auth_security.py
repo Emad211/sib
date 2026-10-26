@@ -171,3 +171,10 @@ def test_reset_is_forbidden_for_other_roles(synthetic_app):
     login_as(c, synthetic_app, "reception1")
     r = c.post("/manager/settings/reset-database", data={"confirm_code": "DELETE_ALL_DATA", "password": TEST_PASSWORD})
     assert r.status_code == 403
+
+
+def test_install_secret_leaves_no_temp_files(tmp_path):
+    from src.config.settings import load_or_create_install_secret
+
+    load_or_create_install_secret(tmp_path)
+    assert [p.name for p in tmp_path.iterdir()] == [".hesabdari_secret_key"]

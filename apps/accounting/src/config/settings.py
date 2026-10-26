@@ -26,11 +26,16 @@ def load_or_create_install_secret(folder) -> str:
         return key
     path.parent.mkdir(parents=True, exist_ok=True)
     key = secrets.token_hex(32)
+    tmp = path.with_name(f"{path.name}.{secrets.token_hex(4)}.tmp")
+    tmp.write_text(key + "\n", encoding="ascii")  # complete before it becomes visible
     try:
-        with open(path, "x", encoding="ascii") as f:  # 'x': never overwrite a concurrent writer
-            f.write(key + "\n")
+        os.link(tmp, path)  # atomic, and never overwrites a key created concurrently
     except FileExistsError:
         return load_or_create_install_secret(folder)
+    except OSError:  # filesystem without hard links (e.g. FAT32 stick): still atomic, not exclusive
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
     return key
 
 

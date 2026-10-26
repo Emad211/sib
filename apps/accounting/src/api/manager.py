@@ -536,6 +536,9 @@ def settings():
                 from src.adapters.sqlite.core import close_connection
                 close_connection(None)
                 safety = bk.restore_backup(db_path, backup_dir, backup_name)
+                # An older backup may have an older schema: migrate it now, not at the next restart.
+                from src.adapters.sqlite.core import ensure_database_ready
+                ensure_database_ready(db_path)
                 log_activity(
                     ActionType.BACKUP_RESTORE, ActionCategory.SYSTEM,
                     description=f'بازگردانی دیتابیس از {backup_name} (نسخهٔ قبلی: {safety.name})',
@@ -620,7 +623,7 @@ def reset_database():
     import sqlite3
     from pathlib import Path
     from src.adapters.sqlite import core
-    from src.adapters.sqlite.migrations import run_migrations
+    from src.adapters.sqlite.migrations import MigrationError, run_migrations
     from src.services import backup as bk
 
     keep = {k: g.user[k] for k in ('username', 'password_hash', 'role', 'full_name')}
@@ -629,7 +632,8 @@ def reset_database():
     try:
         core.close_connection(None)
         safety = bk.create_backup(db_path, backup_dir, bk.KIND_PRE_RESET)
-        fresh = Path(backup_dir) / f".reset_{iran_now().strftime('%Y%m%d_%H%M%S')}.tmp"
+        import secrets
+        fresh = Path(backup_dir) / f".reset_{iran_now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}.tmp"
         conn = sqlite3.connect(fresh)
         try:
             core._load_schema_and_initialize(conn)
@@ -639,19 +643,17 @@ def reset_database():
                 (keep['username'], keep['password_hash'], keep['role'], keep['full_name']),
             )
             conn.commit()
-            src = sqlite3.connect(f"file:{fresh.as_posix()}?mode=ro", uri=True)
-            dst = sqlite3.connect(db_path, timeout=30)
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-                src.close()
+            bk.copy_database(bk.ro_uri(fresh), db_path, bk.DEFAULT_LOCK_TIMEOUT)
         finally:
-            conn.close()
+            conn.close()  # before unlink: Windows cannot delete an open file
             fresh.unlink(missing_ok=True)
         bk.verify_database_file(db_path)
     except bk.BackupError as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+    except (sqlite3.Error, MigrationError, OSError):
+        current_app.logger.exception("database reset failed")
+        return jsonify({'success': False,
+                        'error': 'ریست انجام نشد. دیتابیس فعلی دست نخورده است و پشتیبان پیش از ریست موجود است.'}), 500
 
     log_activity(ActionType.DATABASE_RESET, ActionCategory.SYSTEM,
                  description=f'ریست کامل دیتابیس؛ نسخهٔ قبلی در {safety.name}', target_name=safety.name)
@@ -698,7 +700,8 @@ def upload_backup():
         flash('فقط فایل‌های .db مجاز هستند', 'error')
         return redirect(url_for('manager.settings'))
     try:
-        saved = bk.save_uploaded_backup(current_app.config.get('BACKUP_FOLDER'), file)
+        saved = bk.save_uploaded_backup(current_app.config.get('BACKUP_FOLDER'), file,
+                                        size_hint=request.content_length)
         log_activity(ActionType.BACKUP_UPLOAD, ActionCategory.SYSTEM, target_name=saved.name)
         flash(f'فایل بکاپ آپلود شد: {saved.name}', 'success')
     except bk.BackupError as e:
@@ -2059,12 +2062,19 @@ def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_
 
     Previously 8 queries per patient (~20 s for 8 months of production data); now 8 queries
     in total. Order and values are identical to the old loop (verified by the golden master):
-    patients appear in the order of `SELECT DISTINCT patient_id ...`, then a stable sort by
+    patients appear in order of their first invoice (work_date, id), then a stable sort by
     invoice count; totals keep the old int/float types (COALESCE(SUM(...), 0)).
     """
     rng = (start_date, end_date)
+    # Order of first appearance by (work_date, id) — exactly what the old
+    # `SELECT DISTINCT patient_id` returned through the work_date index, now explicit so a
+    # future index or query-plan change cannot reorder patients with equal counts.
     patient_ids = [r['patient_id'] for r in db.execute(
-        "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?", rng)]
+        """SELECT patient_id FROM (
+               SELECT patient_id, work_date, id,
+                      ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY work_date, id) AS rn
+               FROM invoices WHERE work_date BETWEEN ? AND ?)
+           WHERE rn = 1 ORDER BY work_date, id""", rng)]
     in_range = "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?"
 
     patients = {r['id']: r for r in db.execute(
@@ -2089,7 +2099,7 @@ def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_
     last_ins = {r['patient_id']: r['insurance_type'] for r in db.execute(
         f"""SELECT patient_id, insurance_type FROM (
                 SELECT i.patient_id, v.insurance_type,
-                       ROW_NUMBER() OVER (PARTITION BY i.patient_id ORDER BY v.visit_date DESC) AS rn
+                       ROW_NUMBER() OVER (PARTITION BY i.patient_id ORDER BY v.visit_date DESC, v.id DESC) AS rn
                 FROM visits v JOIN invoices i ON i.id = v.invoice_id
                 WHERE i.patient_id IN ({in_range}))
             WHERE rn = 1""", rng)}
