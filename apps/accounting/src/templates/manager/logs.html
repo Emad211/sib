@@ -189,6 +189,7 @@
       <div class="value">{{ total }}</div>
     </div>
     <a href="{{ url_for('manager.export_logs', **filters) }}" class="btn btn-export" style="align-self:center;">📥 خروجی CSV</a>
+        <a href="{{ url_for('manager.export_logs', format='xlsx', **filters) }}" class="btn btn-export" style="align-self:center;">📥 خروجی Excel</a>
   </div>
 
   <!-- جدول لاگ‌ها -->

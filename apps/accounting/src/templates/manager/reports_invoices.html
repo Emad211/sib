@@ -131,6 +131,7 @@
       <div style="font-size:.95rem;font-weight:800;">لیست فاکتورها</div>
       <div style="display:flex;gap:.5rem;align-items:center;">
         <a href="{{ url_for('manager.export_invoices_csv', **active_filters) }}" class="btn-secondary" style="font-size:.8rem;">📥 CSV</a>
+        <a href="{{ url_for('manager.export_invoices_csv', format='xlsx', **active_filters) }}" class="btn-secondary" style="font-size:.8rem;">📥 Excel</a>
       </div>
     </div>
     <div style="max-height:60vh;overflow:auto;" id="printArea">

@@ -712,6 +712,16 @@ def delete_item():
         patient_name = invoice['full_name'] if invoice else None
         patient_id = invoice['patient_id'] if invoice else None
         
+        # BUG-05: sqlite3.Row has no .get(), so every deletion used to be logged with amount 0.
+        amount_col, name_col = {
+            'visit': ('price', 'doctor_name'),
+            'injection': ('total_price', 'injection_type'),
+            'procedure': ('price', 'procedure_type'),
+            'consumable': ('total_cost', 'item_name'),
+        }[item_type]
+        deleted_amount = row[amount_col] or 0
+        deleted_name = row[name_col]
+
         # حذف آیتم
         db.execute(f"DELETE FROM {table} WHERE id = ?", (item_id,))
         db.execute("DELETE FROM invoice_item_payments WHERE invoice_id = ? AND item_type = ? AND item_id = ?", (invoice_id, item_type, item_id))
@@ -740,7 +750,8 @@ def delete_item():
             patient_name=patient_name,
             target_type=item_type,
             target_id=item_id,
-            amount=row.get('amount', 0) if hasattr(row, 'get') else 0
+            target_name=deleted_name,
+            amount=deleted_amount,
         )
         
         inv_repo = InvoiceRepository()

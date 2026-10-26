@@ -1,5 +1,5 @@
 from flask import (
-    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response, session, current_app
+    Blueprint, render_template, request, flash, redirect, url_for, g, jsonify, Response, make_response, session, current_app, abort
 )
 from src.api.auth import login_required
 from src.adapters.sqlite.core import get_db
@@ -7,9 +7,11 @@ from datetime import datetime, timedelta, date
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
+from src.services.auth_service import USER_ROLES
+from src.__version__ import __version__
+from src.services import manager_insights as insights
+from src.services.exports import table_response
 import jdatetime
-import csv
-import io
 
 bp = Blueprint('manager', __name__, url_prefix='/manager')
 
@@ -173,7 +175,9 @@ def index():
     
     month_revenue = visits_month + injections_month + procedures_month
     
-    avg_daily = month_revenue / 30 if month_revenue > 0 else 0
+    # BIZ-03: this used to divide by a fixed 30, understating the average early in the month.
+    elapsed_days = max(1, jdatetime.date.fromgregorian(date=iran_now().date()).day)
+    avg_daily = month_revenue / elapsed_days if month_revenue > 0 else 0
 
     # Jalali today and preset ranges using server-side converter
     g_today = iran_now().date()
@@ -227,8 +231,36 @@ def index():
         month_invoices=month_invoices,
         month_revenue=month_revenue,
         avg_daily=avg_daily,
-        server_time=iran_now().isoformat()
+        server_time=iran_now().isoformat(),
+        attention=_safe_insight(insights.attention_items, db, current_app.config.get('BACKUP_FOLDER')),
+        shifts=_safe_insight(insights.recent_shifts, db, 3),
+        health=insights.system_health(db, current_app.config.get('DATABASE_PATH'),
+                                      current_app.config.get('BACKUP_FOLDER'), __version__),
     )
+
+
+def _safe_insight(fn, *args):
+    """The exception panels must never take the whole dashboard down (bad data -> empty panel + log)."""
+    try:
+        return fn(*args)
+    except Exception:
+        current_app.logger.exception("dashboard insight %s failed", fn.__name__)
+        return []
+
+
+@bp.route('/attention/<key>')
+@login_required
+def attention_detail(key):
+    """The rows behind one \"needs attention\" count; also CSV/Excel via ?format=."""
+    if g.user['role'] != 'manager':
+        return redirect(url_for('reception.index'))
+    found = insights.attention_detail(get_db(), key)
+    if found is None:
+        abort(404)
+    title, note, headers, rows = found
+    if request.args.get('format') in ('csv', 'xlsx'):
+        return table_response(rows, headers, f'attention_{key}', title)
+    return render_template('manager/attention.html', title=title, note=note, headers=headers, rows=rows, key=key)
 
 
 @bp.route('/reports')
@@ -420,19 +452,13 @@ def export_invoices_csv():
         ORDER BY i.opened_at DESC
     ''', params).fetchall()
 
-    output = io.StringIO(); output.write('\ufeff')
-    writer = csv.writer(output)
-    writer.writerow(['شماره فاکتور', 'زمان باز شدن', 'زمان بستن', 'وضعیت', 'مبلغ کل', 'بیمه', 'بیمه تکمیلی', 'پذیرش', 'بستن توسط', 'بیمار'])
-    for r in rows:
-        writer.writerow([
-            r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
-            int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
-            (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
-        ])
-    resp = make_response(output.getvalue())
-    resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    resp.headers['Content-Disposition'] = 'attachment; filename="invoices_report.csv"'
-    return resp
+    data = [[
+        r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
+        int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
+        (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
+    ] for r in rows]
+    headers = ['شماره فاکتور', 'زمان باز شدن', 'زمان بستن', 'وضعیت', 'مبلغ کل', 'بیمه', 'بیمه تکمیلی', 'پذیرش', 'بستن توسط', 'بیمار']
+    return make_csv_response(data, headers, 'invoices', plain_cols=(0,))
 
 
 @bp.route('/staff')
@@ -1525,20 +1551,9 @@ def users_report():
 
 # ===================== Export APIs =====================
 
-def make_csv_response(data, headers, filename):
-    """ساخت پاسخ CSV با پشتیبانی کامل فارسی (UTF-8 BOM)."""
-    output = io.StringIO()
-    # اضافه کردن BOM برای Excel
-    output.write('\ufeff')
-    writer = csv.writer(output)
-    writer.writerow(headers)
-    for row in data:
-        writer.writerow(row)
-    
-    response = make_response(output.getvalue())
-    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+def make_csv_response(data, headers, filename, plain_cols=()):
+    """CSV by default, Excel with ?format=xlsx (services/exports.py)."""
+    return table_response(data, headers, filename, plain_cols=plain_cols)
 
 
 @bp.route('/export/users/csv')
@@ -2770,8 +2785,8 @@ def export_insurance_arrears():
             i['national_id'] or '',
             i['insurance_type'],
             i['injection_type'],
-            '-',
-            '0',
+            None,
+            0,
             service_price
         ])
     
@@ -3133,7 +3148,9 @@ def users_management():
                 full_name = request.form.get('full_name', '').strip()
                 role = request.form.get('role', 'reception')
                 
-                if username and password and full_name:
+                if role not in USER_ROLES:
+                    flash('نقش کاربر نامعتبر است.', 'error')
+                elif username and password and full_name:
                     # چک کردن تکراری نبودن نام کاربری
                     existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
                     if existing:
@@ -3156,7 +3173,9 @@ def users_management():
                 is_active = request.form.get('is_active') == '1'
                 new_password = request.form.get('new_password', '').strip()
                 
-                if user_id and username and full_name:
+                if role not in USER_ROLES:
+                    flash('نقش کاربر نامعتبر است.', 'error')
+                elif user_id and username and full_name:
                     # چک کردن تکراری نبودن نام کاربری برای کاربر دیگر
                     existing = db.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, user_id)).fetchone()
                     if existing:
@@ -3191,42 +3210,16 @@ def users_management():
             if action == 'add':
                 full_name = request.form.get('full_name', '').strip()
                 staff_type = request.form.get('staff_type', 'doctor')
-                username = request.form.get('username', '').strip()
-                password = request.form.get('password', '').strip()
-                
-                if full_name:
-                    # Create staff record
-                    cur = db.execute(
+
+                if staff_type not in ('doctor', 'nurse'):
+                    flash('نوع کادر درمان نامعتبر است.', 'error')
+                elif full_name:
+                    db.execute(
                         "INSERT INTO medical_staff (full_name, staff_type, is_active) VALUES (?, ?, 1)",
                         (full_name, staff_type)
                     )
-                    staff_id = cur.lastrowid
                     db.commit()
-
-                    # Optionally create a linked doctor user account
-                    if staff_type == 'doctor' and (username or password):
-                        if not (username and password):
-                            flash('برای ساخت حساب پزشک، نام کاربری و رمز عبور هر دو لازم است.', 'error')
-                        else:
-                            existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
-                            if existing:
-                                flash(f'نام کاربری "{username}" قبلاً استفاده شده است.', 'error')
-                            else:
-                                from src.services.auth_service import AuthService
-                                auth_service = AuthService()
-                                created = auth_service.register_user(
-                                    username=username,
-                                    password=password,
-                                    role='doctor',
-                                    full_name=full_name,
-                                    staff_id=staff_id,
-                                )
-                                if created:
-                                    flash(f'پزشک "{full_name}" با حساب کاربری "{username}" اضافه شد.', 'success')
-                                else:
-                                    flash(f'پزشک "{full_name}" اضافه شد اما ساخت حساب کاربری ناموفق بود.', 'error')
-                    else:
-                        flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
+                    flash(f'{"پزشک" if staff_type == "doctor" else "پرستار"} "{full_name}" با موفقیت اضافه شد.', 'success')
             
             elif action == 'update':
                 staff_id = request.form.get('staff_id')
@@ -3846,32 +3839,17 @@ def export_logs():
         date_from=date_from if date_from else None,
         date_to=date_to if date_to else None,
         search_text=search_text if search_text else None,
-        limit=10000
+        limit=1000000
     )
     
     # ساخت CSV با BOM برای پشتیبانی فارسی در Excel
-    output = io.StringIO()
-    output.write('\ufeff')  # UTF-8 BOM
-    writer = csv.writer(output)
-    writer.writerow(['تاریخ', 'کاربر', 'نوع عملیات', 'دسته', 'توضیحات', 'بیمار', 'فاکتور', 'مبلغ'])
-    
-    for log in logs:
-        writer.writerow([
-            log.get('created_at', ''),
-            log.get('username', ''),
-            log.get('action_type', ''),
-            log.get('action_category', ''),
-            log.get('description', ''),
-            log.get('patient_name', ''),
-            log.get('invoice_id', ''),
-            log.get('amount', ''),
-        ])
-    
-    output.seek(0)
-    response = make_response(output.getvalue())
-    response.headers['Content-Type'] = 'text/csv; charset=utf-8'
-    response.headers['Content-Disposition'] = f'attachment; filename=logs_{iran_now().strftime("%Y%m%d_%H%M%S")}.csv'
-    return response
+    data = [[
+        log.get('created_at', ''), log.get('username', ''), log.get('action_type', ''),
+        log.get('action_category', ''), log.get('description', ''), log.get('patient_name', ''),
+        log.get('invoice_id', ''), log.get('amount', ''),
+    ] for log in logs]
+    headers = ['تاریخ', 'کاربر', 'نوع عملیات', 'دسته', 'توضیحات', 'بیمار', 'فاکتور', 'مبلغ']
+    return make_csv_response(data, headers, 'activity_logs', plain_cols=(6,))
 
 
 @bp.route('/logs/stats')

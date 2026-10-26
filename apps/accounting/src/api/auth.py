@@ -15,21 +15,17 @@ bp = Blueprint("auth", __name__, url_prefix="/auth")
 def login():
     service = AuthService()
 
-    # For reception and doctor roles we want a dropdown of active users
+    # Reception logins pick their name from a dropdown of active users
     reception_users = service.get_reception_users()
-    doctor_users = service.get_doctor_users()
 
     if request.method == "POST":
-        role = request.form.get("role", "reception")  # "manager", "reception", or "doctor"
+        role = request.form.get("role", "reception")  # "manager" or "reception"
         password = request.form.get("password", "")
         error = None
 
         if role == "manager":
             username = request.form.get("username", "")
             user = service.validate_manager(username, password)
-        elif role == "doctor":
-            username = request.form.get("doctor_username", "")
-            user = service.validate_doctor(username, password)
         else:  # reception
             username = request.form.get("reception_username", "")
             user = service.validate_reception(username, password)
@@ -55,14 +51,12 @@ def login():
             # Redirect based on role
             if user["role"] == "manager":
                 return redirect(url_for("manager.index"))
-            elif user["role"] == "doctor":
-                return redirect(url_for("doctor.index"))
             else:
                 return redirect(url_for("reception.index"))
 
         flash(error)
 
-    return render_template("auth/login.html", reception_users=reception_users, doctor_users=doctor_users)
+    return render_template("auth/login.html", reception_users=reception_users)
 
 
 @bp.route("/logout")

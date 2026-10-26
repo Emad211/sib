@@ -477,6 +477,9 @@
         <a href="{{ url_for('manager.export_insurance_arrears') }}?from={{ active_filters.get('from', '') }}&to={{ active_filters.get('to', '') }}&insurance={{ insurance_filter or '' }}" class="btn-export" style="margin-right:auto;">
           📥 خروجی CSV
         </a>
+        <a href="{{ url_for('manager.export_insurance_arrears') }}?from={{ active_filters.get('from', '') }}&to={{ active_filters.get('to', '') }}&insurance={{ insurance_filter or '' }}&format=xlsx" class="btn-export">
+          📥 خروجی Excel
+        </a>
       </div>
     </form>
   </div>

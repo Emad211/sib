@@ -622,6 +622,31 @@
             .main-content { padding: 1rem; }
             .stats-grid { grid-template-columns: 1fr; }
         }
+
+        /* =============== Attention / shifts / health (ACC-2.8) =============== */
+        .attention-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.9rem; }
+        .attention-item {
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem; text-decoration: none; color: inherit;
+            padding: 0.9rem 1.1rem; border-radius: 14px; background: rgba(245, 158, 11, 0.10);
+            border: 1px solid rgba(245, 158, 11, 0.35); transition: transform .15s ease, background .15s ease;
+        }
+        .attention-item:hover { transform: translateY(-2px); background: rgba(245, 158, 11, 0.18); }
+        .attention-item .a-title { font-weight: 700; font-size: .92rem; }
+        .attention-item .a-note { font-size: .75rem; color: #94a3b8; margin-top: .2rem; }
+        .attention-item .a-count { font-size: 1.5rem; font-weight: 900; color: #fbbf24; white-space: nowrap; }
+        .attention-item .a-count small { font-size: .7rem; font-weight: 600; color: #94a3b8; margin-right: .25rem; }
+        .all-clear { color: #6ee7b7; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+        .shift-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+        .shift-table th, .shift-table td { padding: .65rem .7rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); white-space: nowrap; }
+        .shift-table th { color: #94a3b8; font-weight: 600; font-size: .78rem; }
+        .shift-table td.num { font-variant-numeric: tabular-nums; }
+        .shift-table .muted { color: #64748b; }
+        .delta-up { color: #6ee7b7; } .delta-down { color: #fca5a5; }
+        .table-scroll { overflow-x: auto; }
+        .rule-note { margin-top: .8rem; font-size: .75rem; color: #94a3b8; }
+        .health-strip { display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; font-size: .8rem; color: #94a3b8; margin-bottom: 1.5rem; }
+        .health-strip b { color: #e2e8f0; font-weight: 600; }
+        .health-strip .bad { color: #fca5a5; }
     </style>
 </head>
 <body>
@@ -722,7 +747,7 @@
                     <div class="stat-icon">💵</div>
                 </div>
                 <div class="stat-value">{{ "{:,.0f}".format(today_revenue | default(0)) }}</div>
-                <div class="stat-label">درآمد امروز (تومان)</div>
+                <div class="stat-label">درآمد امروز (تومان) · بدون دارو و مصرفی</div>
             </div>
             <div class="stat-card blue">
                 <div class="stat-header">
@@ -738,6 +763,80 @@
                 <div class="stat-value">{{ open_invoices | default(0) }}</div>
                 <div class="stat-label">فاکتور باز</div>
             </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span class="icon">🔔</span> نیاز به توجه</h2>
+                </div>
+                {% if attention %}
+                <div class="attention-grid">
+                    {% for a in attention %}
+                    <a class="attention-item" href="{% if a.href == 'settings' %}{{ url_for('manager.settings') }}{% else %}{{ url_for('manager.attention_detail', key=a.key) }}{% endif %}">
+                        <div>
+                            <div class="a-title">{{ a.title }}</div>
+                            <div class="a-note">{{ a.note }}</div>
+                        </div>
+                        <div class="a-count">{{ a.count }}<small>{{ a.unit or '' }}</small></div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="all-clear">✅ مورد غیرعادی‌ای دیده نشد.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><span class="icon">🕐</span> سه شیفت آخر</h2>
+                </div>
+                {% if shifts %}
+                <div class="table-scroll">
+                <table class="shift-table">
+                    <thead><tr>
+                        <th>شیفت</th><th>فاکتور</th><th>باز</th><th>ویزیت</th><th>پرستاری</th><th>کار عملی</th>
+                        <th>درآمد</th><th>نسبت به ۴ هفتهٔ قبل</th><th>حذف</th><th>بدون نوع پرداخت</th><th>بستن توسط</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for sh in shifts %}
+                    <tr>
+                        <td><b>{{ sh.shift_fa }}</b> <span class="muted">{{ sh.date_fa }}</span>{% if sh.in_progress %} <span class="delta-up">● در جریان</span>{% endif %}</td>
+                        <td class="num">{{ sh.invoices }}</td>
+                        <td class="num">{{ sh.open or '—' }}</td>
+                        <td class="num">{{ "{:,.0f}".format(sh.visits) }}</td>
+                        <td class="num">{{ "{:,.0f}".format(sh.nursing) }}</td>
+                        <td class="num">{{ "{:,.0f}".format(sh.procedures) }}</td>
+                        <td class="num"><b>{{ "{:,.0f}".format(sh.revenue) }}</b></td>
+                        <td class="num">
+                            {% if sh.vs_baseline is none %}<span class="muted">—</span>
+                            {% else %}<span class="{{ 'delta-up' if sh.vs_baseline >= 0 else 'delta-down' }}">{{ '▲' if sh.vs_baseline >= 0 else '▼' }} {{ '%.0f' % (sh.vs_baseline|abs * 100) }}٪</span>{% endif %}
+                        </td>
+                        <td class="num">{{ sh.deletes or '—' }}</td>
+                        <td class="num">{{ sh.unset_payments or '—' }}</td>
+                        <td>{{ sh.closers or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                <div class="rule-note">درآمد = ویزیت + پرستاری + کار عملی فاکتورهای بسته‌شده، بدون دارو و مصرفی (تصمیم مالک). مقایسه فقط اطلاع‌رسانی است: نوسان روزانهٔ شیفت‌ها زیاد است.</div>
+                {% else %}
+                <div class="all-clear">هنوز فاکتوری ثبت نشده است.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="health-strip">
+            <span>نسخهٔ برنامه <b>{{ health.app_version }}</b></span>
+            <span>نسخهٔ دیتابیس <b>{{ health.schema_version }}</b></span>
+            {% if health.db_size_mb is not none %}<span>حجم دیتابیس <b>{{ health.db_size_mb }} MB</b></span>{% endif %}
+            <span>آخرین پشتیبان
+                {% if health.backup_age_hours is none %}<b class="bad">وجود ندارد</b>
+                {% else %}<b class="{{ '' if health.backup_ok else 'bad' }}">{{ health.backup_age_hours }} ساعت پیش</b>{% endif %}
+            </span>
         </div>
 
         <div class="dashboard-grid">

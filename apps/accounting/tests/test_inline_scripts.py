@@ -30,7 +30,7 @@ def _pages(app):
 
 def test_inline_scripts_parse_on_every_page(synthetic_app, tmp_path):
     checked, broken = 0, []
-    for username in ("manager1", "reception1", "doctor1"):
+    for username in ("manager1", "reception1"):
         client = synthetic_app.test_client()
         for url in sorted(set(_pages(synthetic_app))):
             login_as(client, synthetic_app, username)  # a page must never be judged while logged out

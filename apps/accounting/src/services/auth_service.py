@@ -7,6 +7,10 @@ from werkzeug.security import check_password_hash
 from src.adapters.sqlite.auth_repo import AuthRepository
 from src.common.utils import iran_now
 
+# The only login roles. The old "doctor" login was retired (Q-19); doctors remain as
+# medical_staff rows, which visits, procedures and payroll depend on.
+USER_ROLES = ("manager", "reception")
+
 
 class AuthService:
     """High-level auth logic mirroring the desktop application's behavior."""
@@ -116,15 +120,6 @@ class AuthService:
     def validate_reception(self, username: str, password: str) -> Optional[dict]:
         return self._attempt_login(username, password, "reception")
 
-    # ---- Doctor ----
-    def get_doctor_users(self) -> List[str]:
-        """Get list of active doctor usernames for login dropdown."""
-        return self.repo.get_doctor_usernames()
-
-    def validate_doctor(self, username: str, password: str) -> Optional[dict]:
-        """Validate doctor login credentials."""
-        return self._attempt_login(username, password, "doctor")
-
     # ---- User creation for CLI / setup ----
     def register_user(
         self,
@@ -135,7 +130,7 @@ class AuthService:
         staff_id: int | None = None,
     ) -> bool:
         # Reuse low-level repo + bcrypt like desktop app
-        if self.repo.get_raw_by_username(username):
+        if role not in USER_ROLES or self.repo.get_raw_by_username(username):
             return False
 
         salt = bcrypt.gensalt()

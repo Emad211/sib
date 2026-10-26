@@ -12,7 +12,7 @@ from tools.make_synthetic_db import TEST_PASSWORD
 
 
 def _login(client, role, username, password=TEST_PASSWORD):
-    field = {"manager": "username", "reception": "reception_username", "doctor": "doctor_username"}[role]
+    field = {"manager": "username", "reception": "reception_username"}.get(role, "reception_username")
     return client.post("/auth/login", data={"role": role, field: username, "password": password})
 
 

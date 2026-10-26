@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Hesabdari Sib**: a single-clinic accounting and reception desktop app built on Flask, SQLite and Jinja, served on port **8080**. It covers reception (patients, invoices, visits, injections/nursing services, procedures, consumables, per-item payments), a doctor room, and a manager panel (reports, tariffs, insurance arrears, payroll, users, activity logs). The UI is Persian, RTL and Jalali. Most comments and all UI strings are Persian.
+**Hesabdari Sib**: a single-clinic accounting and reception desktop app built on Flask, SQLite and Jinja, served on port **8080**. It covers reception (patients, invoices, visits, injections/nursing services, procedures, consumables, per-item payments) and a manager panel (attention dashboard, reports with CSV/Excel export, tariffs, insurance arrears, payroll, users, activity logs, settings and backups). The UI is Persian, RTL and Jalali. Most comments and all UI strings are Persian.
 
 > Project-wide rules and the roadmap: `../../CLAUDE.md` and `../../docs/00_README.md` (read them first).
 > This app lives in the `sib` monorepo since 2026-10-26 (ADR-001); `webapp/` paths below now mean `apps/accounting/`.
@@ -18,11 +18,11 @@ python start.py                          # http://127.0.0.1:8080 (or run.bat); o
 python -m pytest tests                   # full suite
 python -m pytest tests/test_billing_characterization.py::<test_name>   # single test
 flask --app src.app init-db              # re-run schema.sql against the configured DB
-flask --app src.app create-user <username> <password> [manager|reception|doctor]
+flask --app src.app create-user <username> <password> [manager|reception]
 pyinstaller HesabdariSib.spec            # single-file HesabdariSib.exe (console=False)
 ```
 
-Helper scripts live in `scripts/`: `create_doctor_user.py` and `seed_clinic_data.py`. No linter or formatter is configured.
+`scripts/seed_clinic_data.py` seeds sample data. Lint with `ruff check .` (CI runs it); `ruff.toml` lists the files held to the new standard, so add each cleaned file there.
 
 ## Data safety: the real DB is hard-wired
 
@@ -40,20 +40,22 @@ Helper scripts live in `scripts/`: `create_doctor_user.py` and `seed_clinic_data
 
 ```
 start.py → src/app.py:create_app()       registers blueprints, Jinja filters, CLI, scheduler
-src/api/*.py          Blueprints: auth (/auth), dashboard (/), reception (/reception), doctor (/doctor), manager (/manager)
-src/services/         auth_service, reception_service, activity_logger, scheduler
-src/adapters/sqlite/  core.py (connection + schema + migrations) and one repo per aggregate
+src/api/*.py          Blueprints: auth (/auth), dashboard (/), reception (/reception), manager (/manager)
+src/services/         auth_service, reception_service, activity_logger, backup, scheduler, exports, manager_insights
+src/web/csrf.py       CSRF for every state-changing request (token injected by static/js/csrf.js)
+src/adapters/sqlite/  core.py (connection + schema), migrations/ (versioned), and one repo per aggregate
 src/common/           jalali.py, utils.py (iran_now, shift/work_date helpers), validators.py
-src/templates/<role>/ Jinja pages per role; static/ holds vendored Vazirmatn, chart.min.js, jalaali.min.js (offline, no CDN)
+src/templates/<role>/ Jinja pages per role (auth, reception, manager); static/ holds vendored Vazirmatn, chart.min.js, jalaali.min.js (offline, no CDN)
 ```
 
 **The layering is aspirational, not enforced.** `api/manager.py` (~3.7k lines) and `api/reception.py` (~1.9k lines) run hundreds of `db.execute` calls inline, and several `services/` and `domain/` files are empty stubs. New code should go route → service → repo, with SQL in `src/adapters/sqlite/`. Read the existing route before you assume a repo owns a query; many report and payroll queries live only in `manager.py`.
 
 ### Auth and roles
-- Roles are `manager`, `reception` and `doctor`. The login form posts a `role`, and `AuthService` validates the user against that role.
-- There is a single `login_required` decorator (`api/auth.py`). Manager and doctor routes check `g.user['role']` **inline** and redirect when it doesn't match. Copy that check on new manager routes.
+- Roles are `manager` and `reception` (`USER_ROLES` in `auth_service.py`). The old `doctor` login was retired (ADR-013): doctors exist only as `medical_staff` rows, and a session or account with any other role is rejected. The login form posts a `role`, and `AuthService` validates the user against that role.
+- There is a single `login_required` decorator (`api/auth.py`). Manager routes check `g.user['role']` **inline** and redirect when it doesn't match. Copy that check on new manager routes (`@require_role` is planned, ACC-2.1).
+- Every POST/PUT/DELETE needs the CSRF token. Pages get it automatically; tests use `CsrfClient`.
 - Passwords are hashed with bcrypt. Legacy werkzeug hashes are migrated to bcrypt on a successful login. After 5 failed attempts the account locks for 15 minutes (`locked_until`).
-- `PRODUCTION=1` (or `FLASK_ENV`/`APP_ENV=production`) does three things: it refuses to start with the default `SECRET_KEY`, it sets secure cookies, and it binds to 127.0.0.1. Otherwise the app binds to `0.0.0.0` for LAN use. `tests/test_security_config.py` pins this behavior.
+- The session secret is a per-install file `.hesabdari_secret_key` next to the DB (created on first start, never committed). `PRODUCTION=1` (or `FLASK_ENV`/`APP_ENV=production`) sets secure cookies and binds to 127.0.0.1; otherwise the app binds to `0.0.0.0` for LAN use. `tests/test_security_config.py` pins this behavior.
 
 ### Shifts and `work_date` (core domain concept)
 - Shifts (`morning`/`evening`/`night`) are **switched manually** per user and stored in `user_active_shift`. They are not derived from clock time.
@@ -73,12 +75,14 @@ src/templates/<role>/ Jinja pages per role; static/ holds vendored Vazirmatn, ch
 - Payments are tracked per item in `invoice_item_payments` (`payment_type` card/cash, `is_paid`).
 
 ### Schema and migrations
-- `src/adapters/sqlite/schema.sql` is idempotent (`IF NOT EXISTS`). `get_db()` loads it only when the `users` table is missing. It looks for the file via `pkgutil`, then next to the module, then `_MEIPASS`, then the exe directory.
-- Schema changes to existing DBs are additive runtime migrations in `core.py`: `_ensure_column`, backfills, `_ensure_indexes`, `_ensure_settings_table`. They run **once per process**, guarded by the module flag `_migrations_done`, and they swallow errors. Add new migrations there, and add the column or table to `schema.sql` too.
+- `src/adapters/sqlite/schema.sql` is idempotent (`IF NOT EXISTS`). `core._prepare()` loads it only when the `users` table is missing, then runs the versioned migrations.
+- Migrations live in `src/adapters/sqlite/migrations/` (`m0001_baseline`, `m0002_performance_indexes`, ...), tracked by `PRAGMA user_version`. Each step runs in its own transaction after a `pre_migration` backup; a failure raises `MigrationError` and the app does not start. **Schema changes are additive only** (ADR-002): the previous exe must still run on a migrated DB. Add a new `mNNNN_*.py`, register it in `MIGRATIONS`, and add the column or table to `schema.sql` too.
 - If you add a bundled data file, also add it to `datas` in `HesabdariSib.spec`. In frozen mode the DB and `backups/` sit next to the exe; templates and static files come from `sys._MEIPASS`. Keep both code paths when you edit `app.py`, `settings.py` or `start.py`.
 
 ### Conventions
 - **Time:** store Tehran local time with `utils.iran_now()` or SQLite `datetime('now','+3 hours','+30 minutes')`. Never use naive `datetime.now()` or UTC.
 - **Dates:** Jalali (`YYYY/MM/DD`) in the UI, converted to Gregorian on the server. Templates use the Jinja filters `jalali_datetime`, `jalali_local` and `fa_num` (Persian digits plus `،` thousands separator).
 - **Activity logging:** log state-changing actions with `services/activity_logger.log_activity(...)`, using the `ActionType`/`ActionCategory` constants. The manager can view these at `/manager/logs`.
-- **Backups:** `services/scheduler.py` runs a daemon thread that copies the DB into `backups/` weekly (Saturday 03:00) and keeps the last 4 copies.
+- **Backups:** `services/backup.py` (SQLite online backup + integrity check, safe names, free-disk guard) and `services/scheduler.py` (daily after 04:00 and at startup if the newest is older than 20 h). Retention is 7 daily / 4 weekly / 6 monthly. The manager dashboard warns when the newest backup is older than 24 h.
+- **Exports:** every report export goes through `services/exports.py` (`table_response`): CSV with BOM and formula neutralisation, or `?format=xlsx`. Never write CSV by hand in a route.
+- **Manager dashboard rules:** revenue = visits + nursing + procedures of closed invoices; consumables are never revenue (owner decision, Q-05). Thresholds for the attention list come from real data and are documented in `docs/accounting/A06_MANAGER_AREA_SPEC.md` §6.

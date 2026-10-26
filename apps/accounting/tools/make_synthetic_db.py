@@ -163,6 +163,8 @@ TEST_USERS = [
     ("reception1", "reception", "پذیرش یک", 1),
     ("reception2", "reception", "پذیرش دو", 1),
     ("reception_old", "reception", "پذیرش غیرفعال", 0),
+    # The "doctor" login role was retired (Q-19). This row stays so tests prove such an
+    # account can neither log in nor keep a session.
     ("doctor1", "doctor", "دکتر نمونه", 1),
 ]
 DOCTORS = ["دکتر الف", "دکتر ب", "دکتر ج", "دکتر د"]
