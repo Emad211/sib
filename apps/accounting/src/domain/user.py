@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional
 from datetime import datetime
+
 
 @dataclass
 class User:
@@ -8,8 +8,8 @@ class User:
     username: str
     role: str
     password_hash: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     @property
     def is_admin(self):
-        return self.role == 'admin'
+        return self.role == "admin"

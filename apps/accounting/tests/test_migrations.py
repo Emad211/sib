@@ -65,12 +65,24 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
     # Exactly what production gains — nothing more (the prod schema already has the rest).
     assert sorted(added) == sorted(
         [
+            "column added: consumable_tariffs.acc_code",
+            "column added: consumable_tariffs.stock_factor",
             "column added: users.staff_id",
-            "index added: idx_users_staff_id",
-            "index added: idx_invoices_work_date_status",
+            "index added: idx_invoices_closed_at",
             "index added: idx_invoices_patient_work_date",
-            "table added: tariff_changes",
+            "index added: idx_invoices_work_date_status",
+            "index added: idx_payment_lines_closed_at",
             "index added: idx_tariff_changes_changed_at",
+            "index added: idx_users_staff_id",
+            "table added: invoice_payment_lines",
+            "table added: tariff_changes",
+            "view added: v_shift_cash_receipts_v1",
+            "view added: v_shift_consumption_v1",
+            "view added: v_shift_invoice_lookup_v1",
+            "view added: v_shift_open_invoices_v1",
+            "view added: v_shift_patient_registrations_v1",
+            "view added: v_shift_payment_lines_v1",
+            "view added: v_shift_vitals_services_v1",
         ]
     )
     assert after["user_version"] == LATEST

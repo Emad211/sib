@@ -25,6 +25,8 @@ FIELD_LABELS = {
     "active": "وضعیت",
     "supplementary": "بیمهٔ تکمیلی",
     "category": "دسته",
+    "acc_code": "کد کالا (انبار)",
+    "stock_factor": "ضریب تبدیل به انبار",
     "created": "ایجاد",
     "deleted": "حذف",
     "excluded": "استثنا شد",

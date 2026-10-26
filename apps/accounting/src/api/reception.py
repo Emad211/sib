@@ -3,6 +3,8 @@ from flask import (
 )
 from src.api.auth import login_required
 from src.services.reception_service import ReceptionService
+from src.domain import billing
+from src.domain.identity import normalize_national_id, normalize_phone
 from src.services.activity_logger import log_activity, ActionType, ActionCategory
 from src.common.utils import iran_now
 from datetime import datetime, timedelta
@@ -160,8 +162,8 @@ def new_visit():
         # Extract and validate form data
         name = request.form.get('name', '').strip()
         family_name = request.form.get('family_name', '').strip()
-        phone = request.form.get('phone', '').strip()
-        national_id = request.form.get('national_id', '').strip()
+        phone = normalize_phone(request.form.get('phone', ''))
+        national_id = normalize_national_id(request.form.get('national_id', ''))
         is_foreign = request.form.get('is_foreign') == 'on'
         insurance_type = request.form.get('insurance_type', '').strip()
         supp_insurance = request.form.get('supplementary_insurance', '').strip()
@@ -590,6 +592,15 @@ def set_item_payment():
     patient_name = invoice['full_name'] if invoice else None
     patient_id = invoice['patient_id'] if invoice else None
 
+    if is_paid and not billing.is_valid_payment_type(payment_type):
+        item = next((it for it in inv_repo.get_invoice_items(invoice_id)
+                     if it.get('type') == item_type and it.get('id') == item_id), None)
+        if item is None:
+            return jsonify({'error': 'آیتم یافت نشد'}), 404
+        if billing.needs_payment_type(item.get('patient_share')):
+            return jsonify({'error': 'روش پرداخت (کارتخوان یا نقدی) را انتخاب کنید'}), 400
+        payment_type = None  # covered by insurance: nothing to classify
+
     pay_repo = InvoiceItemPaymentRepository()
     pay_repo.set_payment(invoice_id, item_type, item_id, payment_type, is_paid)
 
@@ -635,6 +646,9 @@ def settle_all_items():
         return jsonify({'error': 'فاکتور یافت نشد'}), 404
     if invoice_check.get('status') == 'closed':
         return jsonify({'error': 'فاکتور بسته شده است و امکان تغییر وضعیت پرداخت وجود ندارد'}), 400
+
+    if not billing.is_valid_payment_type(payment_type):
+        return jsonify({'error': 'روش پرداخت (کارتخوان یا نقدی) را انتخاب کنید'}), 400
 
     # Get all items for this invoice
     items = inv_repo.get_invoice_items(invoice_id)
@@ -784,15 +798,24 @@ def close_invoice():
     pay_repo = InvoiceItemPaymentRepository()
     items = repo.get_invoice_items(invoice_id)
     unpaid_items = []
+    untyped_items = []
     for it in items:
         p = pay_repo.get_item_payment(invoice_id, it.get('type'), it.get('id'))
+        row = {'type': it.get('type'), 'id': it.get('id'), 'description': it.get('description')}
         if not p or int(p.get('is_paid', 0)) != 1:
-            unpaid_items.append({'type': it.get('type'), 'id': it.get('id'), 'description': it.get('description')})
+            unpaid_items.append(row)
+        elif billing.needs_payment_type(it.get('patient_share')) and not billing.is_valid_payment_type(p.get('payment_type')):
+            untyped_items.append({**row, 'description': f"{row['description']} — روش پرداخت مشخص نیست"})
     if unpaid_items:
         # Return a clear error listing count of unpaid items and the items themselves
         return jsonify({
             'error': f'امکان بستن فاکتور وجود ندارد — {len(unpaid_items)} آیتم تسویه نشده است.',
             'unpaid_items': unpaid_items
+        }), 400
+    if untyped_items:
+        return jsonify({
+            'error': f'امکان بستن فاکتور وجود ندارد — برای {len(untyped_items)} آیتم روش پرداخت (کارتخوان یا نقدی) انتخاب نشده است.',
+            'unpaid_items': untyped_items
         }), 400
 
     success = repo.close_invoice(invoice_id, g.user['username'])

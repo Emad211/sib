@@ -239,6 +239,8 @@
     </a>
   </div>
 
+  {% include 'manager/_flash.html' %}
+
   <div class="card">
     <div class="card-title">➕ افزودن مصرفی جدید</div>
     <form method="post" class="add-form">
@@ -257,6 +259,14 @@
           <option value="drug">دارو</option>
           <option value="supply">عمومی</option>
         </select>
+      </div>
+      <div class="field">
+        <label>کد کالا (انبار)</label>
+        <input type="text" name="acc_code" maxlength="40" placeholder="اختیاری" style="width:130px;">
+      </div>
+      <div class="field">
+        <label>ضریب به انبار</label>
+        <input type="text" name="stock_factor" placeholder="1" style="width:80px;" title="یک واحد ثبت‌شده در فاکتور چند واحد انبار است؟">
       </div>
       <button type="submit" class="btn-add">➕ افزودن</button>
     </form>
@@ -277,6 +287,7 @@
           <th>نام مصرفی</th>
           <th>دسته</th>
           <th>قیمت (تومان)</th>
+          <th>کد کالا</th>
           <th>وضعیت</th>
           <th>عملیات</th>
         </tr>
@@ -294,6 +305,7 @@
             {% endif %}
           </td>
           <td class="price">{{ '{:,}'.format(item.default_price|int) }}</td>
+          <td>{% if item.acc_code %}{{ item.acc_code }}{% if item.stock_factor and item.stock_factor != 1 %} <small>×{{ item.stock_factor }}</small>{% endif %}{% else %}<span class="status-inactive" title="این مصرفی هنوز به کالای انبار وصل نشده است">—</span>{% endif %}</td>
           <td>
             {% if item.is_active %}
             <span class="status-active">✓ فعال</span>
@@ -302,7 +314,7 @@
             {% endif %}
           </td>
           <td class="actions">
-            <button type="button" class="btn-edit" onclick="openEditModal({{ item.id }}, '{{ item.name }}', {{ item.default_price }}, '{{ item.category }}', {{ item.is_active }})">ویرایش</button>
+            <button type="button" class="btn-edit" onclick='openEditModal({{ item.id }}, {{ item.name|tojson }}, {{ item.default_price }}, {{ item.category|tojson }}, {{ item.is_active }}, {{ (item.acc_code or "")|tojson }}, {{ (item.stock_factor if item.stock_factor is not none else 1)|tojson }})'>ویرایش</button>
             <form method="post" style="display:inline;" onsubmit="return confirm('آیا از حذف این مصرفی مطمئن هستید؟');">
               <input type="hidden" name="action" value="delete">
               <input type="hidden" name="item_id" value="{{ item.id }}">
@@ -341,6 +353,14 @@
           <option value="supply">عمومی</option>
         </select>
       </div>
+      <div class="field">
+        <label>کد کالا (انبار)</label>
+        <input type="text" name="acc_code" id="edit-acc-code" maxlength="40">
+      </div>
+      <div class="field">
+        <label>ضریب تبدیل به انبار</label>
+        <input type="text" name="stock_factor" id="edit-stock-factor">
+      </div>
       <div class="field checkbox-field">
         <input type="checkbox" name="is_active" id="edit-active" value="1">
         <label for="edit-active">فعال</label>
@@ -354,12 +374,14 @@
 </div>
 
 <script>
-function openEditModal(id, name, price, category, isActive) {
+function openEditModal(id, name, price, category, isActive, accCode, stockFactor) {
   document.getElementById('edit-id').value = id;
   document.getElementById('edit-name').value = name;
   document.getElementById('edit-price').value = price;
   document.getElementById('edit-category').value = category;
   document.getElementById('edit-active').checked = isActive == 1;
+  document.getElementById('edit-acc-code').value = accCode || '';
+  document.getElementById('edit-stock-factor').value = stockFactor == null ? '1' : stockFactor;
   document.getElementById('editModal').classList.add('active');
 }
 function closeEditModal() {

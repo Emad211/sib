@@ -1,3 +1,4 @@
+from src.domain import billing
 from typing import Optional, List, Dict
 from src.adapters.sqlite.core import get_db
 from src.common.utils import get_work_date_for_datetime
@@ -109,33 +110,20 @@ class InvoiceRepository:
         """, (invoice_id,)).fetchall()
         for r in visits:
             it = dict(r)
-            # recorded_price = تعرفه پایه/آزاد (base tariff)
-            # patient_share = تعرفه بیمه ای (سهم بیمار) - what insurance says patient pays
-            recorded_price = base_visit_price
-            
-            # Get patient share from insurance tariff
+            # recorded price = base (free-pay) tariff; patient share per domain.billing.visit_shares
             visit_insurance = it.get('insurance_type') or invoice_insurance
-            patient_share = recorded_price  # default to base if no insurance
-            
+            insurance_price = None
             if visit_insurance:
                 ins_row = db.execute("SELECT tariff_price FROM visit_tariffs WHERE insurance_type = ? AND is_active = 1 AND COALESCE(is_supplementary,0)=0 LIMIT 1", (visit_insurance,)).fetchone()
                 if ins_row and ins_row['tariff_price'] is not None:
-                    patient_share = float(ins_row['tariff_price'])
-            
-            # If supplementary insurance exists, it may override patient_share
+                    insurance_price = float(ins_row['tariff_price'])
+            supplementary_price = None
             supp = it.get('supplementary_insurance')
             if supp:
                 srow = db.execute("SELECT tariff_price FROM visit_tariffs WHERE insurance_type = ? AND is_active = 1 AND COALESCE(is_supplementary,0)=1 LIMIT 1", (supp,)).fetchone()
                 if srow and srow['tariff_price'] is not None:
-                    patient_share = float(srow['tariff_price'])
-            
-            insurance_share = recorded_price - patient_share if recorded_price > patient_share else 0
-            covered = 1 if patient_share == 0 and recorded_price > 0 else 0
-            
-            it['recorded_price'] = float(recorded_price)
-            it['patient_share'] = float(patient_share)
-            it['insurance_share'] = float(insurance_share)
-            it['covered_by_insurance'] = covered
+                    supplementary_price = float(srow['tariff_price'])
+            it.update(billing.visit_shares(base_visit_price, insurance_price, supplementary_price).as_item_fields())
             items.append(it)
 
         # Injections: read doctor/nurse from item itself (i.doctor_id, i.nurse_id)
@@ -159,30 +147,10 @@ class InvoiceRepository:
             WHERE i.invoice_id = ?
         """, (invoice_id,)).fetchall()
         inj_rows = [dict(r) for r in injections]
+        covers = billing.nursing_is_covered(nursing_covers, nursing_tariff)
         for r in inj_rows:
-            original = float(r.get('recorded_price') or 0)
-            # Default patient share is recorded price
-            patient_share = original
-            insurance_share = 0
-            covered = 0
-            # Determine coverage: prefer `nursing_covers` flag (manager UI),
-            # fall back to legacy `nursing_tariff==0` meaning free.
-            if (nursing_covers is not None and nursing_covers) or (nursing_covers is None and nursing_tariff is not None and float(nursing_tariff) == 0):
-                # If service_id is excluded for this insurance, do NOT mark as covered
-                svc_id = r.get('service_id')
-                if svc_id and svc_id in excluded_services:
-                    # Not covered due to explicit exclusion
-                    insurance_share = 0
-                    patient_share = original
-                    covered = 0
-                else:
-                    insurance_share = original
-                    patient_share = 0
-                    covered = 1
-            r['recorded_price'] = original
-            r['patient_share'] = float(patient_share)
-            r['insurance_share'] = float(insurance_share)
-            r['covered_by_insurance'] = covered
+            svc_id = r.get('service_id')
+            r.update(billing.injection_shares(r.get('recorded_price'), covers, bool(svc_id and svc_id in excluded_services)).as_item_fields())
         items.extend(inj_rows)
 
         # Procedures: read doctor/nurse from item itself (pr.doctor_id, pr.nurse_id)
@@ -202,18 +170,8 @@ class InvoiceRepository:
         """, (invoice_id,)).fetchall()
         proc_rows = [dict(r) for r in procedures]
         for r in proc_rows:
-            original = float(r.get('recorded_price') or 0)
-            patient_share = original
-            insurance_share = 0
-            covered = 0
-            if r.get('description', '').endswith('(پرستار)') and ((nursing_covers is not None and nursing_covers) or (nursing_covers is None and nursing_tariff is not None and float(nursing_tariff) == 0)):
-                insurance_share = original
-                patient_share = 0
-                covered = 1
-            r['recorded_price'] = original
-            r['patient_share'] = float(patient_share)
-            r['insurance_share'] = float(insurance_share)
-            r['covered_by_insurance'] = covered
+            nurse_performed = r.get('description', '').endswith('(پرستار)')
+            r.update(billing.procedure_shares(r.get('recorded_price'), nurse_performed, covers).as_item_fields())
         items.extend(proc_rows)
 
         # Consumables: read doctor/nurse from item itself (c.doctor_id, c.nurse_id)
@@ -232,11 +190,7 @@ class InvoiceRepository:
         """, (invoice_id,)).fetchall()
         for r in consumables:
             it = dict(r)
-            original = float(it.get('recorded_price') or 0)
-            it['recorded_price'] = original
-            it['patient_share'] = float(original)
-            it['insurance_share'] = 0.0
-            it['covered_by_insurance'] = 0
+            it.update(billing.consumable_shares(it.get('recorded_price')).as_item_fields())
             items.append(it)
         
         # Fallback: if doctor_name still empty for non-visit items, use latest visit doctor
@@ -272,8 +226,29 @@ class InvoiceRepository:
             WHERE id = ? AND status = 'open'
         """, (closed_by, closer_name, invoice_id))
         
+        closed_now = cursor.rowcount > 0
+        if closed_now:
+            self._record_payment_lines(db, invoice_id)
         db.commit()
-        return cursor.rowcount > 0
+        return closed_now
+
+    def _record_payment_lines(self, db, invoice_id: int) -> None:
+        """Freeze what each item cost the patient and how it was paid (ACC-2.11, read by the shift app).
+
+        Same transaction as the close. Items without a payment type are recorded with a NULL type
+        so nothing is silently dropped.
+        """
+        closed_at = db.execute("SELECT closed_at FROM invoices WHERE id = ?", (invoice_id,)).fetchone()['closed_at']
+        pays = {(r['item_type'], r['item_id']): r['payment_type'] for r in db.execute(
+            "SELECT item_type, item_id, payment_type FROM invoice_item_payments WHERE invoice_id = ? AND is_paid = 1",
+            (invoice_id,))}
+        for it in self.get_invoice_items(invoice_id):
+            db.execute(
+                "INSERT OR REPLACE INTO invoice_payment_lines"
+                " (invoice_id, item_type, item_id, payment_type, patient_amount, closed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (invoice_id, it['type'], it['id'], pays.get((it['type'], it['id'])),
+                 float(it.get('patient_share') or 0), closed_at),
+            )
 
     def update_invoice_totals(self, invoice_id: int):
         """Recalculate and update total_amount for the invoice."""
