@@ -19,6 +19,8 @@
 | پاداش ثبت بیمار | `patients.created_by`، `created_at`، کد ملی، موبایل | `v_shift_patient_registrations_v1(patient_id, created_by, created_at, has_valid_nid, phone)` |
 | کمپین تخفیف | **در حسابداری وجود ندارد** | Q-12 |
 
+> **وضعیت ۱۴۰۵/۰۸/۰۴:** ACC-2.11 پیاده شد (مهاجرت ۴). تفاوت‌ها با جدول بالا: `v_shift_consumption_v1` ستون‌های `ledger_id` و `item_name` هم دارد؛ `v_shift_cash_receipts_v1` جمع نقد هر فاکتور است و `v_shift_payment_lines_v1` ردیف‌های کارت/نقد را می‌دهد؛ مبلغ‌ها از جدول `invoice_payment_lines` می‌آیند که **هنگام بستن فاکتور** پر می‌شود (فقط از زمان استقرار؛ فاکتورهای قدیمی ردیف ندارند)؛ viewهای ثبت بیمار فقط اعتبار کد ملی و موبایل را می‌دهند، نه خود شماره را (حریم خصوصی). `v_shift_voids_v1` منتظر Q-08.
+
 ## ۳. کارهای لازم در حسابداری (ACC-2.11)
 
 1. **نگاشت کالا:** ستون nullable `acc_code` (یا جدول `consumable_stock_map`) برای ۸۵ تعرفهٔ مصرفی. این نگاشت را مدیر در صفحهٔ تعرفه پر می‌کند.
