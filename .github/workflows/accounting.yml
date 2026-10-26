@@ -1,0 +1,78 @@
+name: accounting
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/accounting/**", ".github/workflows/accounting.yml"]
+  pull_request:
+    paths: ["apps/accounting/**", ".github/workflows/accounting.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: accounting-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/accounting
+    shell: pwsh
+
+jobs:
+  test:
+    # Windows: the product ships as a Windows exe (ADR-007).
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/accounting/requirements-dev.lock
+      - run: python -m pip install -r requirements-dev.lock
+      - name: Guard — no databases or real data in the repo (ADR-006)
+        working-directory: .
+        run: |
+          $bad = git ls-files | Select-String -Pattern '\.(db|sqlite3?|db-wal|db-shm)$'
+          if ($bad) { Write-Error "database files are tracked: $bad"; exit 1 }
+      - run: ruff check .
+      - run: ruff format --check .
+      - name: Tests (synthetic data only; prod_snapshot tests are deselected)
+        run: python -m pytest --cov=src --cov=tools --cov-report=term-missing:skip-covered --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: apps/accounting/coverage.xml
+
+  build-exe:
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/accounting/requirements-dev.lock
+      - run: python -m pip install -r requirements-dev.lock
+      - run: pyinstaller --noconfirm HesabdariSib.spec
+      - name: Smoke — exe starts on a fresh DB and serves the login page
+        run: |
+          $dir = New-Item -ItemType Directory -Force smoke
+          Copy-Item dist/HesabdariSib.exe $dir
+          $p = Start-Process -FilePath "$dir/HesabdariSib.exe" -WorkingDirectory $dir -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 2
+            try { $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8080/auth/login; $ok = $r.StatusCode -eq 200 } catch {}
+          }
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { Write-Error "exe did not serve /auth/login"; exit 1 }
+          if (-not (Test-Path "$dir/clinic_new.db")) { Write-Error "exe did not create its database next to itself"; exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HesabdariSib-${{ github.sha }}
+          path: apps/accounting/dist/HesabdariSib.exe
+          retention-days: 30

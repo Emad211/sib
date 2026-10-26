@@ -1,0 +1,9 @@
+# Lint only code written under the new standards (E01). Legacy src/ is brought in
+# file by file as it is refactored in phase 2 (A05) — add each cleaned path here.
+line-length = 120
+target-version = "py313"
+include = ["tools/**/*.py", "tests/test_route_matrix.py", "tests/test_prod_snapshot.py"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
