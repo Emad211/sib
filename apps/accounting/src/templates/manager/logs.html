@@ -259,7 +259,7 @@
           </td>
           <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;" title="{{ log.description }}">{{ log.description }}</td>
           <td>{% if log.patient_name %}{{ log.patient_name }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
-          <td class="num">{% if log.invoice_id %}{{ log.invoice_id }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+          <td class="num">{% if log.invoice_id %}<a href="{{ url_for('manager.invoice_history', invoice_id=log.invoice_id) }}" style="color:#a78bfa;">{{ log.invoice_id }}</a>{% else %}<span class="text-muted">-</span>{% endif %}</td>
           <td class="num">{% if log.amount %}{{ '{:,.0f}'.format(log.amount|float) }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
         </tr>
         {% else %}

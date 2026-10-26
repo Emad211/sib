@@ -180,7 +180,7 @@
       margin-top: 0.6rem;
     }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 1rem 0.9rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    th, td { padding: 0.7rem 0.55rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.04); }
     th { color: #9ca3af; font-size: 1rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; position: sticky; top: 0; background: #16202b; }
     td { color: #f3f4f6; font-size: 1rem; }
     tr:hover { background: rgba(255,255,255,0.02); }
@@ -335,7 +335,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>عملیات</th></tr>
+                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>آخرین ورود</th><th>فعالیت ۳۰ روز</th><th>عملیات</th></tr>
               </thead>
               <tbody>
                 {% for u in managers %}
@@ -343,9 +343,19 @@
                   <td>{{ loop.index }}</td>
                   <td>{{ u.full_name }}</td>
                   <td>{{ u.username }}</td>
-                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}{% if u.is_locked %} <span class="status-inactive">🔒 قفل</span>{% endif %}</td>
+                  <td>{{ u.last_login_fa }}</td>
+                  <td>{{ u.ops_30d }}</td>
                   <td class="actions">
-                    <button type="button" class="btn-edit" onclick="openUserModal({{ u.id }}, '{{ u.username }}', '{{ u.full_name }}', '{{ u.role }}', {{ u.is_active }})">ویرایش</button>
+                    {% if u.is_locked %}
+                    <form method="post" style="display:inline;">
+                      <input type="hidden" name="action" value="unlock">
+                      <input type="hidden" name="entity_type" value="user">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <button type="submit" class="btn-edit">باز کردن قفل</button>
+                    </form>
+                    {% endif %}
+                    <button type="button" class="btn-edit" onclick='openUserModal({{ u.id }}, {{ u.username|tojson }}, {{ u.full_name|tojson }}, {{ u.role|tojson }}, {{ u.is_active }})'>ویرایش</button>
                     {% if u.id != g.user.id %}
                     <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
@@ -358,7 +368,7 @@
                 </tr>
                 {% endfor %}
                 {% if not managers %}
-                <tr><td colspan="5" class="empty-state">هیچ مدیری تعریف نشده</td></tr>
+                <tr><td colspan="7" class="empty-state">هیچ مدیری تعریف نشده</td></tr>
                 {% endif %}
               </tbody>
             </table>
@@ -397,7 +407,7 @@
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>عملیات</th></tr>
+                <tr><th>#</th><th>نام</th><th>نام کاربری</th><th>وضعیت</th><th>آخرین ورود</th><th>فعالیت ۳۰ روز</th><th>عملیات</th></tr>
               </thead>
               <tbody>
                 {% for u in receptions %}
@@ -405,9 +415,19 @@
                   <td>{{ loop.index }}</td>
                   <td>{{ u.full_name }}</td>
                   <td>{{ u.username }}</td>
-                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
+                  <td>{% if u.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}{% if u.is_locked %} <span class="status-inactive">🔒 قفل</span>{% endif %}</td>
+                  <td>{{ u.last_login_fa }}</td>
+                  <td>{{ u.ops_30d }}</td>
                   <td class="actions">
-                    <button type="button" class="btn-edit" onclick="openUserModal({{ u.id }}, '{{ u.username }}', '{{ u.full_name }}', '{{ u.role }}', {{ u.is_active }})">ویرایش</button>
+                    {% if u.is_locked %}
+                    <form method="post" style="display:inline;">
+                      <input type="hidden" name="action" value="unlock">
+                      <input type="hidden" name="entity_type" value="user">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <button type="submit" class="btn-edit">باز کردن قفل</button>
+                    </form>
+                    {% endif %}
+                    <button type="button" class="btn-edit" onclick='openUserModal({{ u.id }}, {{ u.username|tojson }}, {{ u.full_name|tojson }}, {{ u.role|tojson }}, {{ u.is_active }})'>ویرایش</button>
                     <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="entity_type" value="user">
@@ -418,7 +438,7 @@
                 </tr>
                 {% endfor %}
                 {% if not receptions %}
-                <tr><td colspan="5" class="empty-state">هیچ پذیرشی تعریف نشده</td></tr>
+                <tr><td colspan="7" class="empty-state">هیچ پذیرشی تعریف نشده</td></tr>
                 {% endif %}
               </tbody>
             </table>
@@ -463,7 +483,7 @@
                   <td>{{ s.full_name }}</td>
                   <td>{% if s.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
                   <td class="actions">
-                    <button type="button" class="btn-edit" onclick="openStaffModal({{ s.id }}, '{{ s.full_name }}', '{{ s.staff_type }}', {{ s.is_active }})">ویرایش</button>
+                    <button type="button" class="btn-edit" onclick='openStaffModal({{ s.id }}, {{ s.full_name|tojson }}, {{ s.staff_type|tojson }}, {{ s.is_active }})'>ویرایش</button>
                     <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="entity_type" value="staff">
@@ -514,7 +534,7 @@
                   <td>{{ s.full_name }}</td>
                   <td>{% if s.is_active %}<span class="status-active">✓ فعال</span>{% else %}<span class="status-inactive">✗ غیرفعال</span>{% endif %}</td>
                   <td class="actions">
-                    <button type="button" class="btn-edit" onclick="openStaffModal({{ s.id }}, '{{ s.full_name }}', '{{ s.staff_type }}', {{ s.is_active }})">ویرایش</button>
+                    <button type="button" class="btn-edit" onclick='openStaffModal({{ s.id }}, {{ s.full_name|tojson }}, {{ s.staff_type|tojson }}, {{ s.is_active }})'>ویرایش</button>
                     <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="entity_type" value="staff">

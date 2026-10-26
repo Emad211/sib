@@ -278,6 +278,23 @@
    "status": 302
   }
  },
+ "GET /manager/invoice/<int:invoice_id>/history [manager.invoice_history]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "GET /manager/logs [manager.activity_logs]": {
   "anon": {
    "location": "/auth/login",
@@ -551,6 +568,23 @@
   }
  },
  "GET /manager/tariffs/consumables [manager.consumables_tariffs]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
+ "GET /manager/tariffs/history [manager.tariff_history]": {
   "anon": {
    "location": "/auth/login",
    "status": 302

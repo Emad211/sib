@@ -127,7 +127,7 @@ def test_unset_payment_only_counts_the_last_seven_work_days(db):
 
 def test_paid_items_are_not_flagged(db):
     item(db, invoice(db), payment="card")
-    item(db, invoice(db), payment="cash")
+    item(db, invoice(db, shift="evening"), payment="cash")
     assert keys(db) == {}
 
 
@@ -140,8 +140,8 @@ def test_empty_closed_invoice_is_flagged_but_zero_total_with_items_is_not(db):
 
 
 def test_heavy_deleter_threshold_is_twenty_per_user_per_day(db):
-    def deletes(user, n, day="2026-09-24"):
-        inv = invoice(db, work_date=day)
+    def deletes(user, n, day="2026-09-24", shift="morning"):
+        inv = invoice(db, work_date=day, shift=shift)
         item(db, inv)
         for _ in range(n):
             db.execute(
@@ -150,10 +150,10 @@ def test_heavy_deleter_threshold_is_twenty_per_user_per_day(db):
             )
         db.commit()
 
-    item(db, invoice(db))  # gives the window a reference work date
+    item(db, invoice(db, shift="night"))  # gives the window a reference work date
     deletes("a", 19)
-    deletes("b", 20)
-    deletes("c", 30, day="2026-08-01")  # outside the 7-day window
+    deletes("b", 20, shift="evening")
+    deletes("c", 30, day="2026-08-01", shift="night")  # outside the 7-day window
     assert keys(db) == {"heavy_deletes": 1}
     rows = mi.attention_detail(db, "heavy_deletes", NOW)[3]
     assert rows == [["b", mi.jalali_date("2026-09-24"), 20, 20000]]

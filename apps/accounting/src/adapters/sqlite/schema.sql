@@ -360,3 +360,18 @@ CREATE INDEX IF NOT EXISTS idx_medical_staff_type_active ON medical_staff (staff
 
 -- Payments: frequently queried by invoice_id
 CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON invoice_item_payments (invoice_id);
+
+-- Tariff change history (migration 0003): who changed which tariff, when, from what to what.
+CREATE TABLE IF NOT EXISTS tariff_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    changed_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    username TEXT,
+    kind TEXT NOT NULL,
+    tariff_id INTEGER,
+    label TEXT,
+    action TEXT NOT NULL,
+    field TEXT,
+    old_value TEXT,
+    new_value TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tariff_changes_changed_at ON tariff_changes (changed_at);

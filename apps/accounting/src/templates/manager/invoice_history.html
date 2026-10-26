@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>تاریخچهٔ فاکتور {{ inv.id }} - سیستم درمانگاه</title>
+    <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Vazirmatn', sans-serif; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100vh; color: #f1f5f9; padding: 2rem; }
+        .wrap { max-width: 1000px; margin: 0 auto; }
+        a.back { color: #a78bfa; text-decoration: none; font-size: .9rem; }
+        h1 { font-size: 1.4rem; margin: 1rem 0 1.2rem; }
+        .card { background: rgba(30, 41, 59, 0.6); border-radius: 20px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1.2rem; }
+        .card h2 { font-size: 1rem; margin-bottom: .9rem; }
+        .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .8rem 1.4rem; }
+        .facts div span { display: block; color: #94a3b8; font-size: .75rem; }
+        .facts div b { font-weight: 700; }
+        .status-open { color: #fbbf24; } .status-closed { color: #6ee7b7; }
+        table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+        th, td { padding: .6rem .7rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th { color: #94a3b8; font-weight: 600; font-size: .78rem; }
+        .table-scroll { overflow-x: auto; }
+        .timeline { list-style: none; border-right: 2px solid rgba(167,139,250,.35); padding-right: 1rem; }
+        .timeline li { position: relative; padding: .45rem 0; }
+        .timeline li::before { content: ''; position: absolute; right: -1.37rem; top: .85rem; width: 9px; height: 9px; border-radius: 50%; background: #a78bfa; }
+        .timeline .t { color: #94a3b8; font-size: .75rem; margin-left: .6rem; }
+        .timeline .del { color: #fca5a5; }
+        .muted { color: #94a3b8; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <a class="back" href="{{ url_for('manager.activity_logs', invoice_id=inv.id) }}">→ لاگ این فاکتور</a>
+    <h1>تاریخچهٔ فاکتور {{ inv.id }}</h1>
+
+    <div class="card">
+        <div class="facts">
+            <div><span>بیمار</span><b>{{ inv.patient_name }}</b></div>
+            <div><span>وضعیت</span><b class="status-{{ inv.status }}">{{ 'بسته' if inv.status == 'closed' else 'باز' }}</b></div>
+            <div><span>تاریخ کاری / شیفت</span><b>{{ date_fa }} · {{ {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}.get(inv.shift, inv.shift or '—') }}</b></div>
+            <div><span>بیمه</span><b>{{ inv.insurance_type or '—' }}{% if inv.supplementary_insurance %} + {{ inv.supplementary_insurance }}{% endif %}</b></div>
+            <div><span>باز شد</span><b>{{ opened_fa }} · {{ inv.opened_by_fa or '—' }}</b></div>
+            <div><span>بسته شد</span><b>{% if inv.closed_at %}{{ closed_fa }} · {{ inv.closed_by_fa or '—' }}{% else %}—{% endif %}</b></div>
+            <div><span>مبلغ نهایی (سهم بیمار)</span><b>{{ "{:,.0f}".format(inv.total_amount or 0) }}</b></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>آیتم‌های فعلی</h2>
+        {% if items %}
+        <div class="table-scroll"><table>
+            <thead><tr><th>نوع</th><th>عنوان</th><th>مبلغ</th></tr></thead>
+            <tbody>{% for it in items %}<tr><td>{{ it.kind }}</td><td>{{ it.name or '—' }}</td><td>{{ "{:,.0f}".format(it.amount) }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="muted">فاکتور آیتمی ندارد.</div>{% endif %}
+    </div>
+
+    <div class="card">
+        <h2>رویدادها به ترتیب زمان</h2>
+        {% if events %}
+        <ul class="timeline">
+            {% for e in events %}
+            <li class="{{ 'del' if e.action_type.endswith('_delete') else '' }}">
+                <span class="t">{{ e.at_fa }}</span>
+                <b>{{ e.username or '—' }}</b> · {{ e.action_fa }}
+                {% if e.description and e.description != e.action_fa %}<span class="muted"> — {{ e.description }}</span>{% endif %}
+                {% if e.target_name %}<span class="muted"> ({{ e.target_name }})</span>{% endif %}
+                {% if e.amount %}<span class="muted"> · {{ "{:,.0f}".format(e.amount) }}</span>{% endif %}
+                {% if e.old_value or e.new_value %}<span class="muted"> · {{ e.old_value or '' }} ← {{ e.new_value or '' }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}<div class="muted">رویدادی ثبت نشده است.</div>{% endif %}
+    </div>
+</div>
+</body>
+</html>
