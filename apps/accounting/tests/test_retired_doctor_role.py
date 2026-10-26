@@ -53,22 +53,49 @@ def test_login_page_has_no_doctor_tab(synthetic_app):
 def test_manager_cannot_create_or_promote_to_unknown_role(synthetic_app):
     c = synthetic_app.test_client()
     login_as(c, synthetic_app, "manager1")
-    c.post("/manager/users", data={"entity_type": "user", "action": "add", "username": "newdoc",
-                                   "password": "x-pass-123", "full_name": "د", "role": "doctor"})
+    c.post(
+        "/manager/users",
+        data={
+            "entity_type": "user",
+            "action": "add",
+            "username": "newdoc",
+            "password": "x-pass-123",
+            "full_name": "د",
+            "role": "doctor",
+        },
+    )
     assert _q(synthetic_app, "SELECT 1 FROM users WHERE username='newdoc'") == []
 
     rid = _q(synthetic_app, "SELECT id FROM users WHERE username='reception2'")[0][0]
-    c.post("/manager/users", data={"entity_type": "user", "action": "update", "user_id": rid,
-                                   "username": "reception2", "full_name": "پذیرش دو",
-                                   "role": "superuser", "is_active": "1"})
+    c.post(
+        "/manager/users",
+        data={
+            "entity_type": "user",
+            "action": "update",
+            "user_id": rid,
+            "username": "reception2",
+            "full_name": "پذیرش دو",
+            "role": "superuser",
+            "is_active": "1",
+        },
+    )
     assert _q(synthetic_app, "SELECT role FROM users WHERE id=?", rid) == [("reception",)]
 
 
 def test_manager_can_still_add_reception_user(synthetic_app):
     c = synthetic_app.test_client()
     login_as(c, synthetic_app, "manager1")
-    c.post("/manager/users", data={"entity_type": "user", "action": "add", "username": "rec9",
-                                   "password": "x-pass-123", "full_name": "پذیرش نه", "role": "reception"})
+    c.post(
+        "/manager/users",
+        data={
+            "entity_type": "user",
+            "action": "add",
+            "username": "rec9",
+            "password": "x-pass-123",
+            "full_name": "پذیرش نه",
+            "role": "reception",
+        },
+    )
     assert _q(synthetic_app, "SELECT role FROM users WHERE username='rec9'") == [("reception",)]
 
 
@@ -76,9 +103,20 @@ def test_adding_doctor_staff_creates_no_login(synthetic_app):
     c = synthetic_app.test_client()
     login_as(c, synthetic_app, "manager1")
     users_before = _q(synthetic_app, "SELECT COUNT(*) FROM users")[0][0]
-    c.post("/manager/users", data={"entity_type": "staff", "action": "add", "staff_type": "doctor",
-                                   "full_name": "دکتر تازه", "username": "drnew", "password": "x-pass-123"})
-    assert _q(synthetic_app, "SELECT staff_type, is_active FROM medical_staff WHERE full_name='دکتر تازه'") == [("doctor", 1)]
+    c.post(
+        "/manager/users",
+        data={
+            "entity_type": "staff",
+            "action": "add",
+            "staff_type": "doctor",
+            "full_name": "دکتر تازه",
+            "username": "drnew",
+            "password": "x-pass-123",
+        },
+    )
+    assert _q(synthetic_app, "SELECT staff_type, is_active FROM medical_staff WHERE full_name='دکتر تازه'") == [
+        ("doctor", 1)
+    ]
     assert _q(synthetic_app, "SELECT COUNT(*) FROM users")[0][0] == users_before
 
 
