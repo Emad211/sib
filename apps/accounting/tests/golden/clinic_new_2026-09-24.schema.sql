@@ -1,25 +1,4 @@
 -- user_version = 0
-CREATE INDEX idx_activity_logs_created_at ON activity_logs (created_at DESC);
-CREATE INDEX idx_activity_logs_invoice_id ON activity_logs (invoice_id);
-CREATE INDEX idx_activity_logs_user_id ON activity_logs (user_id);
-CREATE INDEX idx_consumables_invoice_id ON consumables_ledger (invoice_id);
-CREATE INDEX idx_consumables_work_date ON consumables_ledger (work_date);
-CREATE INDEX idx_injections_invoice_id ON injections (invoice_id);
-CREATE INDEX idx_injections_patient_id ON injections (patient_id);
-CREATE INDEX idx_injections_work_date ON injections (work_date);
-CREATE INDEX idx_invoices_patient_id ON invoices (patient_id);
-CREATE INDEX idx_invoices_status ON invoices (status);
-CREATE INDEX idx_invoices_status_opened_at ON invoices (status, opened_at DESC);
-CREATE INDEX idx_invoices_work_date ON invoices (work_date);
-CREATE INDEX idx_medical_staff_type_active ON medical_staff (staff_type, is_active);
-CREATE INDEX idx_patients_national_id ON patients (national_id);
-CREATE INDEX idx_payments_invoice_id ON invoice_item_payments (invoice_id);
-CREATE INDEX idx_procedures_invoice_id ON procedures (invoice_id);
-CREATE INDEX idx_procedures_patient_id ON procedures (patient_id);
-CREATE INDEX idx_procedures_work_date ON procedures (work_date);
-CREATE INDEX idx_visits_invoice_id ON visits (invoice_id);
-CREATE INDEX idx_visits_patient_id ON visits (patient_id);
-CREATE INDEX idx_visits_work_date ON visits (work_date);
 CREATE TABLE activity_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -302,3 +281,24 @@ CREATE TABLE visits (
     FOREIGN KEY (doctor_id) REFERENCES medical_staff (id),
     FOREIGN KEY (nurse_id) REFERENCES medical_staff (id)
 );
+CREATE INDEX idx_activity_logs_created_at ON activity_logs (created_at DESC);
+CREATE INDEX idx_activity_logs_invoice_id ON activity_logs (invoice_id);
+CREATE INDEX idx_activity_logs_user_id ON activity_logs (user_id);
+CREATE INDEX idx_consumables_invoice_id ON consumables_ledger (invoice_id);
+CREATE INDEX idx_consumables_work_date ON consumables_ledger (work_date);
+CREATE INDEX idx_injections_invoice_id ON injections (invoice_id);
+CREATE INDEX idx_injections_patient_id ON injections (patient_id);
+CREATE INDEX idx_injections_work_date ON injections (work_date);
+CREATE INDEX idx_invoices_patient_id ON invoices (patient_id);
+CREATE INDEX idx_invoices_status ON invoices (status);
+CREATE INDEX idx_invoices_status_opened_at ON invoices (status, opened_at DESC);
+CREATE INDEX idx_invoices_work_date ON invoices (work_date);
+CREATE INDEX idx_medical_staff_type_active ON medical_staff (staff_type, is_active);
+CREATE INDEX idx_patients_national_id ON patients (national_id);
+CREATE INDEX idx_payments_invoice_id ON invoice_item_payments (invoice_id);
+CREATE INDEX idx_procedures_invoice_id ON procedures (invoice_id);
+CREATE INDEX idx_procedures_patient_id ON procedures (patient_id);
+CREATE INDEX idx_procedures_work_date ON procedures (work_date);
+CREATE INDEX idx_visits_invoice_id ON visits (invoice_id);
+CREATE INDEX idx_visits_patient_id ON visits (patient_id);
+CREATE INDEX idx_visits_work_date ON visits (work_date);

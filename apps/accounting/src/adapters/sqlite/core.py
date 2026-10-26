@@ -1,259 +1,132 @@
-import sqlite3
-import pkgutil
+"""SQLite connection handling, first-run schema creation and versioned migrations.
+
+A fresh database gets `schema.sql`; every database (fresh or existing) is then brought
+to the latest version by `migrations.run_migrations` — once per process. Migration
+failures are NOT swallowed any more (DATA-04): `MigrationError` propagates so the
+program refuses to run on a half-migrated schema; `start.py` shows it to the user.
+"""
+
+import logging
 import os
-from flask import g
-from src.config.settings import Config
+import pkgutil
+import sqlite3
 import sys
 
-def _ensure_column(db, table: str, column: str, decl_sql: str) -> None:
-    try:
-        cols = db.execute(f"PRAGMA table_info({table})").fetchall()
-        if any(c["name"] == column for c in cols):
-            return
-        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl_sql}")
-        db.commit()
-    except Exception:
-        # Keep app usable even if migration fails.
-        pass
+from flask import current_app, g, has_app_context
 
+from src.adapters.sqlite.migrations import MigrationError, MigrationReport, run_migrations
+from src.config.settings import Config
 
-def _ensure_work_date_columns(db) -> None:
-    """Ensure `work_date` exists on operational tables.
+log = logging.getLogger(__name__)
 
-    Manual shifts can span midnight (especially night shift). Relying on
-    DATE(timestamp) splits a single work shift across two calendar dates.
-    We persist `work_date` so reports/ledgers can stay consistent.
-    """
-    _ensure_column(db, "invoices", "work_date", "TEXT")
-    _ensure_column(db, "invoices", "shift", "TEXT")
-    _ensure_column(db, "visits", "work_date", "TEXT")
-    _ensure_column(db, "injections", "work_date", "TEXT")
-    _ensure_column(db, "procedures", "work_date", "TEXT")
-    _ensure_column(db, "consumables_ledger", "work_date", "TEXT")
-
-    # Best-effort backfill for existing rows.
-    try:
-        db.execute("UPDATE invoices SET work_date = substr(opened_at, 1, 10) WHERE work_date IS NULL OR work_date = ''")
-        
-        # Backfill shift for invoices based on hour
-        db.execute("""
-            UPDATE invoices SET shift = CASE 
-                WHEN strftime('%H', opened_at) BETWEEN '07' AND '13' THEN 'morning'
-                WHEN strftime('%H', opened_at) BETWEEN '14' AND '19' THEN 'evening'
-                ELSE 'night'
-            END
-            WHERE shift IS NULL OR shift = ''
-        """)
-
-        db.execute("UPDATE visits SET work_date = substr(visit_date, 1, 10) WHERE work_date IS NULL OR work_date = ''")
-        db.execute("UPDATE injections SET work_date = substr(injection_date, 1, 10) WHERE work_date IS NULL OR work_date = ''")
-        db.execute("UPDATE procedures SET work_date = substr(procedure_date, 1, 10) WHERE work_date IS NULL OR work_date = ''")
-        db.execute("UPDATE consumables_ledger SET work_date = substr(usage_date, 1, 10) WHERE work_date IS NULL OR work_date = ''")
-        db.commit()
-    except Exception:
-        pass
-
-
-def _ensure_user_staff_link(db) -> None:
-    """Ensure optional linkage between users and medical_staff.
-
-    Used for doctor accounts created from the management panel.
-    """
-    _ensure_column(db, "users", "staff_id", "INTEGER")
-
-
-def _ensure_indexes(db) -> None:
-    """Create performance indexes if they don't exist."""
-    try:
-        # Invoices indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_invoices_work_date ON invoices (work_date)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_invoices_patient_id ON invoices (patient_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_invoices_status_opened_at ON invoices (status, opened_at DESC)")
-        
-        # Visits indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_visits_invoice_id ON visits (invoice_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_visits_work_date ON visits (work_date)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_visits_patient_id ON visits (patient_id)")
-        
-        # Injections indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_injections_invoice_id ON injections (invoice_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_injections_work_date ON injections (work_date)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_injections_patient_id ON injections (patient_id)")
-        
-        # Procedures indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_procedures_invoice_id ON procedures (invoice_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_procedures_work_date ON procedures (work_date)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_procedures_patient_id ON procedures (patient_id)")
-        
-        # Consumables indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_consumables_invoice_id ON consumables_ledger (invoice_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_consumables_work_date ON consumables_ledger (work_date)")
-        
-        # Patients indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_patients_national_id ON patients (national_id)")
-        
-        # Activity logs indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs (created_at DESC)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs (user_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_invoice_id ON activity_logs (invoice_id)")
-        
-        # Medical staff indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_medical_staff_type_active ON medical_staff (staff_type, is_active)")
-        
-        # Payments indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_payments_invoice_id ON invoice_item_payments (invoice_id)")
-
-        # Users indexes
-        db.execute("CREATE INDEX IF NOT EXISTS idx_users_staff_id ON users (staff_id)")
-        
-        db.commit()
-    except Exception:
-        pass
-
-
-def _ensure_settings_table(db) -> None:
-    """Ensure settings table exists for existing databases."""
-    try:
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key TEXT UNIQUE NOT NULL,
-                value TEXT,
-                created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
-                updated_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes'))
-            )
-        """)
-        db.commit()
-    except Exception:
-        pass
-
-
-
-def _load_schema_and_initialize(db):
-    """Load bundled schema.sql (works in source and frozen modes) and run it."""
-    # Try to load schema from package data (works when bundled by PyInstaller)
-    schema_bytes = None
-    try:
-        schema_bytes = pkgutil.get_data('src.adapters.sqlite', 'schema.sql')
-    except Exception:
-        schema_bytes = None
-
-    if schema_bytes:
-        schema_text = schema_bytes.decode('utf-8')
-    else:
-        schema_text = None
-
-        # Fallback 1: read next to this module (development / some bundling modes)
-        try:
-            schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-            if os.path.exists(schema_path):
-                with open(schema_path, 'r', encoding='utf-8') as f:
-                    schema_text = f.read()
-        except Exception:
-            schema_text = None
-
-        # Fallback 2: PyInstaller onefile extraction dir
-        if schema_text is None:
-            try:
-                meipass = getattr(sys, '_MEIPASS', None)
-                if meipass:
-                    # ابتدا در مسیر src/adapters/sqlite بگرد
-                    schema_path = os.path.join(meipass, 'src', 'adapters', 'sqlite', 'schema.sql')
-                    if os.path.exists(schema_path):
-                        with open(schema_path, 'r', encoding='utf-8') as f:
-                            schema_text = f.read()
-                    else:
-                        # سپس در ریشه _MEIPASS بگرد
-                        schema_path = os.path.join(meipass, 'schema.sql')
-                        if os.path.exists(schema_path):
-                            with open(schema_path, 'r', encoding='utf-8') as f:
-                                schema_text = f.read()
-            except Exception:
-                schema_text = None
-
-        # Fallback 3: next to executable / project root
-        if schema_text is None:
-            try:
-                schema_path = os.path.join(Config.PROJECT_ROOT, 'schema.sql')
-                if os.path.exists(schema_path):
-                    with open(schema_path, 'r', encoding='utf-8') as f:
-                        schema_text = f.read()
-            except Exception:
-                schema_text = None
-
-        if schema_text is None:
-            raise FileNotFoundError('schema.sql not found in package data or fallback locations')
-
-    db.executescript(schema_text)
-
-
-# Module-level flag to track if migrations have run in this process
+# Module-level flag: migrations run once per process, not per request.
 _migrations_done = False
+last_migration_report: MigrationReport | None = None
+
+__all__ = ["get_db", "close_connection", "ensure_database_ready", "MigrationError", "last_migration_report"]
 
 
-def get_db():
-    global _migrations_done
-    db = getattr(g, '_database', None)
-    if db is None:
-        # Ensure directory exists for DB file
-        db_path = Config.DATABASE_PATH
-        db_dir = os.path.dirname(db_path)
-        if db_dir and not os.path.exists(db_dir):
-            try:
-                os.makedirs(db_dir, exist_ok=True)
-            except Exception:
-                pass
+def _read_schema_sql() -> str:
+    """Load bundled schema.sql in source and PyInstaller (frozen) modes."""
+    try:
+        data = pkgutil.get_data("src.adapters.sqlite", "schema.sql")
+        if data:
+            return data.decode("utf-8")
+    except Exception:  # noqa: BLE001 — fall through to the file-system candidates
+        log.debug("schema.sql not available through pkgutil", exc_info=True)
+    candidates = [os.path.join(os.path.dirname(__file__), "schema.sql")]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates += [
+            os.path.join(meipass, "src", "adapters", "sqlite", "schema.sql"),
+            os.path.join(meipass, "schema.sql"),
+        ]
+    candidates.append(os.path.join(Config.PROJECT_ROOT, "schema.sql"))
+    for path in candidates:
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+    raise FileNotFoundError("schema.sql not found in package data or fallback locations")
 
-        # Connect (this will create the file if missing)
-        db = g._database = sqlite3.connect(db_path)
-        db.row_factory = sqlite3.Row
 
-        # Simple check: if users table missing, initialize schema
-        try:
-            cur = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-            if not cur.fetchone():
-                _load_schema_and_initialize(db)
-                _migrations_done = False  # Force migrations after schema init
-        except Exception:
-            # If anything goes wrong here, try to initialize schema anyway
-            try:
-                _load_schema_and_initialize(db)
-                _migrations_done = False
-            except Exception:
-                pass
+def _load_schema_and_initialize(db: sqlite3.Connection) -> None:
+    db.executescript(_read_schema_sql())
 
-        # Run migrations only ONCE per process (not per request)
-        if not _migrations_done:
-            _ensure_work_date_columns(db)
-            _ensure_user_staff_link(db)
-            _ensure_indexes(db)  # Create performance indexes
-            _ensure_settings_table(db)  # Create settings table if missing
-            _migrations_done = True
 
+def _backup_folder() -> str:
+    if has_app_context():
+        folder = current_app.config.get("BACKUP_FOLDER")
+        if folder:
+            return folder
+    return Config.BACKUP_FOLDER
+
+
+def _prepare(db: sqlite3.Connection, db_path: str) -> MigrationReport:
+    """Create the schema on an empty file, then apply pending migrations."""
+    has_users = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+    fresh = not has_users
+    if fresh:
+        _load_schema_and_initialize(db)
+
+    def backup():
+        if fresh or db_path == ":memory:":
+            return None
+        from src.services.backup import KIND_PRE_MIGRATION, create_backup
+
+        return create_backup(db_path, _backup_folder(), KIND_PRE_MIGRATION).name
+
+    return run_migrations(db, backup=backup)
+
+
+def _connect(db_path: str) -> sqlite3.Connection:
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    db = sqlite3.connect(db_path)
+    db.row_factory = sqlite3.Row
     return db
+
+
+def ensure_database_ready(db_path: str | None = None) -> MigrationReport:
+    """Run schema creation + migrations outside a request (called by start.py)."""
+    global _migrations_done, last_migration_report
+    path = db_path or Config.DATABASE_PATH
+    db = _connect(path)
+    try:
+        last_migration_report = _prepare(db, path)
+    finally:
+        db.close()
+    _migrations_done = True
+    return last_migration_report
+
+
+def get_db() -> sqlite3.Connection:
+    global _migrations_done, last_migration_report
+    db = getattr(g, "_database", None)
+    if db is None:
+        db_path = Config.DATABASE_PATH
+        db = g._database = _connect(db_path)
+        if not _migrations_done:
+            last_migration_report = _prepare(db, db_path)
+            _migrations_done = True
+    return db
+
 
 def close_connection(exception):
-    db = getattr(g, '_database', None)
+    db = getattr(g, "_database", None)
     if db is not None:
         db.close()
+        g._database = None
+
 
 def init_db():
-    """Initialize the database with the schema."""
-    db = get_db()
-    # We will execute schema creation scripts here
-    # For now, we just ensure connection works
-    return db
+    """Ensure the configured database exists and is migrated."""
+    return get_db()
+
 
 def init_db_command():
-    """Clear the existing data and create new tables."""
+    """Re-run schema.sql (idempotent CREATE ... IF NOT EXISTS) and migrations."""
     db = get_db()
-    
-    # Read schema file
-    import os
-    schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
-    
-    with open(schema_path, 'r', encoding='utf-8') as f:
-        db.executescript(f.read())
-    
-    print('Initialized the database.')
+    _load_schema_and_initialize(db)
+    run_migrations(db)
+    print("Initialized the database.")

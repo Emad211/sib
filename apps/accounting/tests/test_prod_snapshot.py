@@ -34,9 +34,10 @@ def snapshot():
     return path
 
 
-@pytest.fixture()
-def migrated_copy(snapshot, tmp_path):
-    """Copy the snapshot with the backup API, then let the app open it (runs migrations)."""
+@pytest.fixture(scope="module")
+def migrated_copy(snapshot, tmp_path_factory):
+    """ONE copy per run (disk: ~110 MB), migrated by the app. Tests must not write to it."""
+    tmp_path = tmp_path_factory.mktemp("prod_copy")
     copy = str(tmp_path / "prod_copy.db")
     src = sqlite3.connect(f"file:{snapshot}?mode=ro", uri=True)
     dst = sqlite3.connect(copy)
@@ -66,6 +67,8 @@ def migrated_copy(snapshot, tmp_path):
         yield app, copy
     finally:
         Config.DATABASE_PATH, core._migrations_done = old_path, old_flag
+        for f in tmp_path.glob("**/*.db"):
+            f.unlink(missing_ok=True)
 
 
 def test_snapshot_file_is_never_modified(snapshot, migrated_copy):
