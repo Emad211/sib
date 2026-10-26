@@ -262,8 +262,7 @@
    "status": 403
   },
   "manager": {
-   "error": "AttributeError @ manager.py:export_insurance_arrears",
-   "status": 500
+   "status": 200
   },
   "reception": {
    "status": 403
@@ -514,8 +513,8 @@
    "status": 302
   },
   "manager": {
-   "error": "TemplateNotFound @ manager.py:staff",
-   "status": 500
+   "location": "/manager/users",
+   "status": 302
   },
   "reception": {
    "location": "/reception/",
@@ -688,16 +687,16 @@
    "status": 302
   },
   "doctor": {
-   "error": "TemplateNotFound @ reception.py:my_shifts_report",
-   "status": 500
+   "location": "/reception/shift_performance",
+   "status": 302
   },
   "manager": {
-   "error": "TemplateNotFound @ reception.py:my_shifts_report",
-   "status": 500
+   "location": "/reception/shift_performance",
+   "status": 302
   },
   "reception": {
-   "error": "TemplateNotFound @ reception.py:my_shifts_report",
-   "status": 500
+   "location": "/reception/shift_performance",
+   "status": 302
   }
  },
  "GET /reception/new [reception.new_visit]": {

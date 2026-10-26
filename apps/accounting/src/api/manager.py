@@ -427,7 +427,7 @@ def export_invoices_csv():
         writer.writerow([
             r['id'], r['opened_at'] or '', r['closed_at'] or '', r['status'] or '',
             int(r['total_amount'] or 0), r['insurance_type'] or '', r['supplementary_insurance'] or '',
-            (r.get('opened_by_name') or r.get('opened_by') or ''), (r.get('closed_by_name') or r.get('closed_by') or ''), r['patient_name'] or ''
+            (r['opened_by_name'] or r['opened_by'] or ''), (r['closed_by_name'] or r['closed_by'] or ''), r['patient_name'] or ''
         ])
     resp = make_response(output.getvalue())
     resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
@@ -438,10 +438,10 @@ def export_invoices_csv():
 @bp.route('/staff')
 @login_required
 def staff():
-    """Staff management."""
+    """Staff are managed on the users page (BUG-02: manager/staff.html never existed)."""
     if g.user['role'] != 'manager':
         return redirect(url_for('reception.index'))
-    return render_template('manager/staff.html')
+    return redirect(url_for('manager.users_management'))
 
 
 def get_network_info():
@@ -2053,6 +2053,72 @@ def export_consumables_csv():
 
 # ===================== گزارش بیماران =====================
 
+def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_type=None):
+    """Rows of the patients report (page and CSV) — PERF-01 / ACC-1.10.
+
+    Previously 8 queries per patient (~20 s for 8 months of production data); now 8 queries
+    in total. Order and values are identical to the old loop (verified by the golden master):
+    patients appear in the order of `SELECT DISTINCT patient_id ...`, then a stable sort by
+    invoice count; totals keep the old int/float types (COALESCE(SUM(...), 0)).
+    """
+    rng = (start_date, end_date)
+    patient_ids = [r['patient_id'] for r in db.execute(
+        "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?", rng)]
+    in_range = "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?"
+
+    patients = {r['id']: r for r in db.execute(
+        f"SELECT id, name, family_name, national_id, phone_number FROM patients WHERE id IN ({in_range})", rng)}
+    inv = {r['patient_id']: r for r in db.execute(
+        """SELECT patient_id, COUNT(*) AS cnt, MAX(opened_at) AS last_date FROM invoices
+           WHERE work_date BETWEEN ? AND ? GROUP BY patient_id""", rng)}
+
+    def closed_sum(table, col):
+        return {r['patient_id']: r['total'] for r in db.execute(
+            f"""SELECT i.patient_id, COALESCE(SUM(x.{col}), 0) AS total FROM {table} x
+                JOIN invoices i ON i.id = x.invoice_id
+                WHERE i.work_date BETWEEN ? AND ? AND i.status = 'closed' GROUP BY i.patient_id""", rng)}
+
+    v_paid = closed_sum('visits', 'price')
+    inj_paid = closed_sum('injections', 'total_price')
+    pr_paid = closed_sum('procedures', 'price')
+    visits_count = {r['patient_id']: r['cnt'] for r in db.execute(
+        f"""SELECT i.patient_id, COUNT(*) AS cnt FROM visits v JOIN invoices i ON i.id = v.invoice_id
+            WHERE v.work_date BETWEEN ? AND ? AND i.patient_id IN ({in_range}) GROUP BY i.patient_id""",
+        rng + rng)}
+    last_ins = {r['patient_id']: r['insurance_type'] for r in db.execute(
+        f"""SELECT patient_id, insurance_type FROM (
+                SELECT i.patient_id, v.insurance_type,
+                       ROW_NUMBER() OVER (PARTITION BY i.patient_id ORDER BY v.visit_date DESC) AS rn
+                FROM visits v JOIN invoices i ON i.id = v.invoice_id
+                WHERE i.patient_id IN ({in_range}))
+            WHERE rn = 1""", rng)}
+
+    rows = []
+    for pid in patient_ids:
+        patient = patients.get(pid)
+        if not patient:
+            continue
+        full_name = f"{patient['name']} {patient['family_name']}"
+        if search_name and search_name.lower() not in full_name.lower():
+            continue
+        ins_type = last_ins.get(pid)
+        if insurance_type and ins_type != insurance_type:
+            continue
+        rows.append({
+            'id': pid,
+            'full_name': full_name,
+            'national_id': patient['national_id'] or '',
+            'phone': patient['phone_number'] or '',
+            'insurance_type': ins_type,
+            'invoices_count': inv[pid]['cnt'],
+            'visits_count': visits_count.get(pid, 0),
+            'total_paid': v_paid.get(pid, 0) + inj_paid.get(pid, 0) + pr_paid.get(pid, 0),
+            'last_visit': inv[pid]['last_date'],
+        })
+    rows.sort(key=lambda x: x['invoices_count'], reverse=True)
+    return rows
+
+
 @bp.route('/reports/patients')
 @login_required
 def patients_report():
@@ -2094,89 +2160,7 @@ def patients_report():
     end_date = end_dt.strftime('%Y-%m-%d')
 
     # گرفتن بیماران که در بازه زمانی فاکتور داشتند
-    patient_ids_sql = """
-        SELECT DISTINCT patient_id FROM invoices
-        WHERE work_date BETWEEN ? AND ?
-    """
-    patient_ids = [r['patient_id'] for r in db.execute(patient_ids_sql, (start_date, end_date)).fetchall()]
-
-    results = []
-    for pid in patient_ids:
-        patient = db.execute("SELECT * FROM patients WHERE id = ?", (pid,)).fetchone()
-        if not patient:
-            continue
-
-        # ساخت نام کامل
-        full_name = f"{patient['name']} {patient['family_name']}"
-
-        # فیلترها
-        if search_name and search_name.lower() not in full_name.lower():
-            continue
-
-        # آمار مراجعات
-        invoices_count = db.execute("""
-            SELECT COUNT(*) as cnt FROM invoices
-            WHERE patient_id = ? AND work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['cnt']
-
-        # جمع پرداخت‌ها - بدون مصرفی
-        # Revenue = visits + injections + procedures (NOT consumables)
-        v_paid = db.execute("""
-            SELECT COALESCE(SUM(v.price), 0) as total FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        inj_paid = db.execute("""
-            SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj
-            JOIN invoices i ON i.id = inj.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        pr_paid = db.execute("""
-            SELECT COALESCE(SUM(pr.price), 0) as total FROM procedures pr
-            JOIN invoices i ON i.id = pr.invoice_id
-            WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'
-        """, (pid, start_date, end_date)).fetchone()['total']
-        total_paid = v_paid + inj_paid + pr_paid
-
-        # ویزیت‌ها
-        visits_count = db.execute("""
-            SELECT COUNT(*) as cnt FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ? AND v.work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['cnt']
-
-        # آخرین مراجعه
-        last_visit = db.execute("""
-            SELECT MAX(opened_at) as last_date FROM invoices
-            WHERE patient_id = ? AND work_date BETWEEN ? AND ?
-        """, (pid, start_date, end_date)).fetchone()['last_date']
-
-        # بیمه (از آخرین ویزیت)
-        last_ins = db.execute("""
-            SELECT v.insurance_type FROM visits v
-            JOIN invoices i ON i.id = v.invoice_id
-            WHERE i.patient_id = ?
-            ORDER BY v.visit_date DESC LIMIT 1
-        """, (pid,)).fetchone()
-        ins_type = last_ins['insurance_type'] if last_ins else None
-
-        if insurance_type and ins_type != insurance_type:
-            continue
-
-        results.append({
-            'id': pid,
-            'full_name': full_name,
-            'national_id': patient['national_id'] if patient['national_id'] else '',
-            'phone': patient['phone_number'] if patient['phone_number'] else '',
-            'insurance_type': ins_type,
-            'invoices_count': invoices_count,
-            'visits_count': visits_count,
-            'total_paid': total_paid,
-            'last_visit': last_visit,
-        })
-
-    # مرتب‌سازی بر اساس تعداد مراجعات
-    results.sort(key=lambda x: x['invoices_count'], reverse=True)
+    results = _patients_report_rows(db, start_date, end_date, search_name, insurance_type)
 
     total_patients = len(results)
     total_revenue = sum(r['total_paid'] for r in results)
@@ -2264,40 +2248,19 @@ def export_patients_csv():
     start_date = start_dt.strftime('%Y-%m-%d')
     end_date = end_dt.strftime('%Y-%m-%d')
 
-    patient_ids = [r['patient_id'] for r in db.execute("SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?", (start_date, end_date)).fetchall()]
-
-    data = []
-    for pid in patient_ids:
-        patient = db.execute("SELECT * FROM patients WHERE id = ?", (pid,)).fetchone()
-        if not patient:
-            continue
-        full_name = f"{patient['name']} {patient['family_name']}"
-        if search_name and search_name.lower() not in full_name.lower():
-            continue
-
-        invoices_count = db.execute("SELECT COUNT(*) as cnt FROM invoices WHERE patient_id = ? AND work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['cnt']
-        # Revenue = visits + injections + procedures (NOT consumables)
-        v_paid = db.execute("SELECT COALESCE(SUM(v.price), 0) as total FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        inj_paid = db.execute("SELECT COALESCE(SUM(inj.total_price), 0) as total FROM injections inj JOIN invoices i ON i.id = inj.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        pr_paid = db.execute("SELECT COALESCE(SUM(pr.price), 0) as total FROM procedures pr JOIN invoices i ON i.id = pr.invoice_id WHERE i.patient_id = ? AND i.work_date BETWEEN ? AND ? AND i.status = 'closed'", (pid, start_date, end_date)).fetchone()['total']
-        total_paid = v_paid + inj_paid + pr_paid
-        visits_count = db.execute("SELECT COUNT(*) as cnt FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? AND v.work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['cnt']
-        last_visit = db.execute("SELECT MAX(opened_at) as last_date FROM invoices WHERE patient_id = ? AND work_date BETWEEN ? AND ?", (pid, start_date, end_date)).fetchone()['last_date']
-        last_ins = db.execute("SELECT v.insurance_type FROM visits v JOIN invoices i ON i.id = v.invoice_id WHERE i.patient_id = ? ORDER BY v.visit_date DESC LIMIT 1", (pid,)).fetchone()
-        ins_type = last_ins['insurance_type'] if last_ins else ''
-        if insurance_type and ins_type != insurance_type:
-            continue
-
-        phone = patient['phone_number'] if patient['phone_number'] else ''
-        national_id = patient['national_id'] if patient['national_id'] else ''
-        data.append([full_name, national_id, phone, ins_type or '', invoices_count, visits_count, total_paid, last_visit or ''])
-
-    data.sort(key=lambda x: x[4], reverse=True)
+    data = [[r['full_name'], r['national_id'], r['phone'], r['insurance_type'] or '', r['invoices_count'],
+             r['visits_count'], r['total_paid'], r['last_visit'] or '']
+            for r in _patients_report_rows(db, start_date, end_date, search_name, insurance_type)]
     headers = ['نام بیمار', 'کد ملی', 'تلفن', 'بیمه', 'تعداد فاکتور', 'تعداد ویزیت', 'جمع پرداخت (تومان)', 'آخرین مراجعه']
     return make_csv_response(data, headers, 'patients_report.csv')
 
 
 # ==================== معوقات بیمه ====================
+
+def _nursing_exclusion_pairs(db):
+    """{(insurance_type, nursing_service_id)} — the whole table is a few rows."""
+    return {(r[0], r[1]) for r in db.execute("SELECT insurance_type, nursing_service_id FROM insurance_nursing_exclusions")}
+
 
 @bp.route('/insurance_arrears')
 @login_required
@@ -2514,6 +2477,7 @@ def insurance_arrears():
     # فقط بیمه‌هایی که پرستاری را پوشش می‌دهند (nursing_covers = true)
     nursing_arrears = []
 
+    excluded_pairs = _nursing_exclusion_pairs(db)  # once per request, not once per row (PERF-01)
     for i in injections:
         ins_type = i['insurance_type']
         ins_tariff = insurance_tariffs.get(ins_type, {})
@@ -2532,8 +2496,7 @@ def insurance_arrears():
         except Exception:
             svc_id = None
         if svc_id:
-            row = db.execute("SELECT 1 FROM insurance_nursing_exclusions WHERE insurance_type = ? AND nursing_service_id = ? LIMIT 1", (ins_type, svc_id)).fetchone()
-            if row:
+            if (ins_type, svc_id) in excluded_pairs:
                 excluded = True
 
         include = bool(ins_tariff.get('nursing_covers', False) and not excluded)
@@ -2772,6 +2735,7 @@ def export_insurance_arrears():
                 insurance_debt
             ])
     
+    excluded_pairs = _nursing_exclusion_pairs(db)  # once per request, not once per row (PERF-01)
     for i in injections:
         ins_type = i['insurance_type']
         ins_tariff = insurance_tariffs.get(ins_type, {})
@@ -2779,13 +2743,11 @@ def export_insurance_arrears():
         if not ins_tariff.get('nursing_covers', False):
             continue
         # If this injection's service is excluded for this insurance, skip it
-        svc_id = i.get('service_id')
+        svc_id = i['service_id']  # BUG-01: sqlite3.Row has no .get()
         excluded = False
         try:
-            if svc_id is not None:
-                row = db.execute("SELECT 1 FROM insurance_nursing_exclusions WHERE insurance_type = ? AND nursing_service_id = ? LIMIT 1", (ins_type, svc_id)).fetchone()
-                if row:
-                    excluded = True
+            if svc_id is not None and (ins_type, svc_id) in excluded_pairs:
+                excluded = True
         except Exception:
             excluded = False
         if excluded:

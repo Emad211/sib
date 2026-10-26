@@ -1468,37 +1468,9 @@ def shift_performance():
 @bp.route('/my_shifts', methods=['GET'])
 @login_required
 def my_shifts_report():
-    """گزارش شیفت‌های پذیرش - نمایش شیفت فعلی و شیفت‌های قبلی ثبت‌شده"""
-    from src.adapters.sqlite.core import get_db
-    from src.common.utils import format_jalali_datetime
-    from src.common.jalali import Gregorian
-    from datetime import timedelta
-    
-    db = get_db()
-    username = g.user['username']
-    
-    # Current active shift
-    work_date = g.user_shift_status.get('work_date')
-    active_shift = g.user_shift_status.get('active_shift')
-
-    shift_names = {'morning': 'صبح', 'evening': 'عصر', 'night': 'شب'}
-
-    shifts_list = _get_user_shifts_list(db, username, work_date, active_shift)
-    
-    # Get selected shift (from query or current)
-    selected_work_date = request.args.get('work_date', work_date)
-    selected_shift = request.args.get('shift', active_shift)
-    
-    # ============ Detailed Report for Selected Shift ============
-    report = _generate_shift_report(db, selected_work_date, selected_shift, username)
-    
-    return render_template('reception/my_shifts.html',
-        shifts_list=shifts_list,
-        selected_work_date=selected_work_date,
-        selected_shift=selected_shift,
-        selected_shift_fa=shift_names.get(selected_shift, selected_shift),
-        report=report
-    )
+    """Same report as «عملکرد شیفت» (BUG-03: reception/my_shifts.html never existed)."""
+    args = {k: v for k, v in request.args.items() if k in ('work_date', 'shift')}
+    return redirect(url_for('reception.shift_performance', **args))
 
 
 def _generate_shift_report(db, work_date: str, shift: str, username: str) -> dict:

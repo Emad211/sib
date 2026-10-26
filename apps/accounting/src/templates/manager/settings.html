@@ -567,7 +567,7 @@
 
                     <div class="info-box">
                         <span class="icon">ℹ️</span>
-                        بکاپ خودکار هفتگی فعال است. هر هفته یک بکاپ خودکار ذخیره می‌شود.
+                        پشتیبان خودکار روزانه فعال است: هر روز پس از ساعت ۴ صبح و هر بار که برنامه باز می‌شود (اگر آخرین پشتیبان قدیمی‌تر از ۲۰ ساعت باشد). ۱۴ نسخهٔ روزانه، ۸ هفتگی و ۱۲ ماهانه نگه داشته می‌شود.
                     </div>
 
                     <div class="upload-area">
@@ -879,7 +879,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
                         <input type="hidden" name="action" value="save_settings">
 
                         <div class="toggle-group">
-                            <span class="toggle-label">بکاپ خودکار هفتگی</span>
+                            <span class="toggle-label">پشتیبان خودکار روزانه</span>
                             <label class="toggle-switch">
                                 <input type="checkbox" name="auto_backup" value="1" {% if settings.get('auto_backup', '1') == '1' %}checked{% endif %}>
                                 <span class="toggle-slider"></span>
@@ -888,7 +888,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
 
                         <div class="info-box" style="margin-top: 1rem;">
                             <span class="icon">📅</span>
-                            بکاپ خودکار هر هفته (شنبه‌ها) ساعت ۳ صبح انجام می‌شود.
+                            پشتیبان خودکار هر روز پس از ساعت ۴ صبح و هنگام باز شدن برنامه گرفته می‌شود. هر پشتیبان پس از ساخت از نظر سلامت بررسی می‌شود.
                         </div>
 
                         <button type="submit" class="btn btn-primary" style="margin-top: 1.25rem;">
@@ -989,11 +989,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
             }
             
             // اخطار سوم با تایپ کلمه
-            const userInput = prompt('⚠️ تایید نهایی
-
-برای تایید ریست دیتابیس، عبارت زیر را دقیقاً تایپ کنید:
-
-DELETE_ALL_DATA');
+            const userInput = prompt('⚠️ تایید نهایی\n\nبرای تایید ریست دیتابیس، عبارت زیر را دقیقاً تایپ کنید:\n\nDELETE_ALL_DATA');
 
             if (userInput !== 'DELETE_ALL_DATA') {
                 alert('عبارت وارد شده صحیح نیست. عملیات لغو شد.');
@@ -1040,13 +1036,25 @@ DELETE_ALL_DATA');
             });
         }
     </script>
-    <dialog id="reset-password-dialog" style="border:none;border-radius:16px;padding:24px;max-width:360px;font-family:inherit">
+    <style>
+        #reset-password-dialog { margin:auto; inset:0; border:1px solid rgba(255,255,255,.12); border-radius:18px;
+            padding:24px; width:min(380px, calc(100vw - 32px)); background:#1e293b; color:#e2e8f0; font-family:inherit;
+            box-shadow:0 30px 60px -20px rgba(0,0,0,.6); }
+        #reset-password-dialog::backdrop { background:rgba(2,6,23,.65); backdrop-filter:blur(3px); }
+        #reset-password-dialog h3 { margin:0 0 8px; font-size:1.05rem; }
+        #reset-password-dialog p { margin:0 0 16px; color:#94a3b8; font-size:.88rem; line-height:1.8; }
+        #reset-password-dialog input { width:100%; padding:11px 14px; border-radius:12px; margin-bottom:18px;
+            border:1px solid rgba(255,255,255,.15); background:#0f172a; color:#f8fafc; font:inherit; direction:ltr; }
+        #reset-password-dialog input:focus { outline:2px solid #ef4444; outline-offset:1px; }
+        #reset-password-dialog .actions { display:flex; gap:10px; }
+    </style>
+    <dialog id="reset-password-dialog" aria-labelledby="reset-password-title">
         <form method="dialog">
-            <p style="margin:0 0 12px;font-weight:700">برای ریست، رمز عبور مدیر را وارد کنید</p>
-            <p style="margin:0 0 16px;color:#64748b;font-size:.9em">پیش از ریست، یک پشتیبان کامل خودکار گرفته می‌شود.</p>
+            <h3 id="reset-password-title">تأیید با رمز عبور مدیر</h3>
+            <p>همهٔ داده‌ها پاک می‌شود. پیش از ریست، یک پشتیبان کامل و سالم به‌طور خودکار گرفته می‌شود.</p>
             <input id="reset-password-input" type="password" autocomplete="current-password" required
-                   style="width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;margin-bottom:16px">
-            <div style="display:flex;gap:8px;justify-content:flex-start">
+                   aria-label="رمز عبور مدیر">
+            <div class="actions">
                 <button value="ok" class="btn btn-danger">ریست کن</button>
                 <button value="cancel" formnovalidate class="btn btn-secondary">انصراف</button>
             </div>

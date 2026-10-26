@@ -71,6 +71,13 @@ def create_app(test_config=None):
     # --------- Teardown دیتابیس ---------
     app.teardown_appcontext(close_connection)
 
+    # --------- لاگ فایل و صفحهٔ خطای فارسی (ACC-1.8) ---------
+    if not app.config.get("TESTING", False):
+        from src.config.logging_setup import configure_logging
+        db_path = app.config.get("DATABASE_PATH") or Config.DATABASE_PATH
+        configure_logging(os.path.join(os.path.dirname(os.path.abspath(db_path)), "logs"))
+    _register_error_pages(app)
+
     # --------- دستورات CLI (برای خودت روی سرور) ---------
     import click
     from src.adapters.sqlite.core import init_db_command
@@ -191,6 +198,32 @@ def create_app(test_config=None):
         init_scheduler(app)
 
     return app
+
+
+def _register_error_pages(app):
+    """Persian error pages; every 5xx is logged with a short reference the user can report."""
+    import logging
+    import secrets
+
+    from flask import render_template, request
+    from werkzeug.exceptions import HTTPException
+
+    log = logging.getLogger("hesabdari.errors")
+
+    def _page(code, title, message, ref=None):
+        return render_template("errors/error.html", code=code, title=title, message=message, ref=ref), code
+
+    @app.errorhandler(404)
+    def not_found(_e):
+        return _page(404, "صفحه پیدا نشد", "آدرسی که باز کرده‌اید وجود ندارد.")
+
+    @app.errorhandler(Exception)
+    def unexpected(e):
+        if isinstance(e, HTTPException) and e.code < 500:
+            return e
+        ref = secrets.token_hex(4)
+        log.error("unhandled error ref=%s %s %s", ref, request.method, request.path, exc_info=e)
+        return _page(500, "خطای پیش‌بینی‌نشده", "مشکلی در برنامه پیش آمد و ثبت شد. لطفاً دوباره امتحان کنید.", ref)
 
 
 def open_browser():
