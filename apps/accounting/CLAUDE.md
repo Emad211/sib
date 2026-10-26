@@ -6,9 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Hesabdari Sib**: a single-clinic accounting and reception desktop app built on Flask, SQLite and Jinja, served on port **8080**. It covers reception (patients, invoices, visits, injections/nursing services, procedures, consumables, per-item payments), a doctor room, and a manager panel (reports, tariffs, insurance arrears, payroll, users, activity logs). The UI is Persian, RTL and Jalali. Most comments and all UI strings are Persian.
 
+> Project-wide rules and the roadmap: `../../CLAUDE.md` and `../../docs/00_README.md` (read them first).
+> This app lives in the `sib` monorepo since 2026-10-26 (ADR-001); `webapp/` paths below now mean `apps/accounting/`.
+
 ## Commands
 
-Run all commands from `webapp/`. Dependencies are listed in `requirements.txt` (flask, werkzeug, bcrypt, jdatetime, pytest).
+Use `./dev.ps1 setup|test|test-prod|golden|synth|run|build` (see docs/engineering/E03). Dependencies are pinned in `requirements.lock` / `requirements-dev.lock`.
 
 ```powershell
 python start.py                          # http://127.0.0.1:8080 (or run.bat); opens a browser after ~1.5s
@@ -23,7 +26,10 @@ Helper scripts live in `scripts/`: `create_doctor_user.py` and `seed_clinic_data
 
 ## Data safety: the real DB is hard-wired
 
-`core.get_db()` reads the **class attribute** `Config.DATABASE_PATH`, which always points to `webapp/clinic_new.db`. It does **not** read `app.config`, so passing `DATABASE_PATH` in `test_config` has no effect on repositories. `clinic_new.db` holds real clinic data and is committed to git, as are `dist/`, `build/` and the `.spec` file, even though `.gitignore` lists them.
+`core.get_db()` reads the **class attribute** `Config.DATABASE_PATH`, which always points to `clinic_new.db` next to the app. It does **not** read `app.config`, so passing `DATABASE_PATH` in `test_config` has no effect on repositories. No `.db` file is tracked in the sib repo (CI enforces it); real data only ever lives in `sib/_data/` (ADR-006).
+
+- Prefer the `synthetic_app` fixture (a private copy of a production-shaped synthetic DB, `tools/make_synthetic_db.py`) and `login_as(client, app, username)` for route-level tests.
+- `tests/test_route_matrix.py` pins every route × role outcome in `tests/route_matrix.json`; `tests/test_prod_snapshot.py` (marker `prod_snapshot`, local only) is the production-copy gate.
 
 - Tests must use the `webapp_db` fixture in `tests/conftest.py`. The fixture patches `Config.DATABASE_PATH` to a temp file and resets `core._migrations_done` **before** `create_app`/`get_db`. A session-scoped autouse guard SHA-256 checks `clinic_new.db` and fails the run if any byte changed.
 - Seed test data with raw inserts into `webapp_db` (see the helpers at the top of `test_billing_characterization.py`).

@@ -1,36 +1,34 @@
 # محیط توسعه
 
-> نسخه 1.0 · ۱۴۰۵/۰۸/۰۴ · این سند پس از ACC-0.1 و ACC-0.2 با دستورهای نهایی به‌روز می‌شود.
+> نسخه 1.1 · ۱۴۰۵/۰۸/۰۴
 
 ## ۱. پیش‌نیازها
 
 - ویندوز ۱۰ یا ۱۱، پایتون 3.13 (`py -3.13`)، گیت، و Node 20+ (فقط برای `clinic-landing` و بعداً PWA اپ شیفت).
 
-## ۲. وضعیت امروز (پیش از ACC-0)
+## ۲. راه‌اندازی (از ACC-0.2)
 
-کد حسابداری هنوز در `Desktop/projects/hesabdari_darmangah/webapp` است. اجرای تست‌ها بدون تغییر در آن ریپو:
-
-```bash
-cd "C:/Users/Emad Karimi/Desktop/sib"
-py -3.13 -m venv .venv
-.venv/Scripts/python -m pip install flask werkzeug bcrypt jdatetime pytest
-cd "C:/Users/Emad Karimi/Desktop/projects/hesabdari_darmangah/webapp"
-PYTHONDONTWRITEBYTECODE=1 ../../../sib/.venv/Scripts/python -m pytest -q -p no:cacheprovider tests
-```
-
-نتیجه در ۱۴۰۵/۰۸/۰۴: **54 passed**. نسخه‌های نصب‌شده: Flask 3.1.3، Werkzeug 3.1.9، bcrypt 5.0.0، jdatetime 6.1.1، pytest 9.1.1. این‌ها مبنای اولیهٔ `requirements.lock` هستند و باید با نسخه‌های exe پروداکشن مقایسه شوند (Q-03).
-
-## ۳. پس از ACC-0 (هدف)
-
-```bash
+```powershell
 cd apps/accounting
-./dev.ps1 setup      # venv + requirements.lock
-./dev.ps1 test       # همهٔ تست‌های CI
-./dev.ps1 test-prod  # تست‌های prod_snapshot روی _data (فقط محلی)
-./dev.ps1 golden     # گولدن مستر
-./dev.ps1 run        # اجرای محلی روی دیتابیس مصنوعی، پورت 8080
-./dev.ps1 build      # ساخت exe
+./dev.ps1 setup      # ساخت ../../.venv با پایتون 3.13 و نصب requirements-dev.lock
+./dev.ps1 test       # همان چیزی که CI اجرا می‌کند: ruff + pytest روی دادهٔ مصنوعی
+./dev.ps1 test-prod  # دروازهٔ کپی پروداکشن (فقط محلی، حدود ۶ دقیقه)
+./dev.ps1 golden     # فقط مقایسهٔ گولدن مستر (حدود ۳ دقیقه)
+./dev.ps1 synth      # دیتابیس مصنوعی در _data/synthetic.db
+./dev.ps1 run        # اجرای برنامه روی دیتابیس مصنوعی، http://127.0.0.1:8080
+./dev.ps1 build      # ساخت dist/HesabdariSib.exe
 ```
+
+- ورود روی دیتابیس مصنوعی: کاربرها `manager1`، `reception1`، `reception2` و `doctor1` با رمز `synthetic-pass` (فقط دیتابیس مصنوعی).
+- `requirements.lock` دقیقاً نسخه‌های داخل exe ساخته‌شده از `origin/main` ریپوی قدیمی را دارد: Flask 3.1.2، Werkzeug 3.1.3، Jinja2 3.1.6، bcrypt 5.0.0 و jdatetime 5.2.0.
+- تست‌های `prod_snapshot` به‌طور پیش‌فرض اجرا نمی‌شوند (`pytest.ini`) و در CI هرگز اجرا نمی‌شوند.
+- ثبت دوبارهٔ ماتریس مسیرها پس از تغییر آگاهانهٔ دسترسی: `UPDATE_ROUTE_MATRIX=1 pytest tests/test_route_matrix.py`
+- ثبت دوبارهٔ گولدن مستر (فقط وقتی اختلاف دقیقاً رفع یک باگ ثبت‌شده است): `python tools/golden_master.py record --db <snapshot>`، سپس commit فایل هش در `tests/golden/`.
+
+## ۳. ریپو و CI
+
+- ریپو: `github.com/Emad211/sib` (خصوصی). CI: `.github/workflows/accounting.yml` روی ویندوز، شامل گارد `.db`، ruff، pytest با پوشش، و روی `main` ساخت exe با smoke.
+- `gh` روی این دستگاه: متغیر محیطی `GITHUB_TOKEN` نامعتبر است. دستورها را با `env -u GITHUB_TOKEN gh ...` اجرا کنید، یا آن متغیر را از تنظیمات ویندوز پاک کنید.
 
 ## ۴. داده
 
@@ -40,3 +38,4 @@ cd apps/accounting
 ## تاریخچه
 
 - 1.0، ۱۴۰۵/۰۸/۰۴: نسخهٔ اول.
+- 1.1، ۱۴۰۵/۰۸/۰۴: دستورهای واقعی پس از فاز ۰.
