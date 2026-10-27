@@ -1193,10 +1193,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 200
   },
   "reception": {
-   "status": 409
+   "status": 200
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1257,10 +1257,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 400
   },
   "reception": {
-   "status": 409
+   "status": 400
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1321,10 +1321,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 400
   },
   "reception": {
-   "status": 409
+   "status": 400
   },
   "retired_doctor": {
    "location": "/auth/login",
