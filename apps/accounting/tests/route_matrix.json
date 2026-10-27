@@ -480,6 +480,23 @@
    "status": 302
   }
  },
+ "GET /manager/reports/staff [manager.staff_performance_report]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "GET /manager/reports/users [manager.users_report]": {
   "anon": {
    "location": "/auth/login",

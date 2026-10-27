@@ -148,6 +148,16 @@
   </div>
 
   <div class="card" style="margin-top:1.2rem;">
+    <div style="font-size:.95rem;font-weight:800;margin-bottom:.6rem;">خلاصه: هر قلم به تفکیک شیفت و پذیرش</div>
+    <div style="max-height:40vh;overflow:auto;"><table>
+      <thead><tr><th>قلم</th><th>شیفت</th><th>پذیرش</th><th>تعداد</th><th>مبلغ</th></tr></thead>
+      <tbody>{% for a in summary %}
+        <tr><td>{{ a.item_name }}</td><td>{{ 'صبح' if a.shift=='morning' else ('عصر' if a.shift=='evening' else 'شب' if a.shift=='night' else '—') }}</td><td>{{ a.reception_user or '—' }}</td><td>{{ a.quantity|int }}</td><td>{{ "{:,.0f}".format(a.total) }}</td></tr>
+      {% else %}<tr><td colspan="5">موردی نیست.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+
+  <div class="card" style="margin-top:1.2rem;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem;">
       <div style="font-size:.95rem;font-weight:800;">لیست مصرفی‌ها</div>
       <div style="display:flex;gap:.5rem;align-items:center;">

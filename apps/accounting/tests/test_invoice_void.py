@@ -55,3 +55,25 @@ def test_reception_cannot_void(synthetic_app):
     login_as(c, synthetic_app, "reception1")
     c.post(f"/manager/invoice/{iid}/void", data={"kind": "void", "reason": "x"})
     assert q(synthetic_app, "SELECT status FROM invoices WHERE id=?", iid) == [("closed",)]
+
+
+def test_consumables_summary_groups_item_shift_receptionist(synthetic_app):
+    c = mgr(synthetic_app)
+    html = c.get("/manager/reports/consumables?from=1404/01/01&to=1405/12/29").get_data(as_text=True)
+    assert "خلاصه: هر قلم به تفکیک شیفت و پذیرش" in html
+
+
+def test_staff_performance_page_matches_db(synthetic_app):
+    c = mgr(synthetic_app)
+    html = c.get("/manager/reports/staff?from=1404/01/01&to=1405/12/29")
+    assert html.status_code == 200
+    text = html.get_data(as_text=True)
+    assert "عملکرد پرسنل" in text and "پذیرش" in text
+    visits = q(synthetic_app, "SELECT COUNT(*) FROM visits v JOIN invoices i ON i.id=v.invoice_id AND i.status='closed'")[0][0]
+    from src.services import staff_performance as perf
+
+    conn = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    conn.row_factory = sqlite3.Row
+    rec = perf.receptionists(conn, "2000-01-01", "2100-01-01")
+    conn.close()
+    assert sum(r["visits"] for r in rec) == visits
