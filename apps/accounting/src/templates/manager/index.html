@@ -680,6 +680,10 @@
 
             <div class="nav-section">
                 <div class="nav-section-title">مدیریت</div>
+                <a href="{{ url_for('manager.expenses') }}" class="nav-item">
+                    <span class="nav-icon">💸</span>
+                    <span>هزینه‌ها</span>
+                </a>
                 <a href="{{ url_for('manager.tariffs_index') }}" class="nav-item">
                     <span class="nav-icon">💰</span>
                     <span>تعرفه‌ها</span>
@@ -735,34 +739,28 @@
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card purple">
-                <div class="stat-header">
-                    <div class="stat-icon">📋</div>
-                </div>
-                <div class="stat-value">{{ today_invoices | default(0) }}</div>
-                <div class="stat-label">فاکتور امروز</div>
-            </div>
+            {% if month %}
             <div class="stat-card green">
-                <div class="stat-header">
-                    <div class="stat-icon">💵</div>
-                </div>
-                <div class="stat-value">{{ "{:,.0f}".format(today_revenue | default(0)) }}</div>
-                <div class="stat-label">درآمد امروز (تومان) · بدون دارو و مصرفی</div>
-            </div>
-            <div class="stat-card blue">
-                <div class="stat-header">
-                    <div class="stat-icon">👥</div>
-                </div>
-                <div class="stat-value">{{ today_patients | default(0) }}</div>
-                <div class="stat-label">بیمار امروز</div>
+                <div class="stat-header"><div class="stat-icon">💳</div></div>
+                <div class="stat-value">{{ "{:,.0f}".format(month.transactions) }}</div>
+                <div class="stat-label">تراکنش از اول {{ month.month }} ({{ month.invoices | fa_num }} فاکتور)</div>
             </div>
             <div class="stat-card orange">
-                <div class="stat-header">
-                    <div class="stat-icon">⏳</div>
-                </div>
-                <div class="stat-value">{{ open_invoices | default(0) }}</div>
-                <div class="stat-label">فاکتور باز</div>
+                <div class="stat-header"><div class="stat-icon">💸</div></div>
+                <div class="stat-value">{{ "{:,.0f}".format(month.expenses) }}</div>
+                <div class="stat-label">هزینه‌های درمانگاه از اول ماه · <a href="{{ url_for('manager.expenses') }}" style="color:inherit">ثبت هزینه</a></div>
             </div>
+            <div class="stat-card blue">
+                <div class="stat-header"><div class="stat-icon">👥</div></div>
+                <div class="stat-value">{{ "{:,.0f}".format(month.salaries) }}</div>
+                <div class="stat-label">حقوق پزشکان و پرستاران از اول ماه (پذیرش: بعداً)</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="stat-header"><div class="stat-icon">⚖️</div></div>
+                <div class="stat-value">{{ "{:,.0f}".format(month.balance) }}</div>
+                <div class="stat-label">مانده: تراکنش − هزینه − حقوق</div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="dashboard-grid">
@@ -853,10 +851,13 @@
                             <button class="quick-btn" onclick="setQuickRange('r90', this)">۹۰ روز</button>
                         </div>
                         <select id="data-type" class="control-select" onchange="updateChart()">
-                            <option value="revenue">درآمد</option>
-                            <option value="invoices">فاکتور</option>
-                            <option value="patients">بیمار</option>
-                            <option value="services">خدمات (تفکیکی)</option>
+                            <option value="transactions">تراکنش (دریافتی)</option>
+                            <option value="revenue">درآمد (بدون مصرفی)</option>
+                            <option value="expenses">هزینه‌ها</option>
+                            <option value="salaries">حقوق پرسنل</option>
+                            <option value="services">خدمات (تفکیکی، به تومان)</option>
+                            <option value="invoices">تعداد فاکتور</option>
+                            <option value="patients">تعداد بیمار</option>
                         </select>
                         <select id="chart-type" class="control-select" onchange="updateChart()">
                             <option value="bar">میله‌ای</option>
@@ -870,82 +871,6 @@
             </div>
         </div>
 
-        <div class="bottom-grid">
-            <div class="info-card">
-                <div class="info-card-header">
-                    <div class="info-card-icon">💊</div>
-                    <h3 class="info-card-title">خدمات امروز</h3>
-                </div>
-                <ul class="info-list">
-                    <li>
-                        <span class="label">ویزیت</span>
-                        <span class="value">{{ today_visits | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">تزریقات</span>
-                        <span class="value">{{ today_injections | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">کار عملی</span>
-                        <span class="value">{{ today_procedures | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">خدمات پرستاری</span>
-                        <span class="value">{{ today_nursing | default(0) }}</span>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="info-card">
-                <div class="info-card-header">
-                    <div class="info-card-icon">👨‍⚕️</div>
-                    <h3 class="info-card-title">کادر درمان</h3>
-                </div>
-                <ul class="info-list">
-                    <li>
-                        <span class="label">پزشکان فعال</span>
-                        <span class="value">{{ active_doctors | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">پرستاران فعال</span>
-                        <span class="value">{{ active_nurses | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">شیفت فعلی</span>
-                        <span class="value">{{ current_shift | default('صبح') }}</span>
-                    </li>
-                    <li>
-                        <span class="label">کل کاربران</span>
-                        <span class="value">{{ total_users | default(0) }}</span>
-                    </li>
-                </ul>
-            </div>
-
-            <div class="info-card">
-                <div class="info-card-header">
-                    <div class="info-card-icon">📊</div>
-                    <h3 class="info-card-title">آمار کلی</h3>
-                </div>
-                <ul class="info-list">
-                    <li>
-                        <span class="label">کل بیماران</span>
-                        <span class="value">{{ total_patients | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">فاکتورهای ماه</span>
-                        <span class="value">{{ month_invoices | default(0) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">درآمد ماه</span>
-                        <span class="value">{{ "{:,.0f}".format(month_revenue | default(0)) }}</span>
-                    </li>
-                    <li>
-                        <span class="label">میانگین روزانه</span>
-                        <span class="value">{{ "{:,.0f}".format(avg_daily | default(0)) }}</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
     </main>
 
     <script>
@@ -1008,11 +933,15 @@
             if (mainChart) mainChart.destroy();
 
             const dataLabels = {
+                transactions: 'تراکنش (تومان)',
                 revenue: 'درآمد (تومان)',
+                expenses: 'هزینه (تومان)',
+                salaries: 'حقوق (تومان)',
                 invoices: 'تعداد فاکتور',
                 patients: 'تعداد بیمار',
-                services: 'تعداد خدمات'
+                services: 'خدمات (تومان)'
             };
+            const moneyTypes = ['transactions', 'revenue', 'expenses', 'salaries', 'services'];
 
             let datasets;
             
@@ -1100,7 +1029,7 @@
                             callbacks: {
                                 label: function(ctx) {
                                     let value = ctx.parsed.y;
-                                    if (dataType === 'revenue') {
+                                    if (moneyTypes.includes(dataType)) {
                                         return ' ' + toPersianNum(value.toLocaleString()) + ' تومان';
                                     }
                                     return ' ' + toPersianNum(value.toLocaleString()) + ' عدد';

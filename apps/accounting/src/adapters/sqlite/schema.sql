@@ -391,3 +391,25 @@ CREATE TABLE IF NOT EXISTS invoice_payment_lines (
 CREATE INDEX IF NOT EXISTS idx_payment_lines_closed_at ON invoice_payment_lines (closed_at);
 CREATE INDEX IF NOT EXISTS idx_invoices_closed_at ON invoices (closed_at);
 -- The v_shift_*_v1 views for the shift app are created by migration 0004 only.
+
+-- Clinic expenses entered by the manager (migration 0005). Never deleted; voided with a reason.
+CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spent_on TEXT NOT NULL,
+    category TEXT NOT NULL,
+    amount REAL NOT NULL,
+    note TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    is_void INTEGER NOT NULL DEFAULT 0,
+    void_reason TEXT,
+    voided_by TEXT,
+    voided_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_spent_on ON expenses (spent_on);
+-- Payroll looks up one person's work in a date range (migration 0005).
+CREATE INDEX IF NOT EXISTS idx_injections_doctor_work_date ON injections (doctor_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_injections_nurse_work_date ON injections (nurse_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_visits_doctor_work_date ON visits (doctor_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_procedures_doctor_work_date ON procedures (doctor_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_procedures_nurse_work_date ON procedures (nurse_id, work_date);

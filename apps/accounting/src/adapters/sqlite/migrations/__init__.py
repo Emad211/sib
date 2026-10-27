@@ -16,7 +16,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import m0001_baseline, m0002_performance_indexes, m0003_tariff_changes, m0004_shift_contract
+from . import m0001_baseline, m0002_performance_indexes, m0003_tariff_changes, m0004_shift_contract, m0005_expenses
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (2, "performance_indexes", m0002_performance_indexes.up),
     (3, "tariff_changes", m0003_tariff_changes.up),
     (4, "shift_contract", m0004_shift_contract.up),
+    (5, "expenses_and_payroll_indexes", m0005_expenses.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 

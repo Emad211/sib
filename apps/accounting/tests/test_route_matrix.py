@@ -91,7 +91,22 @@ def _record(app):
     return result
 
 
-def test_route_matrix_matches_recorded_behaviour(synthetic_app):
+def _freeze_clock(monkeypatch):
+    """Shift rules depend on the time of day; the recorded matrix must not (Tehran 2026-09-24 10:00)."""
+    from datetime import datetime as real
+
+    from src.common import utils
+
+    class Frozen(real):
+        @classmethod
+        def utcnow(cls):
+            return real(2026, 9, 24, 6, 30, 0)
+
+    monkeypatch.setattr(utils, "datetime", Frozen)
+
+
+def test_route_matrix_matches_recorded_behaviour(synthetic_app, monkeypatch):
+    _freeze_clock(monkeypatch)
     observed = _record(synthetic_app)
     if os.environ.get("UPDATE_ROUTE_MATRIX") == "1":
         with open(MATRIX_PATH, "w", encoding="utf-8") as f:

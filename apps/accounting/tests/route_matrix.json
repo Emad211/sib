@@ -117,6 +117,23 @@
    "status": 302
   }
  },
+ "GET /manager/expenses [manager.expenses]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "status": 200
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "GET /manager/export/consumables/csv [manager.export_consumables_csv]": {
   "anon": {
    "location": "/auth/login",
@@ -945,6 +962,24 @@
    "status": 200
   }
  },
+ "POST /manager/expenses [manager.expenses]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/expenses",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "POST /manager/insurance/<string:insurance_type>/nursing_exclusions [manager.set_nursing_exclusions]": {
   "anon": {
    "location": "/auth/login",
@@ -1158,10 +1193,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 200
   },
   "reception": {
-   "status": 409
+   "status": 200
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1222,10 +1257,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 400
   },
   "reception": {
-   "status": 409
+   "status": 400
   },
   "retired_doctor": {
    "location": "/auth/login",
@@ -1286,10 +1321,10 @@
    "status": 302
   },
   "manager": {
-   "status": 409
+   "status": 400
   },
   "reception": {
-   "status": 409
+   "status": 400
   },
   "retired_doctor": {
    "location": "/auth/login",
