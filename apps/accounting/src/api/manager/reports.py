@@ -862,7 +862,7 @@ def consumables_report():
     rows = db.execute(
         f"""
         SELECT cl.id, cl.usage_date, cl.item_name, cl.category, cl.quantity, cl.unit_price, cl.total_cost,
-               cl.patient_provided, cl.shift, cl.notes,
+               cl.patient_provided, cl.shift, cl.notes, cl.reception_user,
                p.full_name AS patient_name
         FROM consumables_ledger cl
         JOIN patients p ON p.id = cl.patient_id
@@ -878,6 +878,17 @@ def consumables_report():
     total_amount = sum(r["total_cost"] or 0 for r in consumables)
     drugs_count = sum(1 for r in consumables if r["category"] == "drug")
     supplies_count = sum(1 for r in consumables if r["category"] == "supply")
+
+    # FB-27: one line per item x shift x receptionist (same item used many times = one row)
+    agg = {}
+    for r in consumables:
+        key = (r["item_name"], r["shift"] or "", r["reception_user"] or "")
+        a = agg.setdefault(
+            key, {"item_name": key[0], "shift": key[1], "reception_user": key[2], "quantity": 0, "total": 0}
+        )
+        a["quantity"] += r["quantity"] or 0
+        a["total"] += r["total_cost"] or 0
+    summary = sorted(agg.values(), key=lambda a: (-a["quantity"], a["item_name"]))
 
     # لیست آیتم‌ها برای فیلتر
     item_names = db.execute(
@@ -911,6 +922,7 @@ def consumables_report():
     return render_template(
         "manager/reports_consumables.html",
         consumables=consumables,
+        summary=summary,
         total_count=total_count,
         total_amount=total_amount,
         drugs_count=drugs_count,
@@ -1105,4 +1117,34 @@ def patients_report():
             "insurance_type": insurance_type,
             "gender": gender,
         },
+    )
+
+
+@bp.route("/reports/staff")
+@login_required
+@manager_required
+def staff_performance_report():
+    """Per-person performance over a date range (FB-26): doctors, nurses, reception."""
+    from src.services import staff_performance as perf
+
+    date_from = request.args.get("from", "")
+    date_to = request.args.get("to", "")
+    start_dt = jalali_to_start_end(date_from, True)
+    end_dt = jalali_to_start_end(date_to, False)
+    if not start_dt or not end_dt:
+        end_dt = iran_now()
+        start_dt = end_dt - timedelta(days=29)
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+    d1, d2 = start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+    db = get_db()
+    j1 = Gregorian(start_dt.date()).persian_tuple()
+    j2 = Gregorian(end_dt.date()).persian_tuple()
+    return render_template(
+        "manager/reports_staff.html",
+        doctors=perf.doctors(db, d1, d2),
+        nurses=perf.nurses(db, d1, d2),
+        receptionists=perf.receptionists(db, d1, d2),
+        date_from=f"{j1[0]}/{j1[1]:02d}/{j1[2]:02d}",
+        date_to=f"{j2[0]}/{j2[1]:02d}/{j2[2]:02d}",
     )

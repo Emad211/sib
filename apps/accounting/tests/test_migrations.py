@@ -82,6 +82,7 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "index added: idx_users_staff_id",
             "table added: expenses",
             "table added: invoice_payment_lines",
+            "table added: invoice_voids",
             "table added: tariff_changes",
             "view added: v_shift_cash_receipts_v1",
             "view added: v_shift_consumption_v1",

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>عملکرد پرسنل - سیستم درمانگاه</title>
+  <link href="{{ url_for('static', filename='css/vazirmatn.css') }}" rel="stylesheet" type="text/css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Vazirmatn', sans-serif; background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); min-height: 100vh; color: #f1f5f9; padding: 2rem 1rem; }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    a { color: #a78bfa; text-decoration: none; }
+    .card { background: rgba(30,41,59,.6); border-radius: 20px; padding: 1.2rem; border: 1px solid rgba(255,255,255,.06); margin-bottom: 1.2rem; }
+    h1 { font-size: 1.4rem; margin-bottom: 1rem; } h2 { font-size: 1rem; margin-bottom: .7rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { padding: .5rem; text-align: right; border-bottom: 1px solid rgba(255,255,255,.06); }
+    th { color: #94a3b8; font-size: .78rem; }
+    form { display: flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap; }
+    button { font-family: inherit; border: 0; border-radius: 10px; padding: .55rem 1rem; background: #6366f1; color: #fff; cursor: pointer; }
+    .muted { color: #94a3b8; }
+    .table-scroll { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h1>👥 عملکرد پرسنل</h1><a href="{{ url_for('manager.index') }}">→ داشبورد</a></div>
+  <div class="card">
+    <form method="get">
+      <div><label class="muted">از تاریخ</label><br><input type="text" name="from" value="{{ date_from }}" data-jdp autocomplete="off" dir="ltr"></div>
+      <div><label class="muted">تا تاریخ</label><br><input type="text" name="to" value="{{ date_to }}" data-jdp autocomplete="off" dir="ltr"></div>
+      <button type="submit">نمایش</button>
+    </form>
+    <div class="muted" style="margin-top:.5rem;font-size:.8rem">فقط فاکتورهای بسته‌شده؛ مبالغ به تومان.</div>
+  </div>
+
+  <div class="card"><h2>🩺 پزشکان</h2><div class="table-scroll"><table>
+    <thead><tr><th>نام</th><th>ویزیت</th><th>کار عملی</th><th>تزریق</th></tr></thead>
+    <tbody>{% for r in doctors %}<tr><td>{{ r.name }}</td><td>{{ r.visits }}</td><td>{{ r.procedures }}</td><td>{{ r.injections }}</td></tr>{% else %}<tr><td colspan="4" class="muted">موردی نیست.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+
+  <div class="card"><h2>💉 پرستاران</h2><div class="table-scroll"><table>
+    <thead><tr><th>نام</th><th>پرستاری</th><th>کار عملی</th><th>جمع</th></tr></thead>
+    <tbody>{% for r in nurses %}<tr><td>{{ r.name }}</td><td>{{ "{:,.0f}".format(r.nursing) }}</td><td>{{ "{:,.0f}".format(r.procedures) }}</td><td><b>{{ "{:,.0f}".format(r.total) }}</b></td></tr>{% else %}<tr><td colspan="4" class="muted">موردی نیست.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+
+  <div class="card"><h2>🧾 پذیرش</h2><div class="table-scroll"><table>
+    <thead><tr><th>نام</th><th>ویزیت (تعداد)</th><th>پرستاری</th><th>کار عملی</th><th>مصرفی</th><th>دارو</th><th>جمع</th></tr></thead>
+    <tbody>{% for r in receptionists %}<tr><td>{{ r.name }}</td><td>{{ r.visits }}</td><td>{{ "{:,.0f}".format(r.nursing) }}</td><td>{{ "{:,.0f}".format(r.procedures) }}</td><td>{{ "{:,.0f}".format(r.consumables) }}</td><td>{{ "{:,.0f}".format(r.drugs) }}</td><td><b>{{ "{:,.0f}".format(r.total) }}</b></td></tr>{% else %}<tr><td colspan="7" class="muted">موردی نیست.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+<script src="{{ url_for('static', filename='js/jalaali.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/jdatepicker.js') }}"></script>
+</body>
+</html>

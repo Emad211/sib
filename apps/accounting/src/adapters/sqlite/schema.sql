@@ -413,3 +413,16 @@ CREATE INDEX IF NOT EXISTS idx_injections_nurse_work_date ON injections (nurse_i
 CREATE INDEX IF NOT EXISTS idx_visits_doctor_work_date ON visits (doctor_id, work_date);
 CREATE INDEX IF NOT EXISTS idx_procedures_doctor_work_date ON procedures (doctor_id, work_date);
 CREATE INDEX IF NOT EXISTS idx_procedures_nurse_work_date ON procedures (nurse_id, work_date);
+
+-- Voided / refunded invoices (migration 0006). The invoice row is kept with status='voided'.
+CREATE TABLE IF NOT EXISTS invoice_voids (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invoice_id INTEGER NOT NULL UNIQUE,
+    kind TEXT NOT NULL,          -- 'void' (cancelled) or 'refund' (money handed back)
+    amount REAL NOT NULL,        -- invoice total at the moment of voiding
+    refund_method TEXT,          -- cash / card / ... for refunds
+    reason TEXT NOT NULL,
+    voided_by TEXT,
+    voided_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
+    FOREIGN KEY (invoice_id) REFERENCES invoices (id)
+);
