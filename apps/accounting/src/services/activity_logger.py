@@ -97,6 +97,7 @@ class ActionType:
     EXPENSE_ADD = 'expense_add'
     EXPENSE_VOID = 'expense_void'
     INVOICE_VOID = 'invoice_void'
+    INVOICE_REOPEN = 'invoice_reopen'
 
 
 # دسته‌بندی عملیات (action_category)
@@ -128,6 +129,7 @@ ACTION_DESCRIPTIONS = {
     ActionType.EXPENSE_ADD: 'ثبت هزینه',
     ActionType.EXPENSE_VOID: 'ابطال هزینه',
     ActionType.INVOICE_VOID: 'ابطال/بازپرداخت فاکتور',
+    ActionType.INVOICE_REOPEN: 'بازگشایی فاکتور برای اصلاح',
     ActionType.LOGIN: 'ورود به سیستم',
     ActionType.LOGOUT: 'خروج از سیستم',
     
