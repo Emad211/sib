@@ -5,9 +5,13 @@ import jdatetime
 from flask import (
     abort,
     current_app,
+    flash,
+    g,
     jsonify,
+    redirect,
     render_template,
     request,
+    url_for,
 )
 
 from src.__version__ import __version__
@@ -17,6 +21,7 @@ from src.common.jalali import Gregorian
 from src.common.utils import format_jalali_datetime, iran_now
 from src.services import manager_finance as finance
 from src.services import manager_insights as insights
+from src.services.activity_logger import ActionCategory, ActionType, log_activity
 from src.services.exports import table_response
 
 from . import bp
@@ -330,15 +335,61 @@ def invoice_history(invoice_id):
 
     for e in events:
         e["action_fa"] = ACTION_DESCRIPTIONS.get(e["action_type"], e["action_type"])
+    void = db.execute("SELECT * FROM invoice_voids WHERE invoice_id = ?", (invoice_id,)).fetchone()
     return render_template(
         "manager/invoice_history.html",
         inv=inv,
+        void=void,
         items=items,
         events=events,
         opened_fa=format_jalali_datetime(inv["opened_at"]),
         closed_fa=format_jalali_datetime(inv["closed_at"]),
         date_fa=insights.jalali_date(inv["work_date"]),
     )
+
+
+@bp.route("/invoice/<int:invoice_id>/void", methods=["POST"])
+@login_required
+@manager_required
+def invoice_void(invoice_id):
+    """Void or refund a closed invoice (FB-25). The invoice is kept (status 'voided') with the reason."""
+    db = get_db()
+    reason = " ".join(request.form.get("reason", "").split())[:300]
+    kind = request.form.get("kind", "void")
+    method = request.form.get("refund_method", "")
+    inv = db.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+    if inv is None:
+        abort(404)
+    problem = None
+    if inv["status"] != "closed":
+        problem = "فقط فاکتور بسته‌شده را می‌توان باطل یا بازپرداخت کرد."
+    elif not reason:
+        problem = "دلیل را بنویسید."
+    elif kind not in ("void", "refund"):
+        problem = "نوع عملیات نامعتبر است."
+    elif kind == "refund" and method not in ("cash", "card"):
+        problem = "روش بازپرداخت را انتخاب کنید."
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
+    db.execute(
+        "INSERT INTO invoice_voids (invoice_id, kind, amount, refund_method, reason, voided_by) VALUES (?, ?, ?, ?, ?, ?)",
+        (invoice_id, kind, inv["total_amount"] or 0, method if kind == "refund" else None, reason, g.user["username"]),
+    )
+    db.execute("UPDATE invoices SET status = 'voided' WHERE id = ? AND status = 'closed'", (invoice_id,))
+    db.commit()
+    log_activity(
+        ActionType.INVOICE_VOID,
+        ActionCategory.INVOICE,
+        invoice_id=invoice_id,
+        patient_id=inv["patient_id"],
+        amount=inv["total_amount"] or 0,
+        old_value="closed",
+        new_value=f"voided:{kind}",
+        description=("بازپرداخت فاکتور: " if kind == "refund" else "ابطال فاکتور: ") + reason,
+    )
+    flash("فاکتور باطل شد و از گزارش‌ها کم شد.", "success")
+    return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
 
 
 @bp.route("/attention/<key>")

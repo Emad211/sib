@@ -154,7 +154,7 @@
         <tbody>
         {% for r in invoices %}
           <tr>
-            <td>{{ r.id }}</td>
+            <td><a href="{{ url_for('manager.invoice_history', invoice_id=r.id) }}" style="color:#a78bfa">{{ r.id }}</a></td>
             <td>{{ r.opened_at | jalali_datetime }}</td>
             <td>{{ r.closed_at and (r.closed_at | jalali_datetime) or '—' }}</td>
             <td>{{ r.status }}</td>
