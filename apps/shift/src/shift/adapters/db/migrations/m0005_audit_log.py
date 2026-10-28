@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_at_utc ON audit_log (at_utc);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_at ON audit_log (actor_id, at_utc);
-CREATE INDEX IF NOT EXISTS idx_audit_log_action_at ON audit_log (action, at_utc);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action_id ON audit_log (action, id DESC);
 
 CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log
 BEGIN SELECT RAISE(ABORT, 'append-only'); END;

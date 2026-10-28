@@ -59,7 +59,7 @@ def insert_entry(connection: Connection, values: Mapping[str, Any]) -> AuditRow:
 
 
 def recent(connection: Connection, *, limit: int = 50, action: str | None = None) -> list[AuditRow]:
-    """Newest audit records first, optionally only one action, using idx_audit_log_action_at."""
+    """Newest audit records first, optionally only one action, straight from idx_audit_log_action_id."""
     if action is None:
         rows = connection.exec_driver_sql(f"{_SELECT} ORDER BY id DESC LIMIT ?", (limit,)).mappings()
     else:

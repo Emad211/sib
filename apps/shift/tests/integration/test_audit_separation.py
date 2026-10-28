@@ -132,7 +132,22 @@ def test_migration_five_creates_the_audit_log_and_its_indexes(database: Database
 
     assert version == migrations.LATEST
     assert "audit_log" in names
-    assert {"idx_audit_log_at_utc", "idx_audit_log_actor_at", "idx_audit_log_action_at"} <= indexes
+    assert {"idx_audit_log_at_utc", "idx_audit_log_actor_at", "idx_audit_log_action_id"} <= indexes
+
+
+def test_the_action_history_query_reads_its_index_without_a_temp_btree(database: Database) -> None:
+    """`recent(action=...)` filters and orders through one index, so no sort is built at run time."""
+    with database.read() as connection:
+        plan = connection.exec_driver_sql(
+            "EXPLAIN QUERY PLAN "
+            "SELECT id, at_utc, at_tehran, actor_id, action, outcome, subject_id, detail "
+            "FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT ?",
+            ("audit.probe", 5),
+        ).fetchall()
+
+    steps = " | ".join(str(row[-1]) for row in plan)
+    assert "idx_audit_log_action_id" in steps
+    assert "TEMP B-TREE" not in steps
 
 
 def test_two_audit_records_one_second_apart_are_ordered(database: Database) -> None:
