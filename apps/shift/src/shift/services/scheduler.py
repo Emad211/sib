@@ -10,7 +10,7 @@ on the next poll because `due` compares the clock with the schedule rather than 
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Protocol
 
 from shift.common.clock import TEHRAN, Clock, SystemClock, to_tehran
@@ -100,9 +100,16 @@ class Scheduler:
         return self._schedule(DAILY_CARD, moment, self._settings.daily_card_time)
 
     def _weekly_count(self, moment: datetime) -> ScheduledTask | None:
-        if moment.weekday() != self._settings.weekly_count_weekday:
+        """Due from its weekday to the end of that ISO week, so a day switched off loses no warning."""
+        settings = self._settings
+        elapsed = moment.weekday() - settings.weekly_count_weekday
+        if elapsed < 0:
             return None
-        return self._schedule(WEEKLY_COUNT_WARNING, moment, self._settings.weekly_count_time)
+        due_at = datetime.combine(moment.date() - timedelta(days=elapsed), settings.weekly_count_time, tzinfo=TEHRAN)
+        period = _period_key(WEEKLY_COUNT_WARNING, moment)
+        if moment < due_at or self._last_period.get(WEEKLY_COUNT_WARNING) == period:
+            return None
+        return ScheduledTask(WEEKLY_COUNT_WARNING, due_at, period)
 
     def _schedule(self, name: str, moment: datetime, at: time) -> ScheduledTask | None:
         due_at = datetime.combine(moment.date(), at, tzinfo=TEHRAN)

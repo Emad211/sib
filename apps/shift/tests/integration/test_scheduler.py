@@ -40,13 +40,12 @@ class FrozenClock:
 def test_the_daily_card_falls_due_at_the_configured_time() -> None:
     scheduler = Scheduler(Schedule())
 
-    assert scheduler.due(TUESDAY_BEFORE_OPENING) == ()
+    before = [task.name for task in scheduler.due(TUESDAY_BEFORE_OPENING)]
+    due = next(task for task in scheduler.due(TUESDAY_OPENING) if task.name == DAILY_CARD)
 
-    due = scheduler.due(TUESDAY_OPENING)
-
-    assert [task.name for task in due] == [DAILY_CARD]
-    assert due[0].due_at == datetime(2026, 10, 27, 7, 30, tzinfo=TEHRAN)
-    assert due[0].period == "2026-10-27"
+    assert DAILY_CARD not in before
+    assert due.due_at == datetime(2026, 10, 27, 7, 30, tzinfo=TEHRAN)
+    assert due.period == "2026-10-27"
 
 
 def test_a_job_runs_once_per_period() -> None:
@@ -55,15 +54,15 @@ def test_a_job_runs_once_per_period() -> None:
     first = scheduler.run_due(TUESDAY_OPENING)
     second = scheduler.run_due(TUESDAY_LATE)
 
-    assert [run.name for run in first] == [DAILY_CARD]
+    assert [run.name for run in first] == [DAILY_CARD, WEEKLY_COUNT_WARNING]
     assert first[0].message.startswith("daily card requested")
     assert second == ()
     assert scheduler.due(TUESDAY_LATE) == ()
     assert [run.name for run in scheduler.run_due(WEDNESDAY_OPENING)] == [DAILY_CARD]
 
 
-def test_a_missed_run_is_caught_up_on_the_next_poll() -> None:
-    scheduler = Scheduler(Schedule(), clock=FrozenClock(TUESDAY_LATE))
+def test_a_missed_daily_card_is_caught_up_on_the_next_poll() -> None:
+    scheduler = Scheduler(Schedule(weekly_count_weekday=2), clock=FrozenClock(TUESDAY_LATE))
 
     runs = scheduler.run_due()
 
@@ -72,14 +71,14 @@ def test_a_missed_run_is_caught_up_on_the_next_poll() -> None:
 
 
 def test_no_daily_card_on_the_configured_skip_weekday() -> None:
-    assert Scheduler(Schedule()).due(FRIDAY_LATE) == ()
+    assert DAILY_CARD not in [task.name for task in Scheduler(Schedule()).due(FRIDAY_LATE)]
 
     skipping_friday = Schedule(daily_card_skip_weekday=None)
 
-    assert [task.name for task in Scheduler(skipping_friday).due(FRIDAY_LATE)] == [DAILY_CARD]
+    assert DAILY_CARD in [task.name for task in Scheduler(skipping_friday).due(FRIDAY_LATE)]
 
 
-def test_the_weekly_count_warning_is_monday_only() -> None:
+def test_the_weekly_count_warning_runs_once_in_its_week() -> None:
     scheduler = Scheduler(Schedule())
 
     monday = scheduler.run_due(MONDAY_WARNING)
@@ -89,6 +88,22 @@ def test_the_weekly_count_warning_is_monday_only() -> None:
     assert monday[1].period == "2026-W44"
     assert monday[1].due_at == datetime(2026, 10, 26, 8, 0, tzinfo=TEHRAN)
     assert [run.name for run in tuesday] == [DAILY_CARD]
+
+
+def test_a_weekly_count_warning_missed_on_its_day_is_caught_up() -> None:
+    scheduler = Scheduler(Schedule())
+
+    due = scheduler.due(TUESDAY_LATE)
+
+    assert [task.name for task in due] == [DAILY_CARD, WEEKLY_COUNT_WARNING]
+    assert due[1].period == "2026-W44"
+    assert due[1].due_at == datetime(2026, 10, 26, 8, 0, tzinfo=TEHRAN)
+
+
+def test_a_weekly_count_warning_is_not_raised_before_its_weekday() -> None:
+    scheduler = Scheduler(Schedule(weekly_count_weekday=2))
+
+    assert WEEKLY_COUNT_WARNING not in [task.name for task in scheduler.due(TUESDAY_LATE)]
 
 
 def test_every_time_comes_from_the_settings() -> None:
@@ -108,7 +123,8 @@ def test_the_tehran_date_not_the_utc_date_names_the_period() -> None:
 
     runs = Scheduler(Schedule(daily_card_time=time(0, 0))).run_due(after_midnight)
 
-    assert [run.period for run in runs] == ["2026-10-28"]
+    daily = next(run for run in runs if run.name == DAILY_CARD)
+    assert daily.period == "2026-10-28"
 
 
 def test_the_scheduler_source_holds_no_literal_times() -> None:
