@@ -144,15 +144,19 @@ def checksum(connection: Connection, name: str, table: str) -> str:
 def stock_rows(connection: Connection, table: str = STOCK) -> list[dict[str, Any]]:
     """Read the stock projection for tests and diagnostics."""
     table = _table(table)
-    rows = connection.exec_driver_sql(f"SELECT item_id, location_id, qty FROM {table} ORDER BY item_id, location_id")
-    return [dict(row._mapping) for row in rows]
+    rows = connection.exec_driver_sql(
+        f"SELECT item_id, location_id, qty FROM {table} ORDER BY item_id, location_id"
+    ).mappings()
+    return [dict(row) for row in rows]
 
 
 def cash_rows(connection: Connection, table: str = CASH) -> list[dict[str, Any]]:
     """Read the cash projection for tests and diagnostics."""
     table = _table(table)
-    rows = connection.exec_driver_sql(f"SELECT shift_id, expected, counted, variance FROM {table} ORDER BY shift_id")
-    return [dict(row._mapping) for row in rows]
+    rows = connection.exec_driver_sql(
+        f"SELECT shift_id, expected, counted, variance FROM {table} ORDER BY shift_id"
+    ).mappings()
+    return [dict(row) for row in rows]
 
 
 def meta_row(connection: Connection, name: str) -> Mapping[str, Any]:
