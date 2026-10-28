@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 LOGIN_PATH = "/login"
 _UNEXPECTED = "خطای داخلی رخ داد؛ دوباره تلاش کنید."
+_BAD_CREDENTIALS = "موبایل یا رمز نامعتبر است."
 
 
 class ApiError(Exception):
@@ -107,12 +108,13 @@ def _error_response(
 
 def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] | None]:
     """Translate a service refusal into `(status, code, message, details)`."""
-    if isinstance(exc, InvalidCredentials):
-        return 401, "invalid_credentials", "موبایل یا رمز نامعتبر است.", None
+    if isinstance(exc, (InvalidCredentials, StaffInactive)):
+        # One envelope for every refusal about the person: a different status, code or message
+        # for a deactivated account would tell an enrolled phone which mobiles are staff.
+        # The reason is in the audit log, where only the manager can read it.
+        return 401, "invalid_credentials", _BAD_CREDENTIALS, None
     if isinstance(exc, AccountLocked):
         return 423, "account_locked", "حساب پس از پنج تلاش ناموفق قفل شده است؛ مدیر باید آن را باز کند.", None
-    if isinstance(exc, StaffInactive):
-        return 403, "staff_inactive", "این حساب غیرفعال است.", None
     if isinstance(exc, DeviceNotEnrolled):
         return 403, "device_not_enrolled", "این گوشی برای پرسنل ثبت نشده است.", None
     if isinstance(exc, DeviceRevoked):

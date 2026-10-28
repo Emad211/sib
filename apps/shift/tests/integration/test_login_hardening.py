@@ -31,7 +31,6 @@ from shift.common.clock import utc_iso
 from shift.services.auth import (
     AccountLocked,
     AuthService,
-    DeviceNotEnrolled,
     InvalidCredentials,
     StaffInactive,
     hash_pin,
@@ -130,7 +129,7 @@ ATTEMPTS = (
         mobile=RECEPTION.mobile,
         device_id=NURSE.device_id,
         pin=PIN,
-        refusal=DeviceNotEnrolled,
+        refusal=InvalidCredentials,
     ),
     Attempt(name="inactive staff", mobile=SPARE.mobile, device_id=SPARE.device_id, pin=PIN, refusal=StaffInactive),
     Attempt(

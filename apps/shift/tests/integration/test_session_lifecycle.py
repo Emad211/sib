@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from auth_fixtures import ALTERNATE_PIN, PIN, ROLES, create_device, create_staff, login, seed_roster
+from auth_fixtures import ALTERNATE_PIN, PIN, ROLES, SPARE, create_device, create_staff, login, seed_roster
 from fastapi.testclient import TestClient
 
 from shift.adapters.db import devices_repo, sessions_repo, staff_repo
@@ -97,14 +97,22 @@ def test_persian_digits_and_international_prefix_reach_the_same_account(seeded: 
     assert international.status_code == 200
 
 
-def test_wrong_pin_and_unknown_mobile_look_identical(seeded: TestClient) -> None:
-    wrong_pin = _login(seeded, pin=ALTERNATE_PIN)
-    unknown = login(seeded, mobile="09129999999", device_id=ROLES["reception"].device_id)
+def test_every_refusal_about_the_person_looks_identical(seeded: TestClient) -> None:
+    person = ROLES["reception"]
+    with seeded.app.state.database.write() as connection:
+        staff_repo.set_active(connection, staff_id=SPARE.staff_id, active=False)
 
-    assert wrong_pin.status_code == 401
-    assert unknown.status_code == 401
-    assert wrong_pin.json()["error"]["code"] == "invalid_credentials"
-    assert unknown.json()["error"]["code"] == "invalid_credentials"
+    refusals = {
+        "unknown mobile": login(seeded, mobile="09129999999", device_id=person.device_id),
+        "wrong pin": login(seeded, mobile=person.mobile, device_id=person.device_id, pin=ALTERNATE_PIN),
+        "borrowed device": login(seeded, mobile=person.mobile, device_id=ROLES["nurse"].device_id),
+        "inactive staff": login(seeded, mobile=SPARE.mobile, device_id=SPARE.device_id),
+    }
+
+    for label, response in refusals.items():
+        assert response.status_code == 401, label
+        assert response.json() == refusals["unknown mobile"].json(), f"{label} tells the phone too much"
+    assert refusals["wrong pin"].json()["error"]["code"] == "invalid_credentials"
 
 
 def test_pin_is_accepted_only_from_a_device_paired_with_that_person(seeded: TestClient) -> None:
@@ -115,8 +123,8 @@ def test_pin_is_accepted_only_from_a_device_paired_with_that_person(seeded: Test
 
     assert unknown.status_code == 403
     assert unknown.json()["error"]["code"] == "device_not_enrolled"
-    assert borrowed.status_code == 403
-    assert borrowed.json()["error"]["code"] == "device_not_enrolled"
+    assert borrowed.status_code == 401, "a phone paired with somebody else must not confirm the mobile"
+    assert borrowed.json()["error"]["code"] == "invalid_credentials"
 
 
 def test_a_revoked_device_cannot_open_a_session(seeded: TestClient) -> None:
@@ -129,14 +137,16 @@ def test_a_revoked_device_cannot_open_a_session(seeded: TestClient) -> None:
     assert response.json()["error"]["code"] == "device_revoked"
 
 
-def test_inactive_staff_cannot_log_in(seeded: TestClient) -> None:
+def test_inactive_staff_cannot_log_in(seeded: TestClient, settings: Settings) -> None:
     with seeded.app.state.database.write() as connection:
         staff_repo.set_active(connection, staff_id=ROLES["nurse"].staff_id, active=False)
 
     response = _login(seeded, "nurse")
 
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "staff_inactive"
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_credentials", "deactivation must not be an existence oracle"
+    audit = (settings.log_dir / "audit.log").read_text(encoding="utf-8")
+    assert "auth.login result=inactive" in audit, "only the audit log may name the reason"
 
 
 def test_five_wrong_pins_lock_the_account_until_the_manager_unlocks_it(seeded: TestClient) -> None:

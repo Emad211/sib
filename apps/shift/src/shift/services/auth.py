@@ -183,6 +183,10 @@ class AuthService:
         a cached decoy digest when the mobile is unknown — so the single SQLite writer stays
         free for the ~0.3 s the hash needs (S2 single-writer contract) and no refusal can be
         told apart by how much CPU it cost.
+
+        A phone enrolled for somebody else is refused exactly like an unknown mobile: the
+        refusal types below describe the reason for the audit log, never for the client (all
+        of them become one `401` envelope in `api.errors.describe_refusal`).
         """
         now = self._clock.now_utc()
         normalised_mobile = normalise_mobile(mobile)
@@ -197,7 +201,7 @@ class AuthService:
             raise StaffInactive("staff account is deactivated")
         if device.staff_id != staff.staff_id:
             log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
-            raise DeviceNotEnrolled("device is not paired to this staff member")
+            raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
         self._require_unlocked(staff, now)
         outcome = self._record_attempt(staff=staff, device=device, matches=matches, now=now)
         if isinstance(outcome, AuthError):
