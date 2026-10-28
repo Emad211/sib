@@ -42,3 +42,32 @@ jobs:
         run: python -m coverage report --include="*/shift/domain/*" --fail-under=95
       - name: Full coverage report
         run: python -m coverage report --include="*/shift/*"
+
+  js:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Outbox pure-function tests (node:test)
+        run: node --test tests/js/outbox.test.js
+
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/shift/requirements-dev.lock
+      - run: python -m pip install -r requirements-dev.lock
+      # Playwright is pinned here until the shared dev lock lists it; the e2e
+      # job installs it explicitly so a clean checkout can never skip the test.
+      - run: python -m pip install playwright==1.64.1
+      - run: python -m playwright install chromium
+      - name: Playwright offline outbox e2e
+        run: python -m pytest tests/e2e -v
