@@ -1,8 +1,11 @@
 """SQLAlchemy Core access to the shift SQLite database."""
 
+import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.engine import URL
@@ -14,9 +17,9 @@ BUSY_TIMEOUT_MS = 5000
 SQLITE_TIMEOUT_SECONDS = 5.0
 
 
-def _apply_pragmas(dbapi_connection: object, _record: object) -> None:
+def _apply_pragmas(dbapi_connection: Any, _record: Any) -> None:
     """Set the WAL writer contract on every pooled connection (gap S2)."""
-    cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+    cursor = dbapi_connection.cursor()
     try:
         cursor.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
         cursor.execute("PRAGMA journal_mode = WAL")
@@ -87,9 +90,6 @@ class Database:
 
 def _backup_database(source_path: Path, backup_dir: Path) -> Path:
     """Take a verified online backup before a migration (ADR-008)."""
-    import sqlite3
-    from datetime import UTC, datetime
-
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     destination_path = backup_dir / f"shift_pre_migration_{stamp}.db"

@@ -51,7 +51,7 @@ class EventRecord:
     hash: str
 
 
-def _record(row: Any) -> EventRecord:
+def _record(row: Mapping[str, Any]) -> EventRecord:
     return EventRecord(
         seq=int(row["seq"]),
         event_id=str(row["event_id"]),
