@@ -37,4 +37,8 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - name: Tests (synthetic data only)
-        run: python -m pytest
+        run: python -m coverage run -m pytest
+      - name: Domain coverage gate (SHF-1.2)
+        run: python -m coverage report --include="*/shift/domain/*" --fail-under=95
+      - name: Full coverage report
+        run: python -m coverage report --include="*/shift/*"

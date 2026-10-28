@@ -31,6 +31,19 @@ def test_append_stores_server_authority_and_canonical_payload(store: EventStore,
     assert second.event.prev_hash == result.event.hash
 
 
+def test_s3_alias_columns_mirror_the_authoritative_ones(database: Database, store: EventStore) -> None:
+    store.append(build_event("handover.started"))
+    with database.read() as connection:
+        row = (
+            connection.exec_driver_sql("SELECT event_id, client_event_id, server_at, at_utc FROM events WHERE seq = 1")
+            .mappings()
+            .one()
+        )
+
+    assert row["client_event_id"] == row["event_id"]
+    assert row["at_utc"] == row["server_at"]
+
+
 def test_update_is_rejected_by_the_trigger(database: Database, store: EventStore) -> None:
     store.append(build_event("handover.started"))
 

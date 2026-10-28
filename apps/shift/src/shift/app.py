@@ -9,6 +9,8 @@ from shift.__version__ import __version__
 from shift.adapters.db.core import Database
 from shift.config.logging import configure_logging
 from shift.config.settings import Settings
+from shift.services.event_store import EventStore
+from shift.services.projections import ProjectionEngine
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -21,6 +23,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = Database(resolved.database_path)
         database.migrate()
         application.state.database = database
+        application.state.events = EventStore(database, hash_chain=resolved.hash_chain)
+        application.state.projections = ProjectionEngine(database)
         application.state.secret_key = resolved.read_or_create_secret()
         try:
             yield

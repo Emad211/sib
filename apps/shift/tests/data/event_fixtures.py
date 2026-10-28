@@ -1,5 +1,6 @@
 """Synthetic event factories; every value here is made up (never real patient data)."""
 
+import random
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -56,3 +57,58 @@ def build_event(
         ref_event_id=ref_event_id,
         idempotency_key=idempotency_key,
     )
+
+
+def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> list[NewEvent]:
+    """A deterministic random mix of handover, cash and stock events for property tests."""
+    if count < 1:
+        return []
+    rng = random.Random(seed)
+    shifts = [f"shift-{index}" for index in range(20)]
+    items = [f"item-{index}" for index in range(8)]
+    locations = [f"location-{index}" for index in range(3)]
+    events: list[NewEvent] = []
+    for index, shift in enumerate(shifts):
+        events.append(
+            build_event(
+                "handover.started",
+                shift_id=shift,
+                payload={"opening_cash": rng.randrange(0, 5_000_001)},
+                idempotency_key=f"{key_prefix}-open-{index}",
+            )
+        )
+    kinds = [
+        ("acc.cash_receipt", "cash", 22),
+        ("cash.withdrawn", "cash", 10),
+        ("cash.deposited", "cash", 10),
+        ("handover.cash_counted", "cash", 10),
+        ("handover.item_counted", "count", 10),
+        ("stock.shelf_restocked", "stock", 10),
+        ("acc.consumption", "stock", 10),
+        ("stock.emergency_withdrawal", "stock", 5),
+        ("stock.waste_reported", "stock", 5),
+        ("stock.weekly_count", "count", 8),
+    ]
+    weights = [weight for _, _, weight in kinds]
+    while len(events) < count:
+        event_type, shape, _ = rng.choices(kinds, weights=weights, k=1)[0]
+        shift = rng.choice(shifts)
+        item = rng.choice(items)
+        location = rng.choice(locations)
+        if shape == "cash":
+            payload: dict[str, Any] = {"amount": rng.randrange(0, 500_001)}
+            if event_type == "handover.cash_counted":
+                payload = {"counted": rng.randrange(0, 5_000_001)}
+        elif shape == "count":
+            payload = {"item_id": item, "location_id": location, "counted": rng.randrange(0, 50)}
+        else:
+            payload = {"item_id": item, "location_id": location, "quantity": rng.randrange(0, 20)}
+        events.append(
+            build_event(
+                event_type,
+                shift_id=shift,
+                payload=payload,
+                idempotency_key=f"{key_prefix}-event-{len(events)}",
+            )
+        )
+    return events[:count]

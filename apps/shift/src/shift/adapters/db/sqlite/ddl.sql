@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS events (
     seq             INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id        TEXT NOT NULL UNIQUE,   -- client_event_id: offline-minted ULID (S3)
+    client_event_id TEXT GENERATED ALWAYS AS (event_id) VIRTUAL,
     type            TEXT NOT NULL,
     schema_v        INTEGER NOT NULL DEFAULT 1 CHECK (schema_v >= 1),
     payload         TEXT NOT NULL,
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS events (
     work_date       TEXT NOT NULL CHECK (work_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
     client_at       TEXT NOT NULL,
     server_at       TEXT NOT NULL,
+    at_utc          TEXT GENERATED ALWAYS AS (server_at) VIRTUAL,  -- the design's at_utc
     at_tehran       TEXT NOT NULL,
     ref_event_id    TEXT,
     idempotency_key TEXT NOT NULL UNIQUE,

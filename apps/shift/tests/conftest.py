@@ -10,6 +10,7 @@ from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.config.settings import Settings
 from shift.services.event_store import EventStore
+from shift.services.projections import ProjectionEngine
 
 
 @pytest.fixture
@@ -39,6 +40,12 @@ def database(tmp_path: Path) -> Iterator[Database]:
 def store(database: Database) -> EventStore:
     """An event store on the synthetic database."""
     return EventStore(database)
+
+
+@pytest.fixture
+def projections(database: Database) -> ProjectionEngine:
+    """A projection engine on the synthetic database."""
+    return ProjectionEngine(database)
 
 
 @pytest.fixture

@@ -60,13 +60,13 @@ class Database:
             yield connection
 
     @contextmanager
-    def write(self) -> Iterator[Connection]:
+    def write(self, *, commit: bool = True) -> Iterator[Connection]:
         """Yield the single writer inside `BEGIN IMMEDIATE`, commit or roll back."""
         with self._write_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
                 yield connection
-                connection.exec_driver_sql("COMMIT")
+                connection.exec_driver_sql("COMMIT" if commit else "ROLLBACK")
             except BaseException:
                 connection.exec_driver_sql("ROLLBACK")
                 raise

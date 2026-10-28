@@ -8,4 +8,6 @@ backups/
 .shift_secret_key
 .coverage
 htmlcov/
+.hypothesis/
+.ruff_cache/
 __pycache__/
