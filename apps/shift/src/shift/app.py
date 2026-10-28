@@ -2,11 +2,15 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from shift.__version__ import __version__
 from shift.adapters.db.core import Database
+from shift.api.routes_events import router as events_router
+from shift.api.routes_web import router as web_router
 from shift.config.logging import configure_logging
 from shift.config.settings import Settings
 from shift.services.event_store import EventStore
@@ -33,6 +37,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Sib Shift", version=__version__, lifespan=lifespan)
     app.state.settings = resolved
+
+    static_dir = Path(__file__).resolve().parent / "static"
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    app.include_router(events_router)
+    app.include_router(web_router)
 
     @app.get("/healthz", tags=["ops"])
     def healthz() -> dict[str, str]:
