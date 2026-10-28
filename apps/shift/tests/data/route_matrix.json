@@ -1,4 +1,18 @@
 {
+ "GET / [get_home]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /admin/devices [device_admin_page]": {
   "guard": "permission:device.enroll",
   "roles": {
@@ -27,8 +41,92 @@
    "storekeeper": 200
   }
  },
+ "GET /api/v1/catalog/items [list_items]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/catalog/locations [list_locations]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/catalog/roles [list_roles]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/catalog/staff/{staff_id}/roles [list_staff_roles]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /api/v1/devices [list_devices]": {
   "guard": "permission:device.enroll",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/settings [list_settings]": {
+  "guard": "permission:settings.change",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/settings/{setting}/history [setting_history]": {
+  "guard": "permission:settings.change",
   "roles": {
    "anon": 401,
    "accountant": 403,
@@ -84,6 +182,48 @@
   }
  },
  "GET /login [login_page]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /manifest.webmanifest [get_manifest]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /offline.html [get_offline]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /sw.js [get_service_worker]": {
   "guard": "public",
   "roles": {
    "anon": 200,
@@ -169,6 +309,20 @@
    "storekeeper": 403
   }
  },
+ "POST /api/v1/events [post_event]": {
+  "guard": "permission:events.append",
+  "roles": {
+   "anon": 401,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
   "guard": "permission:staff.pin.reset",
   "roles": {
@@ -189,6 +343,62 @@
    "anon": 401,
    "accountant": 403,
    "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "PUT /api/v1/catalog/items/{item_id} [save_item]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "PUT /api/v1/catalog/locations/{location_id} [save_location]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "PUT /api/v1/catalog/staff/{staff_id}/roles/{role} [set_staff_role]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "PUT /api/v1/settings/{setting} [change_setting]": {
+  "guard": "permission:settings.change",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,

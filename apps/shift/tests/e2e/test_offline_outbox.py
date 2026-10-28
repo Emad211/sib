@@ -11,17 +11,17 @@ from typing import Any
 
 import pytest
 import uvicorn
+from auth_fixtures import PIN, ROLES, seed_roster
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
-from shift.api.principal import Principal, install_principal_guard
 from shift.app import create_app
 from shift.config.settings import Settings
 
 playwright = pytest.importorskip("playwright")
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright  # noqa: E402
 
-E2E_PRINCIPAL = Principal(actor_id="staff_e2e", device_id="device_e2e", shift_id=None)
+PERSON = ROLES["reception"]
 
 _SUBMIT_EVENT = """
 async () => {
@@ -62,7 +62,7 @@ class _UvicornServer(threading.Thread):
 
 @pytest.fixture
 def live_server(tmp_path: Path) -> Generator[tuple[str, Database]]:
-    """Start an ephemeral Uvicorn server with a fake principal guard installed."""
+    """Start an ephemeral Uvicorn server on a seeded database and a real login flow."""
     root = tmp_path / "live_app"
     root.mkdir(parents=True, exist_ok=True)
     settings = Settings(
@@ -72,8 +72,13 @@ def live_server(tmp_path: Path) -> Generator[tuple[str, Database]]:
         secret_file=root / ".shift_secret_key",
         hash_chain=True,
     )
+    setup = Database(settings.database_path)
+    try:
+        setup.migrate()
+        seed_roster(setup, pepper=settings.read_or_create_secret())
+    finally:
+        setup.close()
     application = create_app(settings)
-    install_principal_guard(application, lambda _request: E2E_PRINCIPAL)
     server = _UvicornServer(application, host="127.0.0.1")
     server.start()
 
@@ -173,6 +178,20 @@ def _wait_for_service_worker(page: Page) -> None:
     )
 
 
+def _login(page: Page, base_url: str) -> None:
+    """Log the seeded reception phone in through the real login page."""
+    page.goto(f"{base_url}/login", wait_until="domcontentloaded")
+    page.evaluate("deviceId => localStorage.setItem('shift_device_id', deviceId)", PERSON.device_id)
+    # The page reads the device id while loading, so reload after storing it.
+    page.reload(wait_until="domcontentloaded")
+    page.fill("#mobile", PERSON.mobile)
+    page.fill("#pin", PIN)
+    page.click("#submit")
+    page.wait_for_selector("#message.ok", timeout=15000)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _wait_for_shell(page)
+
+
 @pytest.mark.e2e
 def test_offline_form_submit_then_replay_records_one_principal_owned_event(
     live_server: tuple[str, Database],
@@ -182,8 +201,7 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
     base_url, db = live_server
     context, page = _open_page(browser)
     try:
-        page.goto(f"{base_url}/", wait_until="domcontentloaded")
-        _wait_for_shell(page)
+        _login(page, base_url)
         _wait_for_service_worker(page)
 
         context.set_offline(True)
@@ -234,8 +252,9 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
             assert events_repo.count_events(connection) == 1
             event = events_repo.find_by_event_id(connection, event_id)
             assert event is not None
-            assert event.actor_id == E2E_PRINCIPAL.actor_id
-            assert event.device_id == E2E_PRINCIPAL.device_id
+            assert event.actor_id == PERSON.staff_id
+            assert event.device_id == PERSON.device_id
+            assert event.shift_id is not None
             assert event.work_date == queued["body"]["work_date"]
             assert event.payload["quantity"] == 5
             assert projections_repo.stock_rows(connection) == [
@@ -269,8 +288,8 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
             assert events_repo.count_events(connection) == 1
             event = events_repo.find_by_event_id(connection, event_id)
             assert event is not None
-            assert event.actor_id == E2E_PRINCIPAL.actor_id
-            assert event.device_id == E2E_PRINCIPAL.device_id
+            assert event.actor_id == PERSON.staff_id
+            assert event.device_id == PERSON.device_id
     finally:
         context.close()
 
@@ -326,8 +345,7 @@ def test_online_failed_post_never_claims_success_and_retries(
 
     page.route("**/api/v1/events", handler)
     try:
-        page.goto(f"{base_url}/", wait_until="domcontentloaded")
-        _wait_for_shell(page)
+        _login(page, base_url)
 
         queued = page.evaluate(_SUBMIT_EVENT)
         assert queued is not None
@@ -369,8 +387,7 @@ def test_invalid_200_response_keeps_the_item_and_retries(
 
     page.route("**/api/v1/events", handler)
     try:
-        page.goto(f"{base_url}/", wait_until="domcontentloaded")
-        _wait_for_shell(page)
+        _login(page, base_url)
         page.evaluate(_SUBMIT_EVENT)
 
         _wait_for_attempts(page, attempts, 1)

@@ -297,7 +297,7 @@ def test_a_version_1_database_gains_the_mirrors_with_a_backup_first(tmp_path: Pa
     try:
         report = database.migrate(backup_dir=tmp_path / "backups")
         assert (report.from_version, report.to_version) == (1, migrations.LATEST)
-        assert report.applied == ["0003_accounting_mirror", "0006_bridge_corrections"]
+        assert report.applied == [f"{number:04d}_{name}" for number, name, _ in migrations.MIGRATIONS if number > 1]
         assert report.backup is not None
         with database.read() as connection:
             tables = {str(row[0]) for row in connection.exec_driver_sql("SELECT name FROM sqlite_master")}

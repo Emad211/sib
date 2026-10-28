@@ -14,6 +14,7 @@ import pytest
 from auth_fixtures import PIN, ROLES, SPARE, seed_roster
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+from seed_reference_data import seed as seed_catalog
 
 from shift.api.deps import declared_guards
 from shift.api.errors import describe_refusal
@@ -37,12 +38,40 @@ ROLE_NAMES = (
     "manager",
     "multi_role",
 )
-PATH_VALUES = {"staff_id": SPARE.staff_id, "device_id": SPARE.device_id}
+PATH_VALUES = {
+    "staff_id": SPARE.staff_id,
+    "device_id": SPARE.device_id,
+    "item_id": "para_500_amp",
+    "location_id": "shelf_reception",
+    "setting": "session_ttl_hours",
+    "role": "nurse",
+}
+_ITEM_BODY = {
+    "name": "پاراستامول ۵۰۰ میلی‌گرم",
+    "kind": "counted",
+    "location_id": "shelf_reception",
+    "unit": "آمپول",
+    "minimum": 10,
+    "acc_code": "10001",
+    "stock_factor": 1,
+    "retired": False,
+}
 BODIES = {
     "POST /api/v1/auth/login": {},
     "POST /api/v1/devices/enroll": {},
     "POST /api/v1/devices/enrollment-tokens": {"staff_id": SPARE.staff_id},
     "POST /api/v1/staff/{staff_id}/pin-reset": {"pin": "739251"},
+    "POST /api/v1/events": {
+        "client_event_id": "01J00000000000000000000000",
+        "idempotency_key": "01J00000000000000000000000",
+        "type": "stock.waste_reported",
+        "payload": {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5},
+        "client_at": "2026-10-28T10:00:00Z",
+    },
+    "PUT /api/v1/catalog/items/{item_id}": _ITEM_BODY,
+    "PUT /api/v1/catalog/locations/{location_id}": {"name": "قفسهٔ پذیرش", "retired": False},
+    "PUT /api/v1/catalog/staff/{staff_id}/roles/{role}": {"granted": True},
+    "PUT /api/v1/settings/{setting}": {"value": "8"},
 }
 PAGES = {"GET /login", "GET /enroll", "GET /admin/devices"}
 
@@ -82,10 +111,10 @@ def _status_for(client: TestClient, role: str, key: str, method: str, url: str) 
         person = ROLES[role]
         issued = client.app.state.auth.login(mobile=person.mobile, pin=PIN, device_id=person.device_id)
         client.cookies.set(SESSION_COOKIE, issued.token)
-        headers["X-CSRF-Token"] = issued.csrf_token
+        headers["X-CSRFToken"] = issued.csrf_token
     if method == "POST" and key.startswith("POST /api/v1/auth/login"):
         client.get("/login")
-        headers["X-CSRF-Token"] = client.cookies.get("shift_csrf", "")
+        headers["X-CSRFToken"] = client.cookies.get("shift_csrf", "")
     extra = {"Accept": "text/html"} if key.split(" [")[0] in PAGES else {}
     response = client.request(
         method,
@@ -109,6 +138,7 @@ def matrix_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClie
     )
     with TestClient(create_app(settings)) as client:
         seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_catalog(client.app.state.database)
         yield client
 
 
@@ -174,6 +204,10 @@ def test_only_these_routes_are_public() -> None:
         "GET /healthz [healthz]",
         "GET /login [login_page]",
         "GET /enroll [enroll_page]",
+        "GET / [get_home]",
+        "GET /offline.html [get_offline]",
+        "GET /manifest.webmanifest [get_manifest]",
+        "GET /sw.js [get_service_worker]",
         "POST /api/v1/auth/login [login]",
         "POST /api/v1/devices/enroll [enroll]",
     }, "a new public route is an access-control decision and must be reviewed here"

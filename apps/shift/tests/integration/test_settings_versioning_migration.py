@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 from sqlalchemy.exc import IntegrityError
 
+from shift.adapters.db import migrations
 from shift.adapters.db.core import Database
 from shift.adapters.db.migrations import m0004_settings_and_catalog, m0007_catalog_fixes
 from shift.domain.policy import Role, SettingKey, ShiftKey
@@ -45,6 +48,26 @@ def _names(database: Database, kind: str) -> set[str]:
     with database.read() as connection:
         rows = connection.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = ?", (kind,))
         return {str(row[0]) for row in rows}
+
+
+def _pending_after(version: int) -> list[str]:
+    """The one registry is the spec: every migration numbered after `version` must apply."""
+    return [f"{number:04d}_{name}" for number, name, _ in migrations.MIGRATIONS if number > version]
+
+
+def _database_at_version(path: Path, version: int) -> Database:
+    """Build a genuine old database by applying only the migrations up to `version`."""
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        for number, _name, up in migrations.MIGRATIONS:
+            if number > version:
+                break
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            up(connection)
+            connection.exec_driver_sql(f"PRAGMA user_version = {number}")
+            connection.exec_driver_sql("COMMIT")
+    engine.dispose()
+    return Database(path)
 
 
 def _setting_version(database: Database, **overrides: Any) -> None:
@@ -149,21 +172,17 @@ def test_migrating_again_does_not_reseed(database: Database) -> None:
 
 def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_path: Path) -> None:
     path = tmp_path / "v3.db"
-    database = Database(path)
-    database.migrate()
+    database = _database_at_version(path, 3)
     with database.write() as connection:
         connection.exec_driver_sql("INSERT INTO meta_projection (name, last_seq) VALUES ('kept', 7)")
-        for table in TABLES:
-            connection.exec_driver_sql(f"DROP TABLE {table}")
-        connection.exec_driver_sql("PRAGMA user_version = 3")
     database.close()
 
     upgraded = Database(path)
     try:
         report = upgraded.migrate(backup_dir=tmp_path / "backups")
 
-        assert report.applied == ["0004_settings_and_catalog", "0007_catalog_fixes"]
-        assert report.to_version == 7
+        assert report.applied == _pending_after(3)
+        assert report.to_version == migrations.LATEST
         assert report.backup is not None
         assert set(TABLES) <= _names(upgraded, "table")
         assert set(INDEXES) <= _names(upgraded, "index")
@@ -176,22 +195,18 @@ def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_
         upgraded.close()
 
 
-def test_upgrading_a_version_four_database_only_adds_the_catalog_fixes(tmp_path: Path) -> None:
+def test_upgrading_a_version_four_database_applies_every_later_migration(tmp_path: Path) -> None:
     path = tmp_path / "v4.db"
-    database = Database(path)
-    database.migrate()
+    database = _database_at_version(path, 4)
     _item_version(database, item_id="kept_item", acc_code="90001")
-    with database.write() as connection:
-        connection.exec_driver_sql("DROP INDEX idx_catalog_item_versions_acc_code")
-        connection.exec_driver_sql("PRAGMA user_version = 4")
     database.close()
 
     upgraded = Database(path)
     try:
         report = upgraded.migrate(backup_dir=tmp_path / "backups")
 
-        assert report.applied == ["0007_catalog_fixes"]
-        assert report.to_version == 7
+        assert report.applied == _pending_after(4)
+        assert report.to_version == migrations.LATEST
         assert "idx_catalog_item_versions_acc_code" in _names(upgraded, "index")
         with upgraded.read() as connection:
             assert (
