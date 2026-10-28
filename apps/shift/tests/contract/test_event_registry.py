@@ -18,6 +18,7 @@ EXPECTED_EFFECTS = {
     EventType.STOCK_EMERGENCY_WITHDRAWAL: ("stock", StockOperation.SUBTRACT),
     EventType.STOCK_WASTE_REPORTED: ("stock", StockOperation.SUBTRACT),
     EventType.ACC_CASH_RECEIPT: ("cash", CashOperation.ADD),
+    EventType.ACC_CASH_REVERSAL: ("cash", CashOperation.SUBTRACT),
     EventType.ACC_CONSUMPTION: ("stock", StockOperation.SUBTRACT),
 }
 
@@ -53,11 +54,28 @@ def test_unknown_type_has_no_spec() -> None:
         {"amount": True},
         {"amount": 1, "extra": "x"},
         {},
+        {"amount": 1, "reason": "voided"},
+        {"amount": 1, "reason": "something-else"},
+        {"amount": -1, "reason": "voided"},
     ],
 )
 def test_invalid_cash_payloads_are_rejected(payload: dict) -> None:
     with pytest.raises(ValidationError):
         validate_payload("cash.withdrawn", payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"amount": 1},
+        {"amount": 1, "reason": "something-else"},
+        {"amount": -1, "reason": "voided"},
+        {"amount": 1, "reason": "voided", "amount_raw": -0.5},
+    ],
+)
+def test_a_reversal_needs_a_known_reason_and_a_non_negative_amount(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("acc.cash_reversal", payload)
 
 
 @pytest.mark.parametrize(
@@ -89,4 +107,5 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.CASH_WITHDRAWN,
         EventType.CASH_DEPOSITED,
         EventType.ACC_CASH_RECEIPT,
+        EventType.ACC_CASH_REVERSAL,
     }

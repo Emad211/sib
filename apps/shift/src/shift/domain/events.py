@@ -22,6 +22,7 @@ from shift.domain.payloads import (
     CashCounted,
     CashDeposited,
     CashReceipt,
+    CashReversal,
     CashWithdrawn,
     ConsumptionRecorded,
     EmergencyWithdrawal,
@@ -44,6 +45,7 @@ class EventType(StrEnum):
     STOCK_EMERGENCY_WITHDRAWAL = "stock.emergency_withdrawal"
     STOCK_WASTE_REPORTED = "stock.waste_reported"
     ACC_CASH_RECEIPT = "acc.cash_receipt"
+    ACC_CASH_REVERSAL = "acc.cash_reversal"
     ACC_CONSUMPTION = "acc.consumption"
 
 
@@ -70,6 +72,7 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.STOCK_EMERGENCY_WITHDRAWAL: EventSpec(EmergencyWithdrawal, stock_delta(StockOperation.SUBTRACT)),
     EventType.STOCK_WASTE_REPORTED: EventSpec(WasteReported, stock_delta(StockOperation.SUBTRACT)),
     EventType.ACC_CASH_RECEIPT: EventSpec(CashReceipt, cash_delta(CashOperation.ADD), requires_shift=True),
+    EventType.ACC_CASH_REVERSAL: EventSpec(CashReversal, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.ACC_CONSUMPTION: EventSpec(ConsumptionRecorded, stock_delta(StockOperation.SUBTRACT)),
 }
 

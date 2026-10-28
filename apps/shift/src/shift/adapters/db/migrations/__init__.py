@@ -6,13 +6,21 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Connection
 
-from shift.adapters.db.migrations import m0001_baseline, m0002_auth_and_devices
+from shift.adapters.db.migrations import (
+    m0001_baseline,
+    m0002_auth_and_devices,
+    m0003_accounting_mirror,
+    m0006_bridge_corrections,
+)
 
 log = logging.getLogger(__name__)
 
+# Numbers are assigned per feature slice; gaps are legitimate.
 MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (1, "baseline", m0001_baseline.up),
     (2, "auth_and_devices", m0002_auth_and_devices.up),
+    (3, "accounting_mirror", m0003_accounting_mirror.up),
+    (6, "bridge_corrections", m0006_bridge_corrections.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 

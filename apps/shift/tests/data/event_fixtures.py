@@ -19,6 +19,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"counted": 1_000_000}
     if event_type in {"cash.withdrawn", "cash.deposited", "acc.cash_receipt"}:
         return {"amount": 100_000}
+    if event_type == "acc.cash_reversal":
+        return {"amount": 100_000, "reason": "voided"}
     if event_type in {"handover.item_counted", "stock.weekly_count"}:
         return {"item_id": "item-1", "location_id": "location-1", "counted": 10}
     if event_type in {
@@ -79,6 +81,7 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
         )
     kinds = [
         ("acc.cash_receipt", "cash", 22),
+        ("acc.cash_reversal", "cash", 5),
         ("cash.withdrawn", "cash", 10),
         ("cash.deposited", "cash", 10),
         ("handover.cash_counted", "cash", 10),
@@ -99,6 +102,8 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
             payload: dict[str, Any] = {"amount": rng.randrange(0, 500_001)}
             if event_type == "handover.cash_counted":
                 payload = {"counted": rng.randrange(0, 5_000_001)}
+            elif event_type == "acc.cash_reversal":
+                payload = {"amount": payload["amount"], "reason": "reclosed"}
         elif shape == "count":
             payload = {"item_id": item, "location_id": location, "counted": rng.randrange(0, 50)}
         else:
