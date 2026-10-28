@@ -6,12 +6,13 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Connection
 
-from shift.adapters.db.migrations import m0001_baseline
+from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror
 
 log = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (1, "baseline", m0001_baseline.up),
+    (3, "accounting_mirror", m0003_accounting_mirror.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 
