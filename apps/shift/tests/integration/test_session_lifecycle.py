@@ -326,13 +326,30 @@ def test_no_pin_or_token_is_written_to_the_logs(seeded: TestClient, settings: Se
         assert secret not in public
 
 
-def test_the_login_page_never_offers_an_offsite_redirect(seeded: TestClient) -> None:
-    offsite = seeded.get("/login?next=//evil.example/steal")
-    onsite = seeded.get("/login?next=/admin/devices")
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "//evil.example/steal",
+        "/\\evil.example/steal",
+        "/\t/evil.example",
+        "\\\\evil.example/steal",
+        "http://evil.example/steal",
+        "evil.example/steal",
+        "/admin\\devices",
+    ],
+)
+def test_the_login_page_never_offers_an_offsite_redirect(seeded: TestClient, hostile: str) -> None:
+    response = seeded.get("/login", params={"next": hostile})
 
-    assert offsite.headers["cache-control"] == "no-store"
-    assert 'data-next="/"' in offsite.text
-    assert 'data-next="/admin/devices"' in onsite.text
+    assert response.headers["cache-control"] == "no-store"
+    assert 'data-next="/"' in response.text, f"{hostile!r} must not survive as a destination"
+
+
+def test_the_login_page_keeps_a_same_origin_destination(seeded: TestClient) -> None:
+    response = seeded.get("/login", params={"next": "/admin/devices"})
+
+    assert response.headers["cache-control"] == "no-store"
+    assert 'data-next="/admin/devices"' in response.text
 
 
 def test_a_page_sends_anonymous_visitors_to_login_and_back(seeded: TestClient) -> None:

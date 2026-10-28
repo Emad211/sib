@@ -4,6 +4,7 @@ Login is the only route that runs without a session, so it is protected by the
 double-submit cookie issued by `GET /login`; every other route declares one guard.
 """
 
+import re
 import secrets
 from typing import Annotated
 
@@ -19,6 +20,9 @@ from shift.services.auth import SESSION_COOKIE, SESSION_TTL, Principal, StaffSum
 
 router = APIRouter()
 PREAUTH_CSRF_TTL_SECONDS = 3600
+# Control characters, whitespace and the backslash: a URL parser may turn any of them into a
+# path separator or drop them, which is how `?next=` values escape the origin.
+_UNSAFE_NEXT_CHARACTERS = re.compile(r"[\x00-\x20\x7f\\]")
 
 SessionUser = Annotated[Principal, Depends(deps.require_session())]
 StaffManager = Annotated[Principal, Depends(deps.require(Permission.STAFF_MANAGE))]
@@ -93,8 +97,15 @@ def _staff_payload(entry: StaffSummary) -> dict[str, object]:
 
 
 def _safe_next_path(value: str | None) -> str:
-    """Only same-origin absolute paths may be used as a post-login destination."""
+    """Only same-origin absolute paths may be used as a post-login destination.
+
+    Browsers fold `\\` into `/` and drop tabs and newlines before they parse a URL, so
+    `//evil.example`, `/\\evil.example` and `/<tab>/evil.example` all leave the origin: any
+    value carrying one of those characters is refused, not just the `//` spelling.
+    """
     if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    if _UNSAFE_NEXT_CHARACTERS.search(value):
         return "/"
     return value
 
