@@ -38,3 +38,6 @@ graphify-out/
 *.zip
 voice-cache/
 .hesabdari_secret_key
+
+# agent working notes
+.master/
