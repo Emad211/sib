@@ -1,4 +1,4 @@
-"""Run the shift service with uvicorn on the clinic LAN port (8443)."""
+"""Run the shift service with uvicorn on the configured LAN port (8443 by default)."""
 
 import sys
 from pathlib import Path
@@ -8,14 +8,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 import uvicorn  # noqa: E402
 
 from shift.app import create_app  # noqa: E402
-
-HOST = "127.0.0.1"
-PORT = 8443
+from shift.config.settings import Settings  # noqa: E402
 
 
 def main() -> int:
-    """Serve the ASGI app; host and port are overridable in the config step."""
-    uvicorn.run(create_app(), host=HOST, port=PORT)
+    """Serve the ASGI app using settings from the SHIFT_* environment variables."""
+    settings = Settings.from_env()
+    uvicorn.run(create_app(settings), host=settings.host, port=settings.port)
     return 0
 
 

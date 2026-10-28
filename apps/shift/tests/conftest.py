@@ -1,11 +1,26 @@
-"""Shared fixtures: a migrated synthetic database per test."""
+"""Shared fixtures: a migrated synthetic database and an app bound to temp paths."""
 
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from shift.adapters.db.core import Database
+from shift.app import create_app
+from shift.config.settings import Settings
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    """Production-shaped settings pointing every file at pytest's temp directory."""
+    root = tmp_path / "app"
+    return Settings(
+        database_path=root / "shift.db",
+        log_dir=root / "logs",
+        audit_log_path=root / "logs" / "audit.log",
+        secret_file=root / ".shift_secret_key",
+    )
 
 
 @pytest.fixture
@@ -17,3 +32,10 @@ def database(tmp_path: Path) -> Iterator[Database]:
         yield database
     finally:
         database.close()
+
+
+@pytest.fixture
+def client(settings: Settings) -> Iterator[TestClient]:
+    """A TestClient that runs the app lifespan against the synthetic settings."""
+    with TestClient(create_app(settings)) as test_client:
+        yield test_client
