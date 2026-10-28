@@ -39,6 +39,23 @@ class AuditError(ValueError):
     """The entry must not be written: it is malformed or carries a credential."""
 
 
+def _secret_paths(detail: Mapping[str, Any], prefix: str = "") -> set[str]:
+    """Credential keys anywhere in `detail`, lower-cased and path-qualified for the error."""
+    found: set[str] = set()
+    for key, value in detail.items():
+        name = str(key).lower()
+        path = f"{prefix}{name}"
+        if name in SECRET_FIELDS:
+            found.add(path)
+        if isinstance(value, Mapping):
+            found |= _secret_paths(value, f"{path}.")
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, Mapping):
+                    found |= _secret_paths(item, f"{path}[].")
+    return found
+
+
 class AuditService:
     """Writes every audited action to `audit_log` and to the audit sink, never the public log."""
 
@@ -77,6 +94,6 @@ class AuditService:
             raise AuditError("actor_id is required")
         if not entry.action.strip():
             raise AuditError("action is required")
-        secrets = SECRET_FIELDS.intersection(entry.detail)
+        secrets = _secret_paths(entry.detail)
         if secrets:
             raise AuditError(f"audit detail must not carry credentials: {sorted(secrets)}")

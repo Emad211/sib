@@ -91,6 +91,33 @@ def test_audit_never_stores_credentials(database: Database, field: str) -> None:
         assert audit_repo.count_entries(connection) == 0
 
 
+@pytest.mark.parametrize("field", ["PIN", "Password", "TOKEN", "PubKey", "Authorization", "Secret"])
+def test_audit_never_stores_credentials_whatever_the_key_case(database: Database, field: str) -> None:
+    service = AuditService(database)
+
+    with pytest.raises(AuditError, match="credentials"):
+        service.record(AuditEntry(actor_id="manager-1", action="auth.login", detail={field: "123456"}))
+
+    with database.read() as connection:
+        assert audit_repo.count_entries(connection) == 0
+
+
+@pytest.mark.parametrize(
+    "detail",
+    [
+        {"user": {"Password": "hunter2"}},
+        {"request": {"headers": {"Authorization": "Bearer opaque"}}},
+        {"accounts": [{"token": "issued"}]},
+    ],
+)
+def test_audit_never_stores_nested_credentials(database: Database, detail: dict[str, object]) -> None:
+    with pytest.raises(AuditError, match="credentials"):
+        AuditService(database).record(AuditEntry(actor_id="manager-1", action="auth.login", detail=detail))
+
+    with database.read() as connection:
+        assert audit_repo.count_entries(connection) == 0
+
+
 @pytest.mark.parametrize(("actor_id", "action"), [("", "audit.probe"), ("manager-1", "  ")])
 def test_audit_requires_an_actor_and_an_action(database: Database, actor_id: str, action: str) -> None:
     with pytest.raises(AuditError):
