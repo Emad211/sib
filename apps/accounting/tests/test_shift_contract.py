@@ -7,6 +7,7 @@ import pytest
 
 from src.adapters.sqlite.core import ensure_database_ready
 from src.adapters.sqlite.migrations import m0004_shift_contract as m4
+from src.adapters.sqlite.migrations import m0007_shift_contract_voids as m7
 from src.services.backup import ro_uri
 
 EXPECTED_COLUMNS = {
@@ -23,6 +24,18 @@ EXPECTED_COLUMNS = {
         "has_valid_nid",
         "has_valid_phone",
         "is_foreign",
+    ],
+    "v_shift_voids_v1": [
+        "void_id",
+        "invoice_id",
+        "kind",
+        "amount",
+        "refund_method",
+        "reason",
+        "voided_by",
+        "voided_at",
+        "work_date",
+        "shift",
     ],
 }
 
@@ -73,7 +86,15 @@ def test_every_view_has_exactly_the_contract_columns(path):
     for name, cols in EXPECTED_COLUMNS.items():
         got = [r[1] for r in sqlite3.connect(path).execute(f"PRAGMA table_info({name})")]
         assert got == cols, name
-    assert set(m4.VIEWS_V1) == set(EXPECTED_COLUMNS)
+    assert set(m4.VIEWS_V1) | set(m7.VOIDS_VIEWS) == set(EXPECTED_COLUMNS)
+
+
+def test_the_latest_migration_owns_the_closed_only_money_views(path):
+    """The fix lives in v7: v4 stays immutable, so the view bodies on disk must be v7's."""
+    assert set(m7.CLOSED_ONLY_VIEWS) == {"v_shift_cash_receipts_v1", "v_shift_payment_lines_v1"}
+    for name, sql in m7.CLOSED_ONLY_VIEWS.items():
+        on_disk = sqlite3.connect(path).execute("SELECT sql FROM sqlite_master WHERE name = ?", (name,)).fetchone()[0]
+        assert on_disk.strip() == sql.strip(), name
 
 
 def test_no_view_exposes_personal_data(path):
@@ -94,10 +115,10 @@ def test_views_are_readable_read_only_and_cannot_be_written_through(path):
     conn.close()
 
 
-def test_the_migration_can_run_twice(path):
+def test_the_migrations_can_run_twice(path):
     conn = sqlite3.connect(path)
-    m4.up(conn)
-    m4.up(conn)
+    for up in (m4.up, m4.up, m7.up, m7.up):
+        up(conn)
     conn.commit()
     assert [
         r[0]
@@ -116,6 +137,20 @@ def test_closed_at_is_indexed_for_watermark_reads(path):
         )
     )
     assert "idx_invoices_closed_at" in plan
+
+
+def test_voids_and_registrations_are_indexed_for_watermark_reads(path):
+    for table, column, index in (
+        ("invoice_voids", "voided_at", "idx_invoice_voids_voided_at"),
+        ("patients", "created_at", "idx_patients_created_at"),
+    ):
+        plan = " ".join(
+            str(r)
+            for r in sqlite3.connect(path).execute(
+                f"EXPLAIN QUERY PLAN SELECT * FROM {table} WHERE {column} > '2026-09-24'"
+            )
+        )
+        assert index in plan, table
 
 
 # --------------------------------------------------------------------------- invoices
@@ -221,6 +256,73 @@ def test_cash_receipts_sum_cash_only_per_invoice(path):
     assert read(path, "SELECT invoice_id, amount FROM v_shift_cash_receipts_v1 ORDER BY invoice_id") == [(1, 150000.0)]
     assert read(path, "SELECT COUNT(*) FROM v_shift_payment_lines_v1") == [(6,)]
     assert read(path, "SELECT SUM(amount) FROM v_shift_payment_lines_v1 WHERE payment_type = 'card'") == [(80000.0,)]
+
+
+def test_lines_of_a_non_closed_invoice_are_never_counted(path):
+    """The money bug: lines that outlive their invoice's 'closed' status must count for nothing."""
+    write(path, invoice("closed"), line(1, 1, "cash", 100000), line(1, 2, "card", 50000))
+    write(path, ("UPDATE invoices SET status = 'open', closed_at = NULL WHERE id = ?", (1,)))
+    assert read(path, "SELECT COUNT(*) FROM invoice_payment_lines") == [(2,)]  # the lines are still there
+    assert read(path, "SELECT COUNT(*) FROM v_shift_cash_receipts_v1") == [(0,)]
+    assert read(path, "SELECT COUNT(*) FROM v_shift_payment_lines_v1") == [(0,)]
+
+
+# --------------------------------------------------------------------------- voids
+
+
+def void(invoice_id, kind="refund", amount=100, method="cash", reason="اشتباه در ثبت"):
+    """What the manager's void route writes: the reason, the money, and status='voided'."""
+    return (
+        (
+            "INSERT INTO invoice_voids (invoice_id, kind, amount, refund_method, reason, voided_by, voided_at)"
+            " VALUES (?, ?, ?, ?, ?, 'mgr', '2026-09-24 10:00:00')",
+            (invoice_id, kind, amount, method, reason),
+        ),
+        ("UPDATE invoices SET status = 'voided' WHERE id = ?", (invoice_id,)),
+    )
+
+
+def test_a_void_takes_the_cash_out_of_the_shift_views(path):
+    write(path, invoice("closed"), invoice("closed"), line(1, 1, "cash", 100000), line(2, 2, "cash", 40000))
+    assert read(path, "SELECT invoice_id, amount FROM v_shift_cash_receipts_v1 ORDER BY invoice_id") == [
+        (1, 100000.0),
+        (2, 40000.0),
+    ]
+    write(path, *void(1))
+    # The refunded invoice keeps its frozen lines (v6); only its status takes it out of the views.
+    assert read(path, "SELECT COUNT(*) FROM invoice_payment_lines WHERE invoice_id = 1") == [(1,)]
+    assert read(path, "SELECT invoice_id, amount FROM v_shift_cash_receipts_v1") == [(2, 40000.0)]
+    assert read(path, "SELECT invoice_id FROM v_shift_payment_lines_v1") == [(2,)]
+
+
+def test_a_reopened_invoice_loses_its_lines_and_drops_out_of_the_views(path):
+    write(path, invoice("closed"), line(1, 1, "cash", 100000), line(1, 2, "card", 50000))
+    write(
+        path,
+        ("DELETE FROM invoice_payment_lines WHERE invoice_id = ?", (1,)),
+        ("UPDATE invoices SET status = 'open', closed_at = NULL WHERE id = ?", (1,)),
+    )
+    assert read(path, "SELECT COUNT(*) FROM invoice_payment_lines") == [(0,)]
+    assert read(path, "SELECT COUNT(*) FROM v_shift_cash_receipts_v1") == [(0,)]
+    assert read(path, "SELECT COUNT(*) FROM v_shift_payment_lines_v1") == [(0,)]
+
+
+def test_every_void_is_listed_with_its_money_reason_and_the_invoice_shift(path):
+    write(
+        path,
+        invoice("closed", shift="night"),
+        invoice("closed"),
+        *void(1),
+        *void(2, kind="void", method=None, reason="ثبت تکراری"),
+    )
+    assert read(
+        path,
+        "SELECT void_id, invoice_id, kind, amount, refund_method, reason, voided_by, voided_at, work_date, shift "
+        "FROM v_shift_voids_v1 ORDER BY void_id",
+    ) == [
+        (1, 1, "refund", 100.0, "cash", "اشتباه در ثبت", "mgr", "2026-09-24 10:00:00", "2026-09-24", "night"),
+        (2, 2, "void", 100.0, None, "ثبت تکراری", "mgr", "2026-09-24 10:00:00", "2026-09-24", "morning"),
+    ]
 
 
 # --------------------------------------------------------------------------- vitals and registrations
