@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fa-IR" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <title>سیب — قطع ارتباط</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="/static/icons/192.png" alt="سیب" class="brand-icon">
+        <span>درمانگاه سیب — شیفت</span>
+      </div>
+      <span class="badge badge-offline">آفلاین</span>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <div class="card offline-center">
+      <svg class="offline-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 4.243a9 9 0 01-2.829-2.829m0 0l2.829-2.829m-2.829 2.829L3 21m6.364-15.364a9 9 0 016.364-2.636" />
+      </svg>
+      <h1 class="card-title">ارتباط با سرور درمانگاه قطع است</h1>
+      <p class="card-subtitle">
+        دستگاه شما به شبکه متصل نیست یا سرور در دسترس نمی‌باشد. اطلاعات ثبت‌شده در صف محلی نگهداری شده و پس از اتصال ارسال خواهند شد.
+      </p>
+
+      <button id="retry-btn" class="btn btn-primary" onclick="window.location.reload();">
+        بررسی مجدد اتصال
+      </button>
+    </div>
+  </main>
+
+  <script>
+    window.addEventListener("online", function () {
+      window.location.href = "/";
+    });
+  </script>
+</body>
+</html>
