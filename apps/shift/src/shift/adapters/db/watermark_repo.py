@@ -4,9 +4,10 @@ from dataclasses import dataclass
 
 from sqlalchemy import Connection
 
-# The seed watermark: an empty timestamp sorts before every accounting timestamp text.
+# The seed watermark: an empty timestamp sorts before every accounting timestamp text, and -1 sorts
+# before every accounting primary key, including a pathological row whose id is 0.
 EMPTY_WATERMARK_AT = ""
-EMPTY_WATERMARK_ID = 0
+EMPTY_WATERMARK_ID = -1
 
 
 @dataclass(frozen=True, slots=True)
