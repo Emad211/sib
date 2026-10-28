@@ -1,20 +1,24 @@
 /**
  * CSRF Protection for Sib Shift PWA.
- * Extracts token from <meta name="csrf-token"> or shift_csrf cookie.
- * Attaches X-CSRF-Token to same-origin state-changing fetch and XHR requests.
+ * Reads the server-issued token from <meta name="csrf-token"> (primary) or the
+ * shift_csrf cookie (fallback) and adds the same X-CSRFToken header that the
+ * accounting app validates. The server also performs double-submit validation
+ * of the header against the shift_csrf cookie.
  */
 (function () {
   "use strict";
 
   var SAFE = /^(GET|HEAD|OPTIONS|TRACE)$/i;
+  var HEADER = "X-CSRFToken";
+  var COOKIE = "shift_csrf";
 
   function getCsrfToken() {
     var meta = document.querySelector('meta[name="csrf-token"]');
     if (meta && meta.getAttribute("content")) {
       return meta.getAttribute("content");
     }
-    // Fallback: read pre-auth or session csrf cookie
-    var match = document.cookie.match(/(?:^|;\s*)(?:shift_csrf|csrf_token)=([^;]+)/);
+    var pattern = new RegExp("(?:^|;\\s*)" + COOKIE + "=([^;]+)");
+    var match = document.cookie.match(pattern);
     return match ? decodeURIComponent(match[1]) : "";
   }
 
@@ -31,13 +35,13 @@
     window.fetch = function (input, init) {
       init = init || {};
       var method = (init.method || (input && input.method) || "GET").toUpperCase();
-      var url = typeof input === "string" ? input : (input && input.url);
+      var url = typeof input === "string" ? input : input && input.url;
       var token = getCsrfToken();
 
       if (!SAFE.test(method) && isSameOrigin(url) && token) {
         var headers = new Headers(init.headers || (input && input.headers) || {});
-        if (!headers.has("X-CSRF-Token")) {
-          headers.set("X-CSRF-Token", token);
+        if (!headers.has(HEADER)) {
+          headers.set(HEADER, token);
         }
         init = Object.assign({}, init, { headers: headers });
       }
@@ -55,7 +59,7 @@
     if (this.__csrf) {
       var token = getCsrfToken();
       if (token) {
-        this.setRequestHeader("X-CSRF-Token", token);
+        this.setRequestHeader(HEADER, token);
       }
     }
     return origSend.apply(this, arguments);
@@ -77,13 +81,15 @@
     field.value = token;
   }
 
-  document.addEventListener("submit", function (e) {
-    if (e.target && e.target.tagName === "FORM") {
-      addFormField(e.target);
-    }
-  }, true);
+  document.addEventListener(
+    "submit",
+    function (e) {
+      if (e.target && e.target.tagName === "FORM") {
+        addFormField(e.target);
+      }
+    },
+    true
+  );
 
-  if (typeof window !== "undefined") {
-    window.getCsrfToken = getCsrfToken;
-  }
+  window.getCsrfToken = getCsrfToken;
 })();

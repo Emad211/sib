@@ -29,16 +29,12 @@
         دستگاه شما به شبکه متصل نیست یا سرور در دسترس نمی‌باشد. اطلاعات ثبت‌شده در صف محلی نگهداری شده و پس از اتصال ارسال خواهند شد.
       </p>
 
-      <button id="retry-btn" class="btn btn-primary" onclick="window.location.reload();">
+      <button id="retry-btn" class="btn btn-primary">
         بررسی مجدد اتصال
       </button>
     </div>
   </main>
 
-  <script>
-    window.addEventListener("online", function () {
-      window.location.href = "/";
-    });
-  </script>
+  <script src="/static/offline.js"></script>
 </body>
 </html>

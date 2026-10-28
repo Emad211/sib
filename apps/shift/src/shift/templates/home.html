@@ -5,34 +5,48 @@
 {% block content %}
 <section class="card" aria-labelledby="shift-overview-title">
   <h1 id="shift-overview-title" class="card-title">شیفت فعال درمانگاه</h1>
-  <p class="card-subtitle">ثبت رویدادهای تحویل، موجودی و صندوق با پشتیبانی آفلاین کامل.</p>
+  <p class="card-subtitle">وضعیت شیفت، صف ارسال و رویدادهای جاری در یک نما.</p>
 
-  <div id="submission-feedback" class="badge hidden" style="margin-bottom: 1rem;" role="status"></div>
+  <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
 
-  <form id="quick-event-form" onsubmit="event.preventDefault(); handleEventSubmit();">
+  {% if show_dev_events %}
+  <p class="form-hint">این فرم فقط در محیط توسعه (<code>SHIFT_ENV=development</code>) نمایش داده می‌شود؛ شناسه کاربر، دستگاه و شیفت از نشست سرور گرفته می‌شود.</p>
+
+  <form id="quick-event-form">
     <div class="form-group">
-      <label for="event-type" class="form-label">نوع رویداد:</label>
+      <label for="event-type" class="form-label">نوع رویداد (آفلاین مجاز):</label>
       <select id="event-type" class="form-control" required>
-        <option value="handover.item_counted">شمارش موجودی قفسه (handover.item_counted)</option>
-        <option value="handover.cash_counted">شمارش نقد صندوق (handover.cash_counted)</option>
-        <option value="stock.waste_reported">گزارش ضایعات (stock.waste_reported)</option>
+        <option value="stock.waste_reported">گزارش ضایعات</option>
+        <option value="stock.emergency_withdrawal">خروج اضطراری از قفسه</option>
+        <option value="stock.shelf_restocked">شارژ قفسه</option>
       </select>
     </div>
 
-    <div class="form-group" id="group-amount">
-      <label for="event-amount" class="form-label">مقدار / مبلغ (تومان یا عدد):</label>
-      <input type="number" id="event-amount" class="form-control" value="10" min="0" required>
+    <div class="form-group">
+      <label for="event-item" class="form-label">شناسه کالا:</label>
+      <input type="text" id="event-item" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
     </div>
 
     <div class="form-group">
-      <label for="event-actor" class="form-label">شناسه کاربر (Actor ID):</label>
-      <input type="text" id="event-actor" class="form-control" value="staff_user_1" required>
+      <label for="event-location" class="form-label">شناسه قفسه / محل:</label>
+      <input type="text" id="event-location" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
+    </div>
+
+    <div class="form-group">
+      <label for="event-quantity" class="form-label">مقدار:</label>
+      <input type="number" id="event-quantity" class="form-control" min="0" step="1" value="1" required>
     </div>
 
     <button type="submit" id="submit-event-btn" class="btn btn-primary btn-block">
-      ثبت رویداد در صف
+      ثبت در صف ارسال
     </button>
   </form>
+  {% else %}
+  <div class="shell-notice" role="note">
+    <p>برای ثبت رویداد، از دستگاه جفت‌شدهٔ خود وارد شوید. رویدادهای جاری شیفت (ضایعات، خرابی، خدمات و امانات) در صورت قطع ارتباط در صف محلی ذخیره و پس از اتصال همگام می‌شوند.</p>
+    <p>تحویل شیفت و شمارش کور الزاماً با اتصال برخط به سرور درمانگاه انجام می‌شود.</p>
+  </div>
+  {% endif %}
 </section>
 
 <!-- Outbox Card (hidden when 0 items) -->
@@ -47,37 +61,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
-  function handleEventSubmit() {
-    const type = document.getElementById("event-type").value;
-    const amount = parseInt(document.getElementById("event-amount").value, 10);
-    const actorId = document.getElementById("event-actor").value;
-    const today = new Date().toISOString().split("T")[0];
-
-    let payload = {};
-    let shiftId = "shift_demo_1";
-
-    if (type === "handover.cash_counted") {
-      payload = { counted: amount };
-    } else if (type === "handover.item_counted") {
-      payload = { item_id: "item_demo", location_id: "loc_demo", counted: amount };
-    } else if (type === "stock.waste_reported") {
-      payload = { item_id: "item_demo", location_id: "loc_demo", quantity: amount };
-      shiftId = null;
-    }
-
-    const eventData = {
-      client_event_id: window.ShiftOutbox.mintUlid(),
-      type: type,
-      payload: payload,
-      actor_id: actorId,
-      device_id: "device_web_client",
-      work_date: today,
-      client_at: new Date().toISOString(),
-      shift_id: shiftId,
-    };
-
-    window.submitShiftEvent(eventData);
-  }
-</script>
+<script src="/static/home.js"></script>
 {% endblock %}

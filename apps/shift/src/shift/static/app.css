@@ -32,6 +32,11 @@
   --color-primary: #0f766e;
   --color-primary-hover: #115e59;
   --color-primary-light: #ccfbf1;
+  /* Button background is darker than the link colour so white text keeps
+     at least WCAG AA 4.5:1 contrast in both themes. */
+  --color-primary-button: #0f766e;
+  --color-primary-button-hover: #115e59;
+  --color-on-primary: #ffffff;
   --color-bg: #f8fafc;
   --color-surface: #ffffff;
   --color-surface-raised: #f1f5f9;
@@ -61,6 +66,9 @@
     --color-primary: #14b8a6;
     --color-primary-hover: #2dd4bf;
     --color-primary-light: #134e4a;
+    /* #14b8a6 would give white text only 2.49:1; keep the darker teal pair. */
+    --color-primary-button: #0f766e;
+    --color-primary-button-hover: #115e59;
     --color-bg: #0f172a;
     --color-surface: #1e293b;
     --color-surface-raised: #334155;
@@ -91,6 +99,7 @@ html {
   text-align: right;
   background-color: var(--color-bg);
   color: var(--color-text);
+  color-scheme: light dark;
   font-size: 16px;
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
@@ -100,6 +109,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -108,7 +118,7 @@ body {
 .app-header {
   background-color: var(--color-surface);
   border-bottom: 1px solid var(--color-border-subtle);
-  padding: 0.75rem 1rem;
+  padding: calc(0.75rem + env(safe-area-inset-top)) 1rem 0.75rem;
   position: sticky;
   top: 0;
   z-index: 40;
@@ -126,6 +136,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-height: var(--touch-target);
   font-weight: 700;
   font-size: 1.125rem;
   color: var(--color-primary);
@@ -175,6 +186,7 @@ body {
   width: 100%;
   margin: 0 auto;
   padding: 1rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 
 /* Badges */
@@ -259,12 +271,12 @@ body {
 }
 
 .btn-primary {
-  background-color: var(--color-primary);
-  color: #ffffff;
+  background-color: var(--color-primary-button);
+  color: var(--color-on-primary);
 }
 
 .btn-primary:hover, .btn-primary:focus-visible {
-  background-color: var(--color-primary-hover);
+  background-color: var(--color-primary-button-hover);
 }
 
 .btn-secondary {
@@ -285,6 +297,30 @@ body {
 
 .btn-block {
   width: 100%;
+}
+
+.btn-compact {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.feedback-badge {
+  margin-bottom: 1rem;
+}
+
+.form-hint {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  margin: 0 0 1rem 0;
+}
+
+.shell-notice {
+  color: var(--color-text-muted);
+  font-size: 0.9375rem;
+}
+
+.shell-notice p {
+  margin: 0 0 0.75rem 0;
 }
 
 .btn:focus-visible {

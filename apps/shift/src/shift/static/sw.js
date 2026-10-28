@@ -1,52 +1,68 @@
 /**
  * Sib Shift - Service Worker
- * Cache-name embeds version for atomic cache busting on deploy.
- * Pre-caches shell assets, serves network-first navigations with offline fallback,
- * static cache-first, and supports Background Sync outbox replay.
+ * The cache name embeds the app version (injected by routes_web.py), so every
+ * deploy busts it. Pre-caches the shell including the manifest start_url,
+ * serves navigations network-first with a cache/offline fallback, and keeps
+ * static assets cache-first.
+ *
+ * Background Sync only nudges open clients; the page owns the IndexedDB outbox
+ * and its retry timer. With no client open the browser retries the sync later.
  */
 
-const VERSION = "0.1.0";
+const VERSION = "__SHIFT_VERSION__";
 const CACHE_NAME = `shift-cache-v${VERSION}`;
 
 const PRECACHE_URLS = [
   "/",
+  "/?src=pwa",
   "/offline.html",
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
+  "/static/home.js",
+  "/static/offline.js",
   "/static/outbox-idb.js",
   "/static/csrf.js",
   "/static/fonts/Vazirmatn-Regular.woff2",
+  "/static/fonts/Vazirmatn-Medium.woff2",
   "/static/fonts/Vazirmatn-Bold.woff2",
   "/static/icons/192.png",
   "/static/icons/512.png",
   "/static/icons/maskable-512.png",
 ];
 
-// Install: precache essential shell assets
+async function precacheShell() {
+  const cache = await caches.open(CACHE_NAME);
+  const results = await Promise.allSettled(PRECACHE_URLS.map((url) => cache.add(url)));
+  const failed = PRECACHE_URLS.filter((_, index) => results[index].status === "rejected");
+  if (failed.length > 0) {
+    // Fail install loudly: silently installing an empty cache would disable
+    // offline mode after a deploy that renamed or removed an asset.
+    throw new Error(`SW precache failed for: ${failed.join(", ")}`);
+  }
+}
+
+// Install: precache every shell asset; a failure rejects the whole install.
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_URLS).catch((err) => {
-        // Individual missing asset shouldn't crash SW install
-        console.warn("SW precache partial warning:", err);
-      });
-    }).then(() => self.skipWaiting())
-  );
+  event.waitUntil(precacheShell().then(() => self.skipWaiting()));
 });
 
 // Activate: bust old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME && key.startsWith("shift-cache-")) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) => {
+        return Promise.all(
+          keys.map((key) => {
+            if (key !== CACHE_NAME && key.startsWith("shift-cache-")) {
+              return caches.delete(key);
+            }
+            return undefined;
+          })
+        );
+      })
+      .then(() => self.clients.claim())
   );
 });
 
@@ -55,28 +71,13 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Ignore non-HTTP/HTTPS and non-GET requests for standard caching
+  // The outbox owns POSTs: never fabricate a "queued" response here.
   if (req.method !== "GET") {
-    // Intercept POST /api/v1/events if offline: return structured offline status
-    if (url.pathname.startsWith("/api/v1/events") && !navigator.onLine) {
-      event.respondWith(
-        new Response(
-          JSON.stringify({
-            status: "queued",
-            offline: true,
-            message: "دستگاه آفلاین است؛ در صف ارسال ذخیره شد.",
-          }),
-          {
-            status: 503,
-            headers: { "Content-Type": "application/json" },
-          }
-        )
-      );
-    }
     return;
   }
 
-  // Same-origin navigations: Network-first with cache fallback
+  // Same-origin navigations: Network-first with cache fallback. ignoreSearch
+  // makes "/" serve the installed start_url "/?src=pwa" (and vice versa).
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -88,7 +89,7 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(async () => {
-          const cached = await caches.match(req);
+          const cached = await caches.match(req, { ignoreSearch: true });
           if (cached) {
             return cached;
           }
@@ -116,11 +117,13 @@ self.addEventListener("fetch", (event) => {
       caches.match(req).then((cached) => {
         if (cached) {
           // Revalidate in background
-          fetch(req).then((networkResp) => {
-            if (networkResp.ok) {
-              caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResp));
-            }
-          }).catch(() => {});
+          fetch(req)
+            .then((networkResp) => {
+              if (networkResp.ok) {
+                caches.open(CACHE_NAME).then((cache) => cache.put(req, networkResp));
+              }
+            })
+            .catch(() => {});
           return cached;
         }
         return fetch(req).then((response) => {
@@ -136,16 +139,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Default: Network with cache fallback
-  event.respondWith(
-    fetch(req).catch(() => caches.match(req))
-  );
+  event.respondWith(fetch(req).catch(() => caches.match(req, { ignoreSearch: true })));
 });
 
-// Background Sync handler
+// Background Sync handler (best effort: the page replays the outbox itself)
 self.addEventListener("sync", (event) => {
   if (event.tag === "replay-outbox") {
     event.waitUntil(
-      self.clients.matchAll().then((clients) => {
+      self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then((clients) => {
         clients.forEach((client) => {
           client.postMessage({ type: "SYNC_REPLAY_OUTBOX" });
         });
