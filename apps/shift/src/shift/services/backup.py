@@ -1,8 +1,9 @@
 """Verified online snapshots of the live SQLite database, kept in two locations (gap S6, ADR-008).
 
-Only driver-level primitives are used here: the `sqlite3` online backup API (a plain file copy of a
-WAL database can be corrupt), `PRAGMA wal_checkpoint` before copying and `PRAGMA integrity_check`
-on the copy before it is accepted. Every open is read-only, so a rejected file is never altered.
+Only driver-level primitives are used here: `PRAGMA wal_checkpoint` before copying, the `sqlite3`
+online backup API (a plain file copy of a WAL database can be corrupt) and `inspect_snapshot` on
+the copy before it is accepted. What a snapshot is and how it is verified lives in
+`shift.services.snapshot`; this module orchestrates staging, mirroring and retention.
 """
 
 import logging
@@ -11,32 +12,23 @@ import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, replace
-from datetime import datetime
 from pathlib import Path
 
-from shift.common.clock import Clock, SystemClock, require_aware
+from shift.common.clock import Clock, SystemClock
+from shift.services.snapshot import (
+    SNAPSHOT_PREFIX,
+    SNAPSHOT_SUFFIX,
+    BackupRejected,
+    Snapshot,
+    inspect_snapshot,
+    snapshot_name,
+)
 
 log = logging.getLogger(__name__)
 
-SNAPSHOT_PREFIX = "shift_"
-SNAPSHOT_SUFFIX = ".db"
 _PARTIAL_SUFFIX = ".partial"
 _NAME = re.compile(rf"^{SNAPSHOT_PREFIX}\d{{8}}T\d{{6}}\d{{6}}Z{re.escape(SNAPSHOT_SUFFIX)}$")
 _TIMEOUT_SECONDS = 5.0
-
-
-class BackupRejected(RuntimeError):
-    """A snapshot failed verification; it is deleted and never accepted as a backup."""
-
-
-@dataclass(frozen=True, slots=True)
-class Snapshot:
-    """A verified database file: intact, with its schema version and its event count."""
-
-    path: Path
-    size_bytes: int
-    schema_version: int
-    events: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,31 +38,6 @@ class BackupReport:
     snapshot: Snapshot
     mirror: Path | None
     pruned: tuple[Path, ...]
-
-
-def snapshot_name(moment: datetime) -> str:
-    """File name for a snapshot taken at `moment`; names sort chronologically."""
-    return f"{SNAPSHOT_PREFIX}{require_aware(moment).strftime('%Y%m%dT%H%M%S%fZ')}{SNAPSHOT_SUFFIX}"
-
-
-def inspect_snapshot(path: str | Path) -> Snapshot:
-    """Prove a database file is intact and is a shift database, or raise `BackupRejected`."""
-    file = Path(path)
-    if not file.is_file():
-        raise BackupRejected(f"snapshot not found: {file}")
-    try:
-        with closing(sqlite3.connect(f"{file.resolve().as_uri()}?mode=ro", uri=True)) as connection:
-            integrity = connection.execute("PRAGMA integrity_check").fetchone()
-            tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-            if integrity is None or integrity[0] != "ok":
-                raise BackupRejected(f"{file.name} failed integrity_check: {integrity!r}")
-            if "events" not in tables:
-                raise BackupRejected(f"{file.name} has no events table; it is not a shift database")
-            schema_version = int(connection.execute("PRAGMA user_version").fetchone()[0])
-            events = int(connection.execute("SELECT COUNT(*) FROM events").fetchone()[0])
-    except sqlite3.Error as exc:
-        raise BackupRejected(f"{file.name} cannot be read as SQLite: {exc}") from exc
-    return Snapshot(file, file.stat().st_size, schema_version, events)
 
 
 def prune_snapshots(directory: str | Path, *, keep: int) -> list[Path]:

@@ -129,6 +129,16 @@ def test_a_missing_snapshot_or_directory_is_handled(tmp_path: Path) -> None:
     assert prune_snapshots(tmp_path / "no-such-directory", keep=2) == []
 
 
+def test_snapshot_verification_lives_apart_from_the_backup_service() -> None:
+    """`Snapshot` and `inspect_snapshot` have a module of their own; the service stays under 150 lines."""
+    from shift.services import snapshot as snapshot_module
+
+    service_lines = Path(backup_module.__file__).read_text(encoding="utf-8").splitlines()
+    assert len(service_lines) <= 150
+    assert snapshot_module.inspect_snapshot is backup_module.inspect_snapshot
+    assert snapshot_module.Snapshot is backup_module.Snapshot
+
+
 def test_retention_must_keep_at_least_one_snapshot(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="at least 1"):
         BackupService(tmp_path / "shift.db", backup_dir=tmp_path / "backups", keep_snapshots=0)
