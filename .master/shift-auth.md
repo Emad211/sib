@@ -47,8 +47,11 @@ Each commit was checked out and run: `141` (repos), `147` (services), `254` (HEA
 ## Decisions that differ from the design (deliberate)
 
 1. **argon2id (task) instead of bcrypt (design §3)** via `argon2-cffi==25.1.0`
-   (`t=3, m=64 MiB, p=4`, RFC 9106 second recommendation). No application pepper: a lost
-   secret file would silently invalidate every PIN, and argon2 already salts per hash.
+   (`t=3, m=64 MiB, p=4`, RFC 9106 second recommendation), with the S02 §4 salt **and
+   pepper**: the hashed value is `<secret-file value>\x1f<pin>`, so a stolen database alone
+   cannot be searched offline. Operational consequence: the install secret
+   (`.shift_secret_key` next to the database) must be backed up with the database — losing it
+   makes every PIN unverifiable and every staff member needs a manager reset.
 2. **QR library: `segno==1.6.6`** — pure Python, zero dependencies, writes PNG/SVG/terminal
    from the same object, so `print_enroll_qr.py` and the admin screen share one dependency
    and no Pillow/native build is added to the clinic machine.

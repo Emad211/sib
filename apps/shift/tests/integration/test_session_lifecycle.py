@@ -34,7 +34,7 @@ SET_COOKIE = "set-cookie"
 @pytest.fixture
 def seeded(client: TestClient) -> TestClient:
     """The app client with one staff member and one phone per role."""
-    seed_roster(client.app.state.database)
+    seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
     return client
 
 
@@ -81,7 +81,7 @@ def test_production_cookies_are_secure(tmp_path: Path) -> None:
         environment="production",
     )
     with TestClient(create_app(settings), base_url="https://testserver") as client:
-        seed_roster(client.app.state.database)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
         response = _login(client)
 
     assert "Secure" in response.headers.get_list(SET_COOKIE)[0]
@@ -446,3 +446,26 @@ def test_the_production_hasher_is_argon2id_with_owner_grade_parameters() -> None
     assert verify_pin(digest, PIN) is True
     assert verify_pin(digest, ALTERNATE_PIN) is False
     assert verify_pin("not-a-digest", PIN) is False
+
+
+def test_the_install_secret_peppers_every_pin() -> None:
+    from auth_fixtures import TEST_HASHER
+
+    first = hash_pin(PIN, pepper="install-one", hasher=TEST_HASHER)
+    second = hash_pin(PIN, pepper="install-two", hasher=TEST_HASHER)
+
+    assert first != second, "the same PIN must hash differently under another install secret"
+    assert verify_pin(first, PIN, pepper="install-one", hasher=TEST_HASHER) is True
+    assert verify_pin(first, PIN, pepper="install-two", hasher=TEST_HASHER) is False
+    assert verify_pin(first, PIN, hasher=TEST_HASHER) is False, "the digest needs its pepper back"
+
+
+def test_the_app_hashes_pins_with_its_install_secret(seeded: TestClient) -> None:
+    from auth_fixtures import TEST_HASHER
+
+    with seeded.app.state.database.read() as connection:
+        staff = staff_repo.find(connection, ROLES["reception"].staff_id)
+
+    assert verify_pin(staff.pin_hash, PIN, pepper=seeded.app.state.secret_key, hasher=TEST_HASHER), (
+        "the running service must pepper with the secret file it created at startup"
+    )

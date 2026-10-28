@@ -129,15 +129,23 @@ def normalise_mobile(raw: str) -> str:
     return text
 
 
-def hash_pin(pin: str, *, hasher: PasswordHasher = PIN_HASHER) -> str:
+def pin_material(pin: str, pepper: str = "") -> str:
+    """The value that is hashed: the install pepper, a separator, then the PIN.
+
+    The separator keeps `("12", "345678")` and `("123", "45678")` distinct.
+    """
+    return f"{pepper}\x1f{pin}"
+
+
+def hash_pin(pin: str, *, pepper: str = "", hasher: PasswordHasher = PIN_HASHER) -> str:
     """Argon2id digest of a PIN; the PIN itself is never stored or logged."""
-    return hasher.hash(pin)
+    return hasher.hash(pin_material(pin, pepper))
 
 
-def verify_pin(pin_hash: str, pin: str, *, hasher: PasswordHasher = PIN_HASHER) -> bool:
+def verify_pin(pin_hash: str, pin: str, *, pepper: str = "", hasher: PasswordHasher = PIN_HASHER) -> bool:
     """Constant-work PIN check that treats a corrupt digest as a mismatch."""
     try:
-        return hasher.verify(pin_hash, pin)
+        return hasher.verify(pin_hash, pin_material(pin, pepper))
     except (VerificationError, InvalidHashError):
         return False
 
@@ -152,11 +160,15 @@ class AuthService:
         clock: Clock | None = None,
         hasher: PasswordHasher = PIN_HASHER,
         session_ttl: timedelta = SESSION_TTL,
+        pepper: str = "",
     ) -> None:
         self._database = database
         self._clock = clock or SystemClock()
         self._hasher = hasher
         self._session_ttl = session_ttl
+        # The per-install secret from `Settings.secret_file`: a stolen database alone is
+        # not enough to run an offline PIN search (S02 §4 asks for salt *and* pepper).
+        self._pepper = pepper
         # Built on the first "unknown mobile" login, not at startup: verifying against a
         # real digest keeps that path as slow as a wrong PIN, so response time does not
         # reveal which mobiles exist.
@@ -172,7 +184,7 @@ class AuthService:
             device = self._require_usable_device(devices_repo.find_device(connection, device_id))
             staff = staff_repo.find_by_mobile(connection, normalised_mobile)
             if staff is None:
-                verify_pin(self._decoy(), normalised_pin, hasher=self._hasher)
+                verify_pin(self._decoy(), normalised_pin, pepper=self._pepper, hasher=self._hasher)
                 log.info("auth.login result=unknown_mobile device=%s", device_id)
                 raise InvalidCredentials("mobile or PIN is wrong")
             if not staff.active:
@@ -182,7 +194,7 @@ class AuthService:
                 log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
                 raise DeviceNotEnrolled("device is not paired to this staff member")
             self._require_unlocked(staff, now)
-            if not verify_pin(staff.pin_hash, normalised_pin, hasher=self._hasher):
+            if not verify_pin(staff.pin_hash, normalised_pin, pepper=self._pepper, hasher=self._hasher):
                 # The counter must survive the refusal, so it is written here and the
                 # exception is raised after this transaction commits.
                 refusal = self._register_failure(connection, staff, now)
@@ -259,7 +271,7 @@ class AuthService:
             staff_repo.set_pin_hash(
                 connection,
                 staff_id=staff_id,
-                pin_hash=hash_pin(validated, hasher=self._hasher),
+                pin_hash=hash_pin(validated, pepper=self._pepper, hasher=self._hasher),
                 updated_at=utc_iso(now),
             )
             staff_repo.clear_failures(connection, staff_id=staff_id)
@@ -269,7 +281,7 @@ class AuthService:
     def _decoy(self) -> str:
         """A stable digest to verify against when the mobile is unknown (timing parity)."""
         if self._decoy_hash is None:
-            self._decoy_hash = self._hasher.hash("000000")
+            self._decoy_hash = hash_pin("000000", pepper=self._pepper, hasher=self._hasher)
         return self._decoy_hash
 
     def _require_usable_device(self, device: DeviceRecord | None) -> DeviceRecord:

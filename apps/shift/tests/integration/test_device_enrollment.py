@@ -19,7 +19,7 @@ from shift.services.devices import ENROLLMENT_TTL, DeviceService, EnrollmentReje
 
 @pytest.fixture
 def seeded(client: TestClient) -> TestClient:
-    seed_roster(client.app.state.database)
+    seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
     return client
 
 

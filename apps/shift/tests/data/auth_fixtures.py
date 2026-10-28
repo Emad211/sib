@@ -65,6 +65,7 @@ def create_staff(
     roles: Iterable[str],
     pin: str = PIN,
     active: bool = True,
+    pepper: str = "",
 ) -> None:
     """Insert one staff row with roles and a cheap (test-only) argon2id digest."""
     with database.write() as connection:
@@ -73,7 +74,7 @@ def create_staff(
             staff_id=staff_id,
             full_name=full_name,
             mobile=mobile,
-            pin_hash=hash_pin(pin, hasher=TEST_HASHER),
+            pin_hash=hash_pin(pin, pepper=pepper, hasher=TEST_HASHER),
             created_at=utc_iso(FIXED_NOW),
         )
         for role in roles:
@@ -95,7 +96,7 @@ def create_device(database: Database, *, device_id: str, staff_id: str, label: s
         )
 
 
-def seed_roster(database: Database) -> None:
+def seed_roster(database: Database, *, pepper: str = "") -> None:
     """Every role from the route matrix plus one spare target for the manager routes."""
     for person in (*ROLES.values(), SPARE):
         create_staff(
@@ -104,6 +105,7 @@ def seed_roster(database: Database) -> None:
             full_name=person.full_name,
             mobile=person.mobile,
             roles=person.roles,
+            pepper=pepper,
         )
         create_device(database, device_id=person.device_id, staff_id=person.staff_id)
 

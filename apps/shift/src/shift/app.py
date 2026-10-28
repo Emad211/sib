@@ -29,9 +29,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.database = database
         application.state.events = EventStore(database, hash_chain=resolved.hash_chain)
         application.state.projections = ProjectionEngine(database)
-        application.state.auth = AuthService(database)
-        application.state.devices = DeviceService(database)
         application.state.secret_key = resolved.read_or_create_secret()
+        application.state.auth = AuthService(database, pepper=application.state.secret_key)
+        application.state.devices = DeviceService(database)
         try:
             yield
         finally:

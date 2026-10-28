@@ -108,7 +108,7 @@ def matrix_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClie
         secret_file=root / ".secret",
     )
     with TestClient(create_app(settings)) as client:
-        seed_roster(client.app.state.database)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
         yield client
 
 
