@@ -1,6 +1,6 @@
 # Developer entry point for the shift app. Run from apps/shift.
 #   ./dev.ps1 setup    create .venv and install requirements-dev.lock
-#   ./dev.ps1 test     everything CI runs: ruff check, format check, tests, domain coverage gate
+#   ./dev.ps1 test     everything CI runs: ruff, tests, coverage gates and node units
 #   ./dev.ps1 lint     ruff check
 #   ./dev.ps1 fmt      rewrite files with ruff format
 #   ./dev.ps1 run      start the service on port 8443
@@ -22,7 +22,9 @@ switch ($Task) {
         & $Py -m ruff check .; if ($LASTEXITCODE) { exit $LASTEXITCODE }
         & $Py -m ruff format --check .; if ($LASTEXITCODE) { exit $LASTEXITCODE }
         & $Py -m coverage run -m pytest; if ($LASTEXITCODE) { exit $LASTEXITCODE }
-        & $Py -m coverage report --include="*/shift/domain/*" --fail-under=95
+        & $Py -m coverage report --include="*/shift/domain/*" --fail-under=95; if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        & $Py -m coverage report --include="*/shift/*" --fail-under=85; if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        if (Get-Command node -ErrorAction SilentlyContinue) { & node --test tests/js/outbox.test.js; if ($LASTEXITCODE) { exit $LASTEXITCODE } }
     }
     "lint" { & $Py -m ruff check . }
     "fmt" { & $Py -m ruff format . }

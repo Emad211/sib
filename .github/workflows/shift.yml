@@ -40,8 +40,8 @@ jobs:
         run: python -m coverage run -m pytest
       - name: Domain coverage gate (SHF-1.2)
         run: python -m coverage report --include="*/shift/domain/*" --fail-under=95
-      - name: Full coverage report
-        run: python -m coverage report --include="*/shift/*"
+      - name: Total coverage gate
+        run: python -m coverage report --include="*/shift/*" --fail-under=85
 
   js:
     runs-on: windows-latest

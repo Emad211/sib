@@ -32,3 +32,18 @@ def test_workflow_still_guards_tracked_databases() -> None:
     workflow = _WORKFLOW.read_text(encoding="utf-8")
 
     assert "database files are tracked" in workflow
+
+
+def test_workflow_enforces_both_coverage_gates() -> None:
+    workflow = _WORKFLOW.read_text(encoding="utf-8")
+
+    assert '--include="*/shift/domain/*" --fail-under=95' in workflow
+    assert '--include="*/shift/*" --fail-under=85' in workflow
+
+
+def test_dev_script_runs_the_same_gates_and_node_units() -> None:
+    script = (Path(__file__).resolve().parents[2] / "dev.ps1").read_text(encoding="utf-8")
+
+    assert "--fail-under=95" in script
+    assert "--fail-under=85" in script
+    assert "node --test tests/js/outbox.test.js" in script
