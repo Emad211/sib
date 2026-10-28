@@ -36,6 +36,8 @@ SESSION_TTL = timedelta(hours=12)
 SESSION_COOKIE = "shift_session"
 TOKEN_BYTES = 32
 _MOBILE = re.compile(r"09\d{9}")
+# The one sentence every "this person may not log in" refusal carries: see `login`.
+_WRONG_MOBILE_OR_PIN = "mobile or PIN is wrong"
 PIN_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16, type=Type.ID)
 
 log = get_audit_logger()
@@ -175,32 +177,68 @@ class AuthService:
         self._decoy_hash: str | None = None
 
     def login(self, *, mobile: str, pin: str, device_id: str) -> IssuedSession:
-        """Open a session, or raise the specific `AuthError` that refused it."""
+        """Open a session, or raise the specific `AuthError` that refused it.
+
+        Argon2id runs outside every transaction and runs exactly once on every path — against
+        a cached decoy digest when the mobile is unknown — so the single SQLite writer stays
+        free for the ~0.3 s the hash needs (S2 single-writer contract) and no refusal can be
+        told apart by how much CPU it cost.
+        """
         now = self._clock.now_utc()
         normalised_mobile = normalise_mobile(mobile)
         normalised_pin = normalise_digits(pin)
-        refusal: AuthError
-        with self._database.write() as connection:
+        device, staff = self._identify(device_id=device_id, mobile=normalised_mobile)
+        matches = self._pin_matches(staff=staff, pin=normalised_pin)
+        if staff is None:
+            log.info("auth.login result=unknown_mobile device=%s", device_id)
+            raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
+        if not staff.active:
+            log.info("auth.login result=inactive staff=%s", staff.staff_id)
+            raise StaffInactive("staff account is deactivated")
+        if device.staff_id != staff.staff_id:
+            log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
+            raise DeviceNotEnrolled("device is not paired to this staff member")
+        self._require_unlocked(staff, now)
+        outcome = self._record_attempt(staff=staff, device=device, matches=matches, now=now)
+        if isinstance(outcome, AuthError):
+            raise outcome
+        return outcome
+
+    def _identify(self, *, device_id: str, mobile: str) -> tuple[DeviceRecord, StaffRecord | None]:
+        """Read the phone and the staff row in one read transaction, never the writer."""
+        with self._database.read() as connection:
             device = self._require_usable_device(devices_repo.find_device(connection, device_id))
-            staff = staff_repo.find_by_mobile(connection, normalised_mobile)
-            if staff is None:
-                verify_pin(self._decoy(), normalised_pin, pepper=self._pepper, hasher=self._hasher)
-                log.info("auth.login result=unknown_mobile device=%s", device_id)
-                raise InvalidCredentials("mobile or PIN is wrong")
-            if not staff.active:
-                log.info("auth.login result=inactive staff=%s", staff.staff_id)
-                raise StaffInactive("staff account is deactivated")
-            if device.staff_id != staff.staff_id:
-                log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
-                raise DeviceNotEnrolled("device is not paired to this staff member")
-            self._require_unlocked(staff, now)
-            if not verify_pin(staff.pin_hash, normalised_pin, pepper=self._pepper, hasher=self._hasher):
-                # The counter must survive the refusal, so it is written here and the
-                # exception is raised after this transaction commits.
-                refusal = self._register_failure(connection, staff, now)
-            else:
-                return self._issue(connection, staff, device, now)
-        raise refusal
+            return device, staff_repo.find_by_mobile(connection, mobile)
+
+    def _pin_matches(self, *, staff: StaffRecord | None, pin: str) -> bool:
+        """One Argon2id verification: the real digest, or the decoy when nobody owns `staff`."""
+        digest = staff.pin_hash if staff is not None else self._decoy()
+        return verify_pin(digest, pin, pepper=self._pepper, hasher=self._hasher)
+
+    def _record_attempt(
+        self, *, staff: StaffRecord, device: DeviceRecord, matches: bool, now: datetime
+    ) -> AuthError | IssuedSession:
+        """Take the writer only to record the attempt or open the session, and let it commit.
+
+        The row is re-read inside the transaction because the PIN was hashed outside it: the
+        attempts other requests recorded meanwhile must be counted, not overwritten with the
+        snapshot this request saw before hashing, and a PIN reset that landed in between must
+        win over the digest this request verified (otherwise a reset could not end a session
+        that was opened with the old PIN). A refusal is returned, not raised, so the
+        transaction commits the counter before the caller raises.
+        """
+        with self._database.write() as connection:
+            current = staff_repo.find(connection, staff.staff_id)
+            if current is None or current.pin_hash != staff.pin_hash:
+                return InvalidCredentials(_WRONG_MOBILE_OR_PIN)
+            if not current.active:
+                return StaffInactive("staff account is deactivated")
+            until = self._locked_until(current)
+            if until is not None and until > now:
+                return AccountLocked(until)
+            if not matches:
+                return self._register_failure(connection, current, now)
+            return self._issue(connection, current, device, now)
 
     def authenticate(self, token: str) -> Principal:
         """Resolve a session cookie into a `Principal`, failing closed on any doubt."""
@@ -264,16 +302,13 @@ class AuthService:
     def reset_pin(self, *, staff_id: str, pin: str, actor_id: str) -> None:
         """Set a policy-compliant PIN and drop every session of that person."""
         validated = validate_new_pin(pin)
+        # Hashed before the writer is taken: Argon2id must never run inside `BEGIN IMMEDIATE`.
+        digest = hash_pin(validated, pepper=self._pepper, hasher=self._hasher)
         now = self._clock.now_utc()
         with self._database.write() as connection:
             if staff_repo.find(connection, staff_id) is None:
                 raise StaffNotFound(staff_id)
-            staff_repo.set_pin_hash(
-                connection,
-                staff_id=staff_id,
-                pin_hash=hash_pin(validated, pepper=self._pepper, hasher=self._hasher),
-                updated_at=utc_iso(now),
-            )
+            staff_repo.set_pin_hash(connection, staff_id=staff_id, pin_hash=digest, updated_at=utc_iso(now))
             staff_repo.clear_failures(connection, staff_id=staff_id)
             sessions_repo.revoke_for_staff(connection, staff_id=staff_id, revoked_at=utc_iso(now), reason="pin_reset")
         log.info("auth.pin_reset staff=%s actor=%s", staff_id, actor_id)
@@ -292,11 +327,13 @@ class AuthService:
         return device
 
     def _require_unlocked(self, staff: StaffRecord, now: datetime) -> None:
-        if staff.locked_until is None:
-            return
-        until = parse_iso(staff.locked_until)
-        if until > now:
+        until = self._locked_until(staff)
+        if until is not None and until > now:
             raise AccountLocked(until)
+
+    def _locked_until(self, staff: StaffRecord) -> datetime | None:
+        """The lock deadline of a row, or `None` when it is not locked."""
+        return None if staff.locked_until is None else parse_iso(staff.locked_until)
 
     def _require_live_session(self, session: SessionRecord, now: datetime) -> None:
         if session.revoked_at is not None:
