@@ -1,9 +1,13 @@
 /**
  * Sib Shift - Main Client Application Logic
  * SW registration, network status monitoring, stale badge, and Outbox UI sync.
+ * Writes never claim success: a sent state is only shown after the server
+ * response was validated and the outbox emitted `outbox:sent`.
  */
 (function () {
   "use strict";
+
+  var LAST_SYNC_KEY = "shift:last-online-at";
 
   // Service Worker Registration
   if ("serviceWorker" in navigator) {
@@ -26,13 +30,31 @@
         .catch((err) => console.warn("SW registration failed:", err));
     });
 
-    navigator.serviceWorker.addEventListener("message", (event) => {
-      if (event.data && event.data.type === "SYNC_REPLAY_OUTBOX") {
-        if (window.ShiftOutbox && window.ShiftOutbox.replayOutbox) {
-          window.ShiftOutbox.replayOutbox();
+    if (navigator.serviceWorker && typeof navigator.serviceWorker.addEventListener === "function") {
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "SYNC_REPLAY_OUTBOX") {
+          if (window.ShiftOutbox && window.ShiftOutbox.replayOutbox) {
+            window.ShiftOutbox.replayOutbox();
+          }
         }
-      }
-    });
+      });
+    }
+  }
+
+  function rememberOnlineSync() {
+    if (!navigator.onLine) return;
+    try {
+      window.localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+    } catch (err) {
+      // Private mode or disabled storage: the badge simply stays generic.
+    }
+  }
+
+  function requestPersistentStorage() {
+    // iOS can evict IndexedDB after days of non-use; ask the browser to keep it.
+    if (navigator.storage && typeof navigator.storage.persist === "function") {
+      navigator.storage.persist().catch(() => {});
+    }
   }
 
   // Network Status Monitoring & Banners
@@ -48,6 +70,7 @@
       } else {
         banner.textContent = "اتصال برقرار شد — در حال همگام‌سازی...";
         banner.className = "network-banner online";
+        rememberOnlineSync();
         setTimeout(() => {
           if (navigator.onLine && banner) {
             banner.className = "network-banner hidden";
@@ -66,6 +89,8 @@
       }
     }
 
+    checkStaleCache();
+
     // Trigger outbox replay when connection returns
     if (isOnline && window.ShiftOutbox && window.ShiftOutbox.replayOutbox) {
       window.ShiftOutbox.replayOutbox();
@@ -75,18 +100,29 @@
   window.addEventListener("online", updateNetworkStatus);
   window.addEventListener("offline", updateNetworkStatus);
 
-  // Stale-as-of badge detection
+  // Stale-as-of badge uses the recorded last successful online load, not the clock.
   function checkStaleCache() {
     const staleBadge = document.getElementById("stale-badge");
     if (!staleBadge) return;
 
-    if (!navigator.onLine) {
-      const now = new Date().toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
-      staleBadge.textContent = `داده‌های آفلاین — بازخوانی در ساعت ${now}`;
-      staleBadge.classList.remove("hidden");
-    } else {
+    if (navigator.onLine) {
       staleBadge.classList.add("hidden");
+      return;
     }
+
+    let text = "داده‌های آفلاین";
+    try {
+      const lastSync = window.localStorage.getItem(LAST_SYNC_KEY);
+      if (lastSync) {
+        const stamp = new Date(lastSync);
+        const clock = stamp.toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" });
+        text += ` — آخرین همگام‌سازی ساعت ${clock}`;
+      }
+    } catch (err) {
+      // Storage unavailable; keep the generic offline label.
+    }
+    staleBadge.textContent = text;
+    staleBadge.classList.remove("hidden");
   }
 
   // Outbox UI Binding
@@ -97,10 +133,16 @@
     const countBadge = document.getElementById("outbox-count-badge");
     const listEl = document.getElementById("outbox-list");
     const container = document.getElementById("outbox-card");
+    const queuedCount = items.filter((item) => item.status !== "failed").length;
+    const failedCount = items.filter((item) => item.status === "failed").length;
 
     if (countBadge) {
       if (items.length > 0) {
-        countBadge.textContent = `${items.length} در صف ارسال`;
+        let label = `${queuedCount} در صف ارسال`;
+        if (failedCount > 0) {
+          label += ` · ${failedCount} ناموفق`;
+        }
+        countBadge.textContent = label;
         countBadge.classList.remove("hidden");
       } else {
         countBadge.classList.add("hidden");
@@ -142,9 +184,7 @@
           badge.textContent = "ارسال نشد";
 
           const retryBtn = document.createElement("button");
-          retryBtn.className = "btn btn-secondary";
-          retryBtn.style.padding = "0.25rem 0.5rem";
-          retryBtn.style.fontSize = "0.75rem";
+          retryBtn.className = "btn btn-secondary btn-compact";
           retryBtn.textContent = "تلاش مجدد";
           retryBtn.onclick = () => window.ShiftOutbox.retryFailedItem(item.idempotency_key);
 
@@ -164,15 +204,23 @@
   }
 
   window.addEventListener("outbox:change", refreshOutboxUi);
-  window.addEventListener("outbox:sent", () => {
-    refreshOutboxUi();
-  });
+  window.addEventListener("outbox:sent", refreshOutboxUi);
+
+  function setFeedback(text, badgeClass) {
+    const feedback = document.getElementById("submission-feedback");
+    if (!feedback) return;
+    feedback.textContent = text;
+    feedback.className = `badge ${badgeClass}`;
+    feedback.classList.remove("hidden");
+  }
 
   // Client Event Dispatch Helper
-  // Writes NEVER claim success offline (show queued state)
+  // Writes NEVER claim success before an `outbox:sent` event confirms the server.
   window.submitShiftEvent = async function (eventData) {
-    const feedback = document.getElementById("submission-feedback");
     try {
+      if (!window.ShiftOutbox) {
+        throw new Error("صف ارسال در دسترس نیست.");
+      }
       if (!eventData.client_event_id && !eventData.event_id) {
         eventData.client_event_id = window.ShiftOutbox.mintUlid();
       }
@@ -183,30 +231,35 @@
         eventData.client_at = new Date().toISOString();
       }
 
-      await window.ShiftOutbox.enqueueOutboxItem(eventData);
+      const key = eventData.idempotency_key;
+      let sent = false;
+      const onSent = (event) => {
+        const detail = event.detail || {};
+        if (detail.idempotency_key !== key) return;
+        sent = true;
+        setFeedback("رویداد با سرور همگام شد.", "badge-online");
+        window.removeEventListener("outbox:sent", onSent);
+      };
+      window.addEventListener("outbox:sent", onSent);
 
-      if (feedback) {
-        if (!navigator.onLine) {
-          feedback.textContent = "رویداد در صف آفلاین ذخیره شد (در صف ارسال).";
-          feedback.className = "badge badge-queued";
-        } else {
-          feedback.textContent = "رویداد ثبت و به سرور ارسال شد.";
-          feedback.className = "badge badge-queued";
-        }
-        feedback.classList.remove("hidden");
+      try {
+        await window.ShiftOutbox.enqueueOutboxItem(eventData);
+      } catch (err) {
+        window.removeEventListener("outbox:sent", onSent);
+        throw err;
+      }
+
+      if (!sent) {
+        setFeedback("رویداد در صف ارسال قرار گرفت.", "badge-queued");
       }
     } catch (err) {
-      if (feedback) {
-        feedback.textContent = "خطا در ثبت رویداد: " + err.message;
-        feedback.className = "badge badge-failed";
-        feedback.classList.remove("hidden");
-      }
+      setFeedback("خطا در ثبت رویداد: " + err.message, "badge-failed");
     }
   };
 
   document.addEventListener("DOMContentLoaded", () => {
+    requestPersistentStorage();
     updateNetworkStatus();
-    checkStaleCache();
     refreshOutboxUi();
   });
 })();
