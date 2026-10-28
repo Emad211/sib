@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — شیفت جاری{% endblock %}
+
+{% block content %}
+<section class="card" aria-labelledby="shift-overview-title">
+  <h1 id="shift-overview-title" class="card-title">شیفت فعال درمانگاه</h1>
+  <p class="card-subtitle">وضعیت شیفت، صف ارسال و رویدادهای جاری در یک نما.</p>
+
+  <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
+
+  {% if show_dev_events %}
+  <p class="form-hint">این فرم فقط در محیط توسعه (<code>SHIFT_ENV=development</code>) نمایش داده می‌شود؛ شناسه کاربر، دستگاه و شیفت از نشست سرور گرفته می‌شود.</p>
+
+  <form id="quick-event-form">
+    <div class="form-group">
+      <label for="event-type" class="form-label">نوع رویداد (آفلاین مجاز):</label>
+      <select id="event-type" class="form-control" required>
+        <option value="stock.waste_reported">گزارش ضایعات</option>
+        <option value="stock.emergency_withdrawal">خروج اضطراری از قفسه</option>
+        <option value="stock.shelf_restocked">شارژ قفسه</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="event-item" class="form-label">شناسه کالا:</label>
+      <input type="text" id="event-item" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
+    </div>
+
+    <div class="form-group">
+      <label for="event-location" class="form-label">شناسه قفسه / محل:</label>
+      <input type="text" id="event-location" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
+    </div>
+
+    <div class="form-group">
+      <label for="event-quantity" class="form-label">مقدار:</label>
+      <input type="number" id="event-quantity" class="form-control" min="0" step="1" value="1" required>
+    </div>
+
+    <button type="submit" id="submit-event-btn" class="btn btn-primary btn-block">
+      ثبت در صف ارسال
+    </button>
+  </form>
+  {% else %}
+  <div class="shell-notice" role="note">
+    <p>برای ثبت رویداد، از دستگاه جفت‌شدهٔ خود وارد شوید. رویدادهای جاری شیفت (ضایعات، خرابی، خدمات و امانات) در صورت قطع ارتباط در صف محلی ذخیره و پس از اتصال همگام می‌شوند.</p>
+    <p>تحویل شیفت و شمارش کور الزاماً با اتصال برخط به سرور درمانگاه انجام می‌شود.</p>
+  </div>
+  {% endif %}
+</section>
+
+<!-- Outbox Card (hidden when 0 items) -->
+<section id="outbox-card" class="card hidden" aria-labelledby="outbox-card-title">
+  <h2 id="outbox-card-title" class="card-title">صف رویدادهای محلی (Outbox)</h2>
+  <p class="card-subtitle">رویدادهایی که در دستگاه ذخیره شده و پس از اتصال بازپخش می‌شوند.</p>
+
+  <ul id="outbox-list" class="outbox-list" role="list">
+    <!-- Populated dynamically by app.js -->
+  </ul>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/home.js"></script>
+{% endblock %}

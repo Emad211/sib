@@ -1,16 +1,23 @@
 """Shared fixtures: a migrated synthetic database and an app bound to temp paths."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from shift.adapters.db.core import Database
+from shift.api.principal import Principal, install_principal_guard
 from shift.app import create_app
 from shift.config.settings import Settings
 from shift.services.event_store import EventStore
 from shift.services.projections import ProjectionEngine
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register the Playwright marker so a plain `pytest -q` stays warning-free."""
+    config.addinivalue_line("markers", "e2e: Playwright end-to-end tests (skipped only when import cannot work)")
 
 
 @pytest.fixture
@@ -53,3 +60,47 @@ def client(settings: Settings) -> Iterator[TestClient]:
     """A TestClient that runs the app lifespan against the synthetic settings."""
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def default_principal() -> Principal:
+    """A valid authenticated principal for tests that do not vary identity."""
+    return Principal(
+        actor_id="staff_guard_1",
+        device_id="device_guard_1",
+        shift_id="shift_guard_1",
+    )
+
+
+@pytest.fixture
+def client_factory(settings: Settings) -> Callable[..., AbstractContextManager[TestClient]]:
+    """Build clients with an optional fake guard; no guard means fail-closed."""
+
+    @contextmanager
+    def build(
+        principal: Principal | None = None,
+        guard: Callable[[object], object] | None = None,
+    ) -> Iterator[TestClient]:
+        application = create_app(settings)
+        if guard is not None:
+            install_principal_guard(application, guard)
+        elif principal is not None:
+            install_principal_guard(application, lambda _request: principal)
+        with TestClient(application) as test_client:
+            yield test_client
+
+    return build
+
+
+@pytest.fixture
+def csrf_headers() -> Callable[[TestClient], dict[str, str]]:
+    """Load the shell once, then return the double-submit header for its cookie."""
+
+    def build(client: TestClient) -> dict[str, str]:
+        response = client.get("/")
+        assert response.status_code == 200
+        token = client.cookies.get("shift_csrf")
+        assert token
+        return {"X-CSRFToken": token}
+
+    return build
