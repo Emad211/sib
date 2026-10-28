@@ -207,7 +207,11 @@ def build_catalog_router(
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> list[StaffRoleOut]:
         """The grant decision per role of one person, as the running shift sees it."""
-        return [_role(value) for value in service.staff_roles(staff_id, shift)]
+        try:
+            roles = service.staff_roles(staff_id, shift)
+        except CatalogError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+        return [_role(value) for value in roles]
 
     @router.put("/staff/{staff_id}/roles/{role}", response_model=StaffRoleOut)
     def set_staff_role(

@@ -142,10 +142,14 @@ def test_a_location_id_that_is_not_a_slug_is_a_bad_request(database: Database) -
 
 
 def test_a_staff_id_that_is_not_usable_is_a_bad_request(database: Database) -> None:
-    response = api(database).put("/api/v1/catalog/staff/staff 1/roles/nurse", json={"granted": True})
+    client = api(database)
 
-    assert response.status_code == 400
-    assert "staff_id" in response.json()["detail"]
+    listed = client.get("/api/v1/catalog/staff/staff 1/roles")
+    granted = client.put("/api/v1/catalog/staff/staff 1/roles/nurse", json={"granted": True})
+
+    assert listed.status_code == 400
+    assert granted.status_code == 400
+    assert "staff_id" in granted.json()["detail"]
 
 
 def test_an_unknown_role_in_the_path_fails_validation(database: Database) -> None:
