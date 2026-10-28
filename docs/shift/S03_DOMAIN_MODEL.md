@@ -1,6 +1,6 @@
 # مدل دامنهٔ اپ شیفت
 
-> نسخه 1.0 (پیش‌نویس، در SHF-1 دقیق می‌شود) · ۱۴۰۵/۰۸/۰۴
+> نسخه 1.1 · ۱۴۰۵/۰۸/۰۶ (پیش‌نویس، در SHF-1 دقیق می‌شود)
 
 ## ۱. موجودیت‌های پایه (قابل تنظیم و نسخه‌دار)
 
@@ -22,7 +22,11 @@
 
 ## ۳. رویدادها (فقط‌افزودنی)
 
-همه با: `id`، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `shift_id`، `at`، `ref_event_id`.
+همه با: `id` (شماره ترتیبی سرور `seq`)، `client_event_id` / `idempotency_key` (کلید یکتای کلاینت)، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `device_id`، `shift_id`، `client_at` (زمان کلاینت)، `server_at` (زمان سرور)، `ref_event_id`.
+
+> **تکرارناپذیری و مدیریت خطای ساعت:**
+> - وجود `client_event_id` / `idempotency_key` تضمین می‌کند که بازپخش رویدادها از صف آفلاین گوشی (Outbox) پس از وصل مجدد شبکه هرگز رویداد تکراری درج نکرده و کاملاً تکرارناپذیر (Idempotent) عمل کند (`INSERT ... ON CONFLICT(idempotency_key) DO NOTHING`).
+> - تفکیک `client_at` (زمان ثبت در دستگاه پرسنل) از `server_at` (زمان دریافت قطعی در سرور محلی) خطای ساعت گوشی‌ها (Clock Skew) را مهار می‌کند؛ مرجع معتبر برای برش‌های شیفت (`cutoff_at`)، گزارش‌ها و ترتیب بازسازی projectionها منحصراً `server_at` و ترتیبی سرور (`seq`) است.
 
 | گروه | انواع |
 |---|---|
@@ -75,3 +79,4 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 ## تاریخچه
 
 - 1.0، ۱۴۰۵/۰۸/۰۴: پیش‌نویس اول.
+- 1.1، ۱۴۰۵/۰۸/۰۶: افزودن فیلدهای `client_event_id` / `idempotency_key` برای تکرارناپذیری همگام‌سازی آفلاین، و تفکیک `client_at` و `server_at` برای مدیریت خطای اختلاف ساعت (Clock Skew).
