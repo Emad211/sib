@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from shift.adapters.db.core import Database
-from shift.adapters.db.migrations import m0004_settings_and_catalog
+from shift.adapters.db.migrations import m0004_settings_and_catalog, m0007_catalog_fixes
 from shift.domain.policy import Role, SettingKey, ShiftKey
 from shift.services.catalog import ItemKind
 
@@ -22,6 +22,7 @@ INDEXES = (
     "idx_catalog_location_versions_effective",
     "idx_catalog_item_versions_effective",
     "idx_catalog_staff_role_versions_effective",
+    "idx_catalog_item_versions_acc_code",
 )
 ITEM_DEFAULTS = {
     "item_id": "para_500_amp",
@@ -146,7 +147,7 @@ def test_migrating_again_does_not_reseed(database: Database) -> None:
         assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 4
 
 
-def test_upgrading_a_version_three_database_applies_only_the_new_migration(tmp_path: Path) -> None:
+def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_path: Path) -> None:
     path = tmp_path / "v3.db"
     database = Database(path)
     database.migrate()
@@ -161,10 +162,11 @@ def test_upgrading_a_version_three_database_applies_only_the_new_migration(tmp_p
     try:
         report = upgraded.migrate(backup_dir=tmp_path / "backups")
 
-        assert report.applied == ["0004_settings_and_catalog"]
-        assert report.to_version == 4
+        assert report.applied == ["0004_settings_and_catalog", "0007_catalog_fixes"]
+        assert report.to_version == 7
         assert report.backup is not None
         assert set(TABLES) <= _names(upgraded, "table")
+        assert set(INDEXES) <= _names(upgraded, "index")
         with upgraded.read() as connection:
             assert (
                 connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name = 'kept'").scalar_one() == 7
@@ -172,6 +174,54 @@ def test_upgrading_a_version_three_database_applies_only_the_new_migration(tmp_p
             assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 4
     finally:
         upgraded.close()
+
+
+def test_upgrading_a_version_four_database_only_adds_the_catalog_fixes(tmp_path: Path) -> None:
+    path = tmp_path / "v4.db"
+    database = Database(path)
+    database.migrate()
+    _item_version(database, item_id="kept_item", acc_code="90001")
+    with database.write() as connection:
+        connection.exec_driver_sql("DROP INDEX idx_catalog_item_versions_acc_code")
+        connection.exec_driver_sql("PRAGMA user_version = 4")
+    database.close()
+
+    upgraded = Database(path)
+    try:
+        report = upgraded.migrate(backup_dir=tmp_path / "backups")
+
+        assert report.applied == ["0007_catalog_fixes"]
+        assert report.to_version == 7
+        assert "idx_catalog_item_versions_acc_code" in _names(upgraded, "index")
+        with upgraded.read() as connection:
+            assert (
+                connection.exec_driver_sql(
+                    "SELECT COUNT(*) FROM catalog_item_versions WHERE item_id = 'kept_item'"
+                ).scalar_one()
+                == 1
+            )
+    finally:
+        upgraded.close()
+
+
+def test_the_catalog_fix_index_backs_the_acc_code_lookup(database: Database) -> None:
+    with database.read() as connection:
+        plan = [
+            str(row[-1])
+            for row in connection.exec_driver_sql(
+                "EXPLAIN QUERY PLAN SELECT item_id FROM catalog_item_versions "
+                "WHERE acc_code = ? AND item_id != ? LIMIT 1",
+                ("10001", "other_item"),
+            )
+        ]
+
+    assert any("idx_catalog_item_versions_acc_code" in line for line in plan)
+
+
+def test_the_catalog_fix_migration_is_idempotent(database: Database) -> None:
+    with database.write() as connection:
+        m0007_catalog_fixes.up(connection)
+        m0007_catalog_fixes.up(connection)
 
 
 def test_a_shift_key_of_another_shape_is_rejected(database: Database) -> None:
