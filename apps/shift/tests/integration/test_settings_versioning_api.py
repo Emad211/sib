@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from clocks import FixedClock, inside_shift
 from fastapi import FastAPI, HTTPException, status
 from fastapi.testclient import TestClient
 
@@ -12,6 +13,7 @@ from shift.domain.policy import ShiftKey
 from shift.services.settings import SettingsService
 
 DAY = date(2026, 10, 28)
+MORNING = ShiftKey(DAY, 1)
 RUNNING = ShiftKey(DAY, 2)
 NEXT = ShiftKey(DAY, 3)
 ROUTES = [
@@ -21,8 +23,14 @@ ROUTES = [
 ]
 
 
-def api(database: Database, *, shift: ShiftKey | None = RUNNING, manager: str | None = "staff-manager") -> TestClient:
-    service = SettingsService(database)
+def api(
+    database: Database,
+    *,
+    shift: ShiftKey | None = RUNNING,
+    manager: str | None = "staff-manager",
+    clock: FixedClock | None = None,
+) -> TestClient:
+    service = SettingsService(database, clock=clock)
     app = FastAPI()
 
     def guard() -> str:
@@ -100,13 +108,24 @@ def test_history_lists_every_version_newest_first(database: Database) -> None:
     assert [(item["version"], item["value"]) for item in history.json()] == [(2, "06:00"), (1, "07:30")]
 
 
-def test_without_a_running_shift_a_change_applies_from_the_baseline(database: Database) -> None:
-    client = api(database, shift=None)
+def test_without_a_running_shift_a_change_applies_from_the_next_clock_shift(database: Database) -> None:
+    client = api(database, shift=None, clock=FixedClock(inside_shift(DAY, 1)))
 
     changed = client.put("/api/v1/settings/session_ttl_hours", json={"value": "8"})
 
     assert changed.status_code == 200
-    assert changed.json()["effective_from_shift"] == "0001-01-01#1"
+    assert changed.json()["effective_from_shift"] == RUNNING.text
+    snapshot = {item["key"]: item["value"] for item in client.get("/api/v1/settings").json()}
+    assert snapshot["session_ttl_hours"] == "12"
+
+
+def test_a_change_that_would_rewrite_a_newer_shift_is_a_bad_request(database: Database) -> None:
+    api(database, shift=NEXT).put("/api/v1/settings/session_ttl_hours", json={"value": "6"})
+
+    response = api(database, shift=MORNING).put("/api/v1/settings/session_ttl_hours", json={"value": "8"})
+
+    assert response.status_code == 400
+    assert "newest version" in response.json()["detail"]
 
 
 @pytest.mark.parametrize(("method", "path", "body"), ROUTES)

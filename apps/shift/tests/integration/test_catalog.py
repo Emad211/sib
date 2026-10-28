@@ -1,14 +1,17 @@
 """The catalog is versioned per shift: locations, items and staff roles (R-08, R-09, step 11)."""
 
-from datetime import date
+from collections.abc import Callable
+from datetime import date, timedelta
 
 import pytest
+from clocks import FixedClock, inside_shift
 
 from shift.adapters.db.core import Database
 from shift.domain.policy import PolicyError, Role, ShiftKey
 from shift.services.catalog import CatalogError, CatalogService, ItemKind
 
 DAY = date(2026, 10, 28)
+BEFORE_DAY = ShiftKey(DAY - timedelta(days=1), 3)
 MORNING = ShiftKey(DAY, 1)
 EVENING = ShiftKey(DAY, 2)
 NIGHT = ShiftKey(DAY, 3)
@@ -16,7 +19,7 @@ NIGHT = ShiftKey(DAY, 3)
 
 @pytest.fixture
 def service(database: Database) -> CatalogService:
-    return CatalogService(database)
+    return CatalogService(database, clock=FixedClock(inside_shift(DAY, 3)))
 
 
 def add_location(
@@ -25,7 +28,7 @@ def add_location(
     *,
     name: str = "قفسهٔ پذیرش",
     retired: bool = False,
-    running_shift: ShiftKey | None = None,
+    running_shift: ShiftKey | None = BEFORE_DAY,
 ) -> None:
     service.save_location(
         location_id, name=name, retired=retired, actor_id="staff-manager", running_shift=running_shift
@@ -42,6 +45,7 @@ def save_item(service: CatalogService, item_id: str = "para_500_amp", **override
         "acc_code": "10001",
         "stock_factor": 1,
         "actor_id": "staff-manager",
+        "running_shift": BEFORE_DAY,
     }
     fields.update(overrides)
     service.save_item(item_id, **fields)  # type: ignore[arg-type]
@@ -178,6 +182,47 @@ def test_an_accounting_code_is_never_handed_to_a_second_item(service: CatalogSer
         save_item(service, "para_125_syrup", acc_code="10001")
 
 
+def test_an_accounting_code_registered_for_a_later_shift_is_still_taken(service: CatalogService) -> None:
+    add_location(service)
+    save_item(service, "later_item", acc_code="20001", running_shift=NIGHT)
+
+    with pytest.raises(CatalogError, match="20001"):
+        save_item(service, "earlier_item", acc_code="20001", running_shift=MORNING)
+
+
+@pytest.mark.parametrize(
+    ("save_first", "save_second"),
+    [
+        (
+            lambda service: add_location(service, name="first name", running_shift=NIGHT),
+            lambda service: add_location(service, name="later name", running_shift=MORNING),
+        ),
+        (
+            lambda service: save_item(service, running_shift=NIGHT),
+            lambda service: save_item(service, name="later name", running_shift=MORNING),
+        ),
+        (
+            lambda service: service.set_role(
+                "staff-1", Role.NURSE, granted=True, actor_id="staff-manager", running_shift=NIGHT
+            ),
+            lambda service: service.set_role(
+                "staff-1", Role.NURSE, granted=False, actor_id="staff-manager", running_shift=MORNING
+            ),
+        ),
+    ],
+)
+def test_a_catalog_change_cannot_start_before_the_newest_version(
+    service: CatalogService,
+    save_first: Callable[[CatalogService], None],
+    save_second: Callable[[CatalogService], None],
+) -> None:
+    add_location(service)
+    save_first(service)
+
+    with pytest.raises(PolicyError, match="newest version"):
+        save_second(service)
+
+
 def test_a_retired_item_can_be_revived(service: CatalogService) -> None:
     add_location(service)
     save_item(service, retired=True)
@@ -222,6 +267,23 @@ def test_an_item_can_be_retired_after_its_location(service: CatalogService) -> N
     assert service.items(EVENING) == []
 
 
+def test_retiring_a_location_hides_its_items_from_later_shifts(service: CatalogService) -> None:
+    add_location(service)
+    save_item(service)
+    add_location(service, retired=True, running_shift=MORNING)
+
+    assert service.items(EVENING) == []
+    assert [item.item_id for item in service.items(EVENING, include_retired=True)] == ["para_500_amp"]
+    assert [item.item_id for item in service.items(MORNING)] == ["para_500_amp"]
+
+
+def test_a_catalog_change_without_a_running_shift_starts_at_the_next_clock_shift(service: CatalogService) -> None:
+    changed = service.save_location("shelf_reception", name="قفسهٔ پذیرش", actor_id="staff-manager", running_shift=None)
+
+    assert changed.value.effective_from_shift == ShiftKey(DAY + timedelta(days=1), 1)
+    assert changed.value.effective_from_shift > ShiftKey.baseline()
+
+
 def test_items_can_be_filtered_by_location(service: CatalogService) -> None:
     add_location(service)
     add_location(service, "cpr_room", name="اتاق CPR")
@@ -254,16 +316,16 @@ def test_a_role_grant_is_effective_from_the_next_shift(service: CatalogService) 
 
 
 def test_one_person_can_hold_several_roles(service: CatalogService) -> None:
-    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager")
-    service.set_role("staff-1", Role.STOREKEEPER, granted=True, actor_id="staff-manager")
-    service.set_role("staff-2", Role.RECEPTION, granted=True, actor_id="staff-manager")
+    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager", running_shift=BEFORE_DAY)
+    service.set_role("staff-1", Role.STOREKEEPER, granted=True, actor_id="staff-manager", running_shift=BEFORE_DAY)
+    service.set_role("staff-2", Role.RECEPTION, granted=True, actor_id="staff-manager", running_shift=BEFORE_DAY)
 
     assert service.roles_of("staff-1", EVENING) == frozenset({Role.NURSE, Role.STOREKEEPER})
     assert service.roles_of("staff-2", EVENING) == frozenset({Role.RECEPTION})
 
 
 def test_revoking_a_role_leaves_the_running_shift_holding_it(service: CatalogService) -> None:
-    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager")
+    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager", running_shift=BEFORE_DAY)
     revoked = service.set_role("staff-1", Role.NURSE, granted=False, actor_id="staff-manager", running_shift=MORNING)
 
     assert revoked.created is True
@@ -274,7 +336,7 @@ def test_revoking_a_role_leaves_the_running_shift_holding_it(service: CatalogSer
 
 
 def test_granting_the_same_role_twice_adds_no_version(service: CatalogService) -> None:
-    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager")
+    service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager", running_shift=BEFORE_DAY)
     again = service.set_role("staff-1", Role.NURSE, granted=True, actor_id="staff-manager", running_shift=MORNING)
 
     assert again.created is False

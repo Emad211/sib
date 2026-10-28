@@ -103,7 +103,7 @@ def _newest(connection: Connection, sql: str, parameters: tuple[Any, ...]) -> Ma
 
 
 def _next_version(connection: Connection, table: str, key_columns: tuple[str, ...], keys: tuple[str, ...]) -> int:
-    """Version number for the next change; the single writer process makes MAX+1 safe."""
+    """Version number for the next change; `Database.write` holds `BEGIN IMMEDIATE` around it."""
     where = " AND ".join(f"{column} = ?" for column in key_columns)
     highest = connection.exec_driver_sql(
         f"SELECT COALESCE(MAX(version), 0) FROM {table} WHERE {where}", keys
@@ -111,18 +111,44 @@ def _next_version(connection: Connection, table: str, key_columns: tuple[str, ..
     return int(highest) + 1
 
 
+def _effective_sql(
+    table: str, columns: tuple[str, ...], key_columns: tuple[str, ...], *, filter_column: str | None = None
+) -> str:
+    """SQL for one row per entity: the newest version that has started at the shift parameter.
+
+    A correlated seek on the per-entity index replaces the window function. The window needed
+    a sort over every entity before the final `ORDER BY`; this form finds each newest row
+    directly, and callers sort the small result set in Python.
+    """
+    column_list = ", ".join(columns)
+    match = " AND ".join(f"candidate.{column} = current.{column}" for column in key_columns)
+    tie = " AND ".join(f"tie.{column} = current.{column}" for column in key_columns)
+    scope = f"current.{filter_column} = ? AND " if filter_column else ""
+    return (
+        f"SELECT {column_list} FROM {table} AS current "
+        f"WHERE {scope}current.effective_from_shift = ("
+        f"SELECT MAX(candidate.effective_from_shift) FROM {table} AS candidate "
+        f"WHERE {match} AND candidate.effective_from_shift <= ?) "
+        "AND current.version = ("
+        f"SELECT MAX(tie.version) FROM {table} AS tie "
+        f"WHERE {tie} AND tie.effective_from_shift = current.effective_from_shift)"
+    )
+
+
 def _effective_rows(
-    connection: Connection, table: str, columns: tuple[str, ...], partition: str, shift_key: str, order_by: str
+    connection: Connection,
+    table: str,
+    columns: tuple[str, ...],
+    key_columns: tuple[str, ...],
+    shift_key: str,
+    *,
+    filter_column: str | None = None,
+    filter_value: str | None = None,
 ) -> list[Mapping[str, Any]]:
     """One row per entity: the newest version that has started at `shift_key`."""
-    column_list = ", ".join(columns)
-    sql = (
-        f"SELECT {column_list} FROM ("
-        f"SELECT {column_list}, "
-        f"ROW_NUMBER() OVER (PARTITION BY {partition} ORDER BY effective_from_shift DESC, version DESC) AS age "
-        f"FROM {table} WHERE effective_from_shift <= ?) WHERE age = 1 ORDER BY {order_by}"
-    )
-    return list(connection.exec_driver_sql(sql, (shift_key,)).mappings())
+    sql = _effective_sql(table, columns, key_columns, filter_column=filter_column)
+    parameters = (filter_value, shift_key) if filter_column else (shift_key,)
+    return list(connection.exec_driver_sql(sql, parameters).mappings())
 
 
 def location_next_version(connection: Connection, location_id: str) -> int:
@@ -149,10 +175,11 @@ def insert_location_version(
 
 
 def find_location_latest(connection: Connection, location_id: str) -> LocationRow | None:
+    """The version that governs the farthest future shift: newest by effective shift."""
     row = _newest(
         connection,
         f"SELECT {', '.join(_LOCATION_COLUMNS)} FROM catalog_location_versions "
-        "WHERE location_id = ? ORDER BY version DESC LIMIT 1",
+        "WHERE location_id = ? ORDER BY effective_from_shift DESC, version DESC LIMIT 1",
         (location_id,),
     )
     return _location(row) if row is not None else None
@@ -170,9 +197,7 @@ def find_location_effective(connection: Connection, location_id: str, shift_key:
 
 
 def list_locations_effective(connection: Connection, shift_key: str) -> list[LocationRow]:
-    rows = _effective_rows(
-        connection, "catalog_location_versions", _LOCATION_COLUMNS, "location_id", shift_key, "location_id"
-    )
+    rows = _effective_rows(connection, "catalog_location_versions", _LOCATION_COLUMNS, ("location_id",), shift_key)
     return [_location(row) for row in rows]
 
 
@@ -220,17 +245,32 @@ def insert_item_version(
 
 
 def find_item_latest(connection: Connection, item_id: str) -> ItemRow | None:
+    """The version that governs the farthest future shift: newest by effective shift."""
     row = _newest(
         connection,
-        f"SELECT {', '.join(_ITEM_COLUMNS)} FROM catalog_item_versions WHERE item_id = ? ORDER BY version DESC LIMIT 1",
+        f"SELECT {', '.join(_ITEM_COLUMNS)} FROM catalog_item_versions WHERE item_id = ? "
+        "ORDER BY effective_from_shift DESC, version DESC LIMIT 1",
         (item_id,),
     )
     return _item(row) if row is not None else None
 
 
 def list_items_effective(connection: Connection, shift_key: str) -> list[ItemRow]:
-    rows = _effective_rows(connection, "catalog_item_versions", _ITEM_COLUMNS, "item_id", shift_key, "item_id")
+    rows = _effective_rows(connection, "catalog_item_versions", _ITEM_COLUMNS, ("item_id",), shift_key)
     return [_item(row) for row in rows]
+
+
+def find_item_with_acc_code(connection: Connection, acc_code: str, *, exclude_item_id: str) -> str | None:
+    """The item that already owns `acc_code` anywhere in the history, retired or not.
+
+    The lookup spans every version rather than one shift's slice: an accounting code names
+    one item for ever, so a code registered for a later shift is still taken for an earlier one.
+    """
+    row = connection.exec_driver_sql(
+        "SELECT item_id FROM catalog_item_versions WHERE acc_code = ? AND item_id != ? LIMIT 1",
+        (acc_code, exclude_item_id),
+    ).first()
+    return None if row is None else str(row[0])
 
 
 def role_next_version(connection: Connection, staff_id: str, role: str) -> int:
@@ -257,10 +297,11 @@ def insert_role_version(
 
 
 def find_role_latest(connection: Connection, staff_id: str, role: str) -> RoleRow | None:
+    """The version that governs the farthest future shift: newest by effective shift."""
     row = _newest(
         connection,
         f"SELECT {', '.join(_ROLE_COLUMNS)} FROM catalog_staff_role_versions "
-        "WHERE staff_id = ? AND role = ? ORDER BY version DESC LIMIT 1",
+        "WHERE staff_id = ? AND role = ? ORDER BY effective_from_shift DESC, version DESC LIMIT 1",
         (staff_id, role),
     )
     return _role(row) if row is not None else None
@@ -268,13 +309,13 @@ def find_role_latest(connection: Connection, staff_id: str, role: str) -> RoleRo
 
 def list_staff_roles_effective(connection: Connection, staff_id: str, shift_key: str) -> list[RoleRow]:
     """The newest grant decision per role of one person, as a given shift sees it."""
-    columns = ", ".join(_ROLE_COLUMNS)
-    rows = connection.exec_driver_sql(
-        f"SELECT {columns} FROM ("
-        f"SELECT {columns}, "
-        "ROW_NUMBER() OVER (PARTITION BY role ORDER BY effective_from_shift DESC, version DESC) AS age "
-        "FROM catalog_staff_role_versions WHERE staff_id = ? AND effective_from_shift <= ?) "
-        "WHERE age = 1 ORDER BY role",
-        (staff_id, shift_key),
+    rows = _effective_rows(
+        connection,
+        "catalog_staff_role_versions",
+        _ROLE_COLUMNS,
+        ("staff_id", "role"),
+        shift_key,
+        filter_column="staff_id",
+        filter_value=staff_id,
     )
-    return [_role(row) for row in rows.mappings()]
+    return [_role(row) for row in rows]

@@ -13,10 +13,10 @@ from shift.domain.policy import (
     SettingSpec,
     ShiftKey,
     canonical_setting,
-    effective_from,
     parse_setting,
     spec_for,
 )
+from shift.domain.shift_clock import covering, effective_from, require_monotonic
 
 
 def test_setting_keys_are_the_stored_names() -> None:
@@ -184,8 +184,53 @@ def test_baseline_precedes_every_real_shift() -> None:
 def test_a_change_applies_from_the_shift_after_the_running_one() -> None:
     running = ShiftKey(date(2026, 10, 28), 2)
 
-    assert effective_from(running) == ShiftKey(date(2026, 10, 28), 3)
+    assert effective_from(running, now=datetime(2026, 10, 28, 12, 0)) == ShiftKey(date(2026, 10, 28), 3)
 
 
-def test_without_a_running_shift_a_change_applies_from_the_baseline() -> None:
-    assert effective_from(None) == ShiftKey.baseline()
+@pytest.mark.parametrize(
+    ("moment", "expected"),
+    [
+        (datetime(2026, 10, 28, 5, 0), ShiftKey(date(2026, 10, 27), 3)),
+        (datetime(2026, 10, 28, 7, 29), ShiftKey(date(2026, 10, 27), 3)),
+        (datetime(2026, 10, 28, 7, 30), ShiftKey(date(2026, 10, 28), 1)),
+        (datetime(2026, 10, 28, 12, 0), ShiftKey(date(2026, 10, 28), 1)),
+        (datetime(2026, 10, 28, 13, 29), ShiftKey(date(2026, 10, 28), 1)),
+        (datetime(2026, 10, 28, 13, 30), ShiftKey(date(2026, 10, 28), 2)),
+        (datetime(2026, 10, 28, 19, 30), ShiftKey(date(2026, 10, 28), 3)),
+        (datetime(2026, 10, 28, 23, 59), ShiftKey(date(2026, 10, 28), 3)),
+    ],
+)
+def test_covering_finds_the_shift_that_started_most_recently(moment: datetime, expected: ShiftKey) -> None:
+    assert covering(moment) == expected
+
+
+def test_without_a_running_shift_a_change_starts_at_the_next_clock_shift() -> None:
+    assert effective_from(None, now=datetime(2026, 10, 28, 5, 0)) == ShiftKey(date(2026, 10, 28), 1)
+    assert effective_from(None, now=datetime(2026, 10, 28, 12, 0)) == ShiftKey(date(2026, 10, 28), 2)
+    assert effective_from(None, now=datetime(2026, 10, 28, 23, 0)) == ShiftKey(date(2026, 10, 29), 1)
+
+
+@pytest.mark.parametrize(
+    "moment",
+    [datetime(2026, 10, 28, 5, 0), datetime(2026, 10, 28, 12, 0), datetime(2026, 10, 28, 23, 0)],
+)
+def test_a_runtime_change_never_targets_the_baseline(moment: datetime) -> None:
+    target = effective_from(None, now=moment)
+
+    assert target > ShiftKey.baseline()
+    assert target > covering(moment)
+
+
+def test_the_baseline_is_not_a_runtime_running_shift() -> None:
+    with pytest.raises(PolicyError, match="baseline"):
+        effective_from(ShiftKey.baseline(), now=datetime(2026, 10, 28, 12, 0))
+
+
+def test_monotonic_target_accepts_equal_or_later_and_rejects_earlier() -> None:
+    newest = ShiftKey(date(2026, 10, 28), 3)
+
+    assert require_monotonic(newest, newest) == newest
+    assert require_monotonic(ShiftKey(date(2026, 10, 29), 1), newest) == ShiftKey(date(2026, 10, 29), 1)
+    with pytest.raises(PolicyError, match="newest version"):
+        require_monotonic(ShiftKey(date(2026, 10, 28), 2), newest)
+    assert require_monotonic(ShiftKey(date(2026, 10, 28), 2), None) == ShiftKey(date(2026, 10, 28), 2)

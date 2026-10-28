@@ -1,11 +1,12 @@
 """A shift key's text sorts as the shift runs, and a change always starts after it (R-09)."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from shift.domain.policy import SHIFT_RANKS, ShiftKey, effective_from
+from shift.domain.policy import SHIFT_RANKS, ShiftKey
+from shift.domain.shift_clock import effective_from
 
 dates = st.dates(min_value=date(2000, 1, 1), max_value=date(2100, 12, 31))
 shift_keys = st.builds(ShiftKey, work_date=dates, rank=st.sampled_from(SHIFT_RANKS))
@@ -37,4 +38,4 @@ def test_following_is_the_nearest_later_shift(key: ShiftKey) -> None:
 @given(key=shift_keys)
 @settings(max_examples=200)
 def test_a_change_never_starts_during_the_running_shift(key: ShiftKey) -> None:
-    assert effective_from(key) > key
+    assert effective_from(key, now=datetime(2026, 10, 28, 12, 0)) > key

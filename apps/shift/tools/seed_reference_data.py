@@ -4,8 +4,10 @@ Run once after install, or in a development checkout:
 
     python apps/shift/tools/seed_reference_data.py --db shift.db
 
-Re-running is safe: an unchanged entity gets no new version. The four policy defaults are
-not seeded here — migration `0004` owns them.
+The reference catalog is install-time data, so it starts at `ShiftKey.baseline()` and is
+visible to every shift. Re-running is safe: an unchanged entity gets no new row, and a
+catalog already changed at runtime is refused rather than backdated. The four policy
+defaults are not seeded here — migration `0004` owns them.
 """
 
 import argparse
@@ -15,11 +17,16 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from sqlalchemy import Connection  # noqa: E402
+
+from shift.adapters.db import catalog_repo  # noqa: E402
 from shift.adapters.db.core import Database  # noqa: E402
+from shift.common.clock import SystemClock, utc_iso  # noqa: E402
 from shift.domain.policy import ShiftKey  # noqa: E402
-from shift.services.catalog import CatalogService, ItemKind  # noqa: E402
+from shift.services.catalog import CatalogError, ItemKind  # noqa: E402
 
 SEEDED_BY = "tool:seed_reference_data"
+BASELINE_SHIFT = ShiftKey.baseline().text
 
 
 class LocationSeed(NamedTuple):
@@ -67,24 +74,86 @@ ITEMS: tuple[ItemSeed, ...] = (
 )
 
 
-def seed(catalog: CatalogService, *, running_shift: ShiftKey | None = None) -> tuple[int, int]:
-    """Write every reference location and item; returns the catalog size afterwards."""
-    for location in LOCATIONS:
-        catalog.save_location(location.location_id, name=location.name, actor_id=SEEDED_BY, running_shift=running_shift)
-    for item in ITEMS:
-        catalog.save_item(
-            item.item_id,
-            name=item.name,
-            kind=item.kind,
-            location_id=item.location_id,
-            unit=item.unit,
-            minimum=item.minimum,
-            acc_code=item.acc_code,
-            stock_factor=item.stock_factor,
-            actor_id=SEEDED_BY,
-            running_shift=running_shift,
+def _install_location(connection: Connection, seed: LocationSeed, changed_at: str) -> None:
+    latest = catalog_repo.find_location_latest(connection, seed.location_id)
+    if latest is not None:
+        if (latest.name, latest.retired) != (seed.name, False):
+            raise CatalogError(f"location {seed.location_id!r} changed at runtime; reference seeding is install-only")
+        return
+    catalog_repo.insert_location_version(
+        connection,
+        location_id=seed.location_id,
+        name=seed.name,
+        retired=False,
+        version=1,
+        effective_from_shift=BASELINE_SHIFT,
+        changed_at=changed_at,
+        changed_by=SEEDED_BY,
+    )
+
+
+def _install_item(connection: Connection, seed: ItemSeed, changed_at: str) -> None:
+    requested = (
+        seed.name,
+        seed.kind.value,
+        seed.location_id,
+        seed.unit,
+        seed.minimum,
+        seed.acc_code,
+        seed.stock_factor,
+        False,
+    )
+    latest = catalog_repo.find_item_latest(connection, seed.item_id)
+    if latest is not None:
+        stored = (
+            latest.name,
+            latest.kind,
+            latest.location_id,
+            latest.unit,
+            latest.minimum,
+            latest.acc_code,
+            latest.stock_factor,
+            latest.retired,
         )
-    return len(catalog.locations(running_shift)), len(catalog.items(running_shift))
+        if stored != requested:
+            raise CatalogError(f"item {seed.item_id!r} changed at runtime; reference seeding is install-only")
+        return
+    if seed.acc_code is not None:
+        owner = catalog_repo.find_item_with_acc_code(connection, seed.acc_code, exclude_item_id=seed.item_id)
+        if owner is not None:
+            raise CatalogError(f"acc_code {seed.acc_code!r} already belongs to item {owner!r}")
+    place = catalog_repo.find_location_effective(connection, seed.location_id, BASELINE_SHIFT)
+    if place is None or place.retired:
+        raise CatalogError(f"location {seed.location_id!r} is missing from the reference catalog")
+    catalog_repo.insert_item_version(
+        connection,
+        item_id=seed.item_id,
+        name=seed.name,
+        kind=seed.kind.value,
+        location_id=seed.location_id,
+        unit=seed.unit,
+        minimum=seed.minimum,
+        acc_code=seed.acc_code,
+        stock_factor=seed.stock_factor,
+        retired=False,
+        version=1,
+        effective_from_shift=BASELINE_SHIFT,
+        changed_at=changed_at,
+        changed_by=SEEDED_BY,
+    )
+
+
+def seed(database: Database) -> tuple[int, int]:
+    """Install the reference catalog at the baseline; returns the catalog size afterwards."""
+    changed_at = utc_iso(SystemClock().now_utc())
+    with database.write() as connection:
+        for location in LOCATIONS:
+            _install_location(connection, location, changed_at)
+        for item in ITEMS:
+            _install_item(connection, item, changed_at)
+        locations = catalog_repo.list_locations_effective(connection, BASELINE_SHIFT)
+        items = catalog_repo.list_items_effective(connection, BASELINE_SHIFT)
+    return len(locations), len(items)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,7 +165,10 @@ def main(argv: list[str] | None = None) -> int:
     database = Database(args.db)
     try:
         database.migrate()
-        locations, items = seed(CatalogService(database))
+        locations, items = seed(database)
+    except CatalogError as error:
+        print(f"reference catalog not seeded: {error}", file=sys.stderr)
+        return 1
     finally:
         database.close()
 

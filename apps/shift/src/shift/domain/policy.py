@@ -129,7 +129,7 @@ class ShiftKey:
 
     @classmethod
     def baseline(cls) -> "ShiftKey":
-        """The earliest shift: where seeded values and an install without a shift start."""
+        """The install-time seed marker; runtime changes must use `effective_from`."""
         return cls(date.min, SHIFT_RANKS[0])
 
     @property
@@ -142,8 +142,3 @@ class ShiftKey:
         if self.rank < SHIFT_RANKS[-1]:
             return ShiftKey(self.work_date, self.rank + 1)
         return ShiftKey(self.work_date + timedelta(days=1), SHIFT_RANKS[0])
-
-
-def effective_from(running_shift: ShiftKey | None) -> ShiftKey:
-    """First shift a change recorded now applies to: the next one (R-09)."""
-    return ShiftKey.baseline() if running_shift is None else running_shift.following()

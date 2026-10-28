@@ -3,6 +3,7 @@
 from datetime import date, time
 
 import pytest
+from clocks import FixedClock, inside_shift
 
 from shift.adapters.db.core import Database
 from shift.domain.policy import PolicyError, SettingKey, ShiftKey
@@ -81,12 +82,54 @@ def test_mid_shift_changes_leave_the_running_shift_untouched(
     assert service.value(key, MORNING.following()).value == value
 
 
-def test_a_change_outside_a_shift_applies_from_the_baseline(service: SettingsService) -> None:
+def test_a_change_outside_a_shift_applies_from_the_next_clock_shift(database: Database) -> None:
+    service = SettingsService(database, clock=FixedClock(inside_shift(DAY, 1)))
+
     changed = service.change(SettingKey.SESSION_TTL_HOURS, "6", actor_id="staff-manager")
 
     assert changed.created is True
-    assert changed.value.effective_from_shift == ShiftKey.baseline()
-    assert service.value(SettingKey.SESSION_TTL_HOURS, MORNING).value == "6"
+    assert changed.value.effective_from_shift == EVENING
+    assert changed.value.effective_from_shift > ShiftKey.baseline()
+    assert service.value(SettingKey.SESSION_TTL_HOURS, MORNING).value == "12"
+    assert service.value(SettingKey.SESSION_TTL_HOURS, EVENING).value == "6"
+
+
+def test_reading_without_a_shift_uses_the_clock_not_the_baseline(database: Database) -> None:
+    clock = FixedClock(inside_shift(DAY, 1))
+    service = SettingsService(database, clock=clock)
+    service.change(SettingKey.SESSION_TTL_HOURS, "6", actor_id="staff-manager", running_shift=MORNING)
+
+    assert service.snapshot()[SettingKey.SESSION_TTL_HOURS].value == "12"
+
+    clock.moment = inside_shift(DAY, 2)
+
+    assert service.snapshot()[SettingKey.SESSION_TTL_HOURS].value == "6"
+
+
+def test_a_change_cannot_start_before_the_newest_version(service: SettingsService) -> None:
+    service.change(SettingKey.SESSION_TTL_HOURS, "6", actor_id="staff-manager", running_shift=NIGHT)
+
+    with pytest.raises(PolicyError, match="newest version"):
+        service.change(SettingKey.SESSION_TTL_HOURS, "8", actor_id="staff-manager", running_shift=MORNING)
+
+    assert [value.value for value in service.history(SettingKey.SESSION_TTL_HOURS)] == ["6", "12"]
+
+
+def test_a_repeated_value_is_not_suppressed_by_an_out_of_order_legacy_version(database: Database) -> None:
+    with database.write() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO setting_versions "
+            "(setting_key, value, version, effective_from_shift, changed_at, changed_by) "
+            "VALUES ('session_ttl_hours', '6', 2, '2026-10-28#3', '2026-10-28T00:00:00.000Z', 'legacy'), "
+            "('session_ttl_hours', '8', 3, '2026-10-28#2', '2026-10-28T00:00:00.000Z', 'legacy')"
+        )
+    service = SettingsService(database)
+
+    changed = service.change(SettingKey.SESSION_TTL_HOURS, "8", actor_id="staff-manager", running_shift=NIGHT)
+
+    assert changed.created is True
+    assert changed.value.effective_from_shift == NEXT_MORNING
+    assert service.value(SettingKey.SESSION_TTL_HOURS, NEXT_MORNING).value == "8"
 
 
 def test_two_changes_in_one_shift_keep_the_last(service: SettingsService) -> None:

@@ -1,13 +1,17 @@
 """The reference seeder writes synthetic catalog data only, and re-running it is a no-op."""
 
+from datetime import date
 from pathlib import Path
 
+from clocks import FixedClock, inside_shift
 from seed_reference_data import ITEMS, LOCATIONS, main
 
 from shift.adapters.db.core import Database
 from shift.domain.policy import SettingKey, ShiftKey
 from shift.services.catalog import CatalogService, ItemKind
 from shift.services.settings import SettingsService
+
+DAY = date(2026, 10, 28)
 
 
 def _seed(tmp_path: Path) -> Database:
@@ -71,6 +75,21 @@ def test_seeding_applies_from_the_baseline_and_leaves_settings_alone(tmp_path: P
         assert {settings.value(key).changed_by for key in SettingKey} == {"migration:m0004"}
     finally:
         database.close()
+
+
+def test_seeding_refuses_to_backdate_a_runtime_change(tmp_path: Path) -> None:
+    path = tmp_path / "shift.db"
+    assert main(["--db", str(path)]) == 0
+    database = Database(path)
+    try:
+        catalog = CatalogService(database, clock=FixedClock(inside_shift(DAY, 1)))
+        catalog.save_location(
+            "shelf_reception", name="renamed", actor_id="staff-manager", running_shift=ShiftKey(DAY, 1)
+        )
+    finally:
+        database.close()
+
+    assert main(["--db", str(path)]) == 1
 
 
 def test_every_seed_row_round_trips_into_the_catalog(tmp_path: Path) -> None:

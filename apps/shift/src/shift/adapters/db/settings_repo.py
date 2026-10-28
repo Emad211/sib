@@ -10,12 +10,13 @@ _COLUMNS = ("id", "setting_key", "value", "version", "effective_from_shift", "ch
 _SELECT = f"SELECT {', '.join(_COLUMNS)} FROM setting_versions"
 _COLUMN_LIST = ", ".join(_COLUMNS)
 
-# The newest version per key among those that have started: one row per setting, one pass.
-_NEWEST_PER_KEY = (
-    f"SELECT {_COLUMN_LIST} FROM ("
-    f"SELECT {_COLUMN_LIST}, "
-    "ROW_NUMBER() OVER (PARTITION BY setting_key ORDER BY effective_from_shift DESC, version DESC) AS age "
-    "FROM setting_versions {where}) WHERE age = 1 ORDER BY setting_key"
+# One seek per setting key on the per-key index: no window and no sort over four rows.
+_EFFECTIVE_SQL = (
+    f"SELECT {_COLUMN_LIST} FROM setting_versions AS current "
+    "WHERE current.id = ("
+    "SELECT candidate.id FROM setting_versions AS candidate "
+    "WHERE candidate.setting_key = current.setting_key AND candidate.effective_from_shift <= ? "
+    "ORDER BY candidate.effective_from_shift DESC, candidate.version DESC LIMIT 1)"
 )
 
 
@@ -45,7 +46,7 @@ def _row(row: Mapping[str, Any]) -> SettingRow:
 
 
 def next_version(connection: Connection, setting_key: str) -> int:
-    """Version number for the next change; the single writer process makes MAX+1 safe."""
+    """Version number for the next change; `Database.write` holds `BEGIN IMMEDIATE` around it."""
     highest = connection.exec_driver_sql(
         "SELECT COALESCE(MAX(version), 0) FROM setting_versions WHERE setting_key = ?", (setting_key,)
     ).scalar_one()
@@ -87,14 +88,21 @@ def find_effective(connection: Connection, setting_key: str, shift_key: str) -> 
 
 def list_effective(connection: Connection, shift_key: str) -> list[SettingRow]:
     """Every setting as one shift sees it."""
-    rows = connection.exec_driver_sql(_NEWEST_PER_KEY.format(where="WHERE effective_from_shift <= ?"), (shift_key,))
+    rows = connection.exec_driver_sql(_EFFECTIVE_SQL, (shift_key,))
     return [_row(row) for row in rows.mappings()]
 
 
 def find_latest(connection: Connection, setting_key: str) -> SettingRow | None:
-    """The newest version of one setting, whatever shift it starts at."""
+    """The version that governs the farthest future shift, i.e. newest by effective shift.
+
+    Ordering by `version` alone is wrong once legacy rows can be out of order; idempotency
+    must compare against the value later shifts actually read, not the highest row number.
+    """
     row = (
-        connection.exec_driver_sql(f"{_SELECT} WHERE setting_key = ? ORDER BY version DESC LIMIT 1", (setting_key,))
+        connection.exec_driver_sql(
+            f"{_SELECT} WHERE setting_key = ? ORDER BY effective_from_shift DESC, version DESC LIMIT 1",
+            (setting_key,),
+        )
         .mappings()
         .first()
     )

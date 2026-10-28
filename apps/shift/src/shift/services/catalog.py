@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import Connection
@@ -9,8 +10,9 @@ from sqlalchemy import Connection
 from shift.adapters.db import catalog_repo
 from shift.adapters.db.catalog_repo import ItemRow, LocationRow, RoleRow
 from shift.adapters.db.core import Database
-from shift.common.clock import Clock, SystemClock, utc_iso
-from shift.domain.policy import PolicyError, Role, ShiftKey, effective_from
+from shift.common.clock import Clock, SystemClock, to_tehran, utc_iso
+from shift.domain.policy import PolicyError, Role, ShiftKey
+from shift.domain.shift_clock import covering, effective_from, require_monotonic
 
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_-]{0,47}")
 _STAFF_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
@@ -173,11 +175,21 @@ class CatalogService:
         self._database = database
         self._clock = clock or SystemClock()
 
+    def _tehran_now(self) -> datetime:
+        return to_tehran(self._clock.now_utc())
+
+    def _read_shift(self, shift: ShiftKey | None) -> ShiftKey:
+        """The shift a caller asked about, or the one the clock says has started."""
+        return shift if shift is not None else covering(self._tehran_now())
+
     def locations(self, shift: ShiftKey | None = None, *, include_retired: bool = False) -> list[Location]:
         """The locations `shift` may use; retired ones only when a manager asks for them."""
         with self._database.read() as connection:
-            rows = catalog_repo.list_locations_effective(connection, (shift or ShiftKey.baseline()).text)
-        return [_location(row) for row in rows if include_retired or not row.retired]
+            rows = catalog_repo.list_locations_effective(connection, self._read_shift(shift).text)
+        return sorted(
+            (_location(row) for row in rows if include_retired or not row.retired),
+            key=lambda location: location.location_id,
+        )
 
     def items(
         self,
@@ -189,23 +201,29 @@ class CatalogService:
         """The items `shift` may count, optionally just one location's.
 
         The location filter runs after version resolution, so an item that moved appears
-        only under the location it is in during `shift`.
+        only under the location it is in during `shift`. An item in a location retired by
+        that shift is hidden too: it cannot be counted on a shelf that is no longer in use.
         """
+        at_shift = self._read_shift(shift)
         with self._database.read() as connection:
-            rows = catalog_repo.list_items_effective(connection, (shift or ShiftKey.baseline()).text)
+            rows = catalog_repo.list_items_effective(connection, at_shift.text)
+            places = catalog_repo.list_locations_effective(connection, at_shift.text)
+        retired_places = {str(place.location_id) for place in places if place.retired}
         wanted = None if location_id is None else _identifier(location_id, "location_id")
-        return [
+        items = (
             item
             for item in (_item(row) for row in rows)
-            if (include_retired or not item.retired) and (wanted is None or item.location_id == wanted)
-        ]
+            if (include_retired or (not item.retired and item.location_id not in retired_places))
+            and (wanted is None or item.location_id == wanted)
+        )
+        return sorted(items, key=lambda item: item.item_id)
 
     def staff_roles(self, staff_id: object, shift: ShiftKey | None = None) -> list[StaffRole]:
         """The grant decision per role of one person as `shift` sees it, in role name order."""
         resolved = _staff_id(staff_id)
         with self._database.read() as connection:
-            rows = catalog_repo.list_staff_roles_effective(connection, resolved, (shift or ShiftKey.baseline()).text)
-        return [_staff_role(row) for row in rows]
+            rows = catalog_repo.list_staff_roles_effective(connection, resolved, self._read_shift(shift).text)
+        return sorted((_staff_role(row) for row in rows), key=lambda grant: grant.role.value)
 
     def roles_of(self, staff_id: object, shift: ShiftKey | None = None) -> frozenset[Role]:
         """The roles the person holds in `shift`; queues and permissions follow this set."""
@@ -222,16 +240,21 @@ class CatalogService:
     ) -> CatalogChange:
         """Create or update a location from the shift after `running_shift` (R-09).
 
-        Repeating what is already stored appends nothing and reports `created=False`.
+        With no running shift the target comes from the Tehran clock, and a change can never
+        start before the newest version. Repeating what is stored appends nothing.
         """
         resolved_id = _identifier(location_id, "location_id")
         label = _label(name, "name", 80)
         actor = _actor(actor_id)
-        target = effective_from(running_shift)
         with self._database.write() as connection:
             latest = catalog_repo.find_location_latest(connection, resolved_id)
             if latest is not None and (latest.name, latest.retired) == (label, retired):
                 return CatalogChange(_location(latest), created=False)
+            now = self._clock.now_utc()
+            target = require_monotonic(
+                effective_from(running_shift, now=to_tehran(now)),
+                None if latest is None else ShiftKey.parse(latest.effective_from_shift),
+            )
             version = catalog_repo.location_next_version(connection, resolved_id)
             catalog_repo.insert_location_version(
                 connection,
@@ -240,7 +263,7 @@ class CatalogService:
                 retired=retired,
                 version=version,
                 effective_from_shift=target.text,
-                changed_at=utc_iso(self._clock.now_utc()),
+                changed_at=utc_iso(now),
                 changed_by=actor,
             )
         return CatalogChange(Location(resolved_id, label, retired, version, target), created=True)
@@ -262,7 +285,8 @@ class CatalogService:
     ) -> CatalogChange:
         """Create or update an item from the shift after `running_shift` (R-09).
 
-        Repeating what is already stored appends nothing and reports `created=False`.
+        With no running shift the target comes from the Tehran clock, and a change can never
+        start before the newest version. Repeating what is stored appends nothing.
         """
         resolved_id = _identifier(item_id, "item_id")
         label = _label(name, "name", 80)
@@ -278,15 +302,19 @@ class CatalogService:
         if resolved_kind is ItemKind.COUNTED and code is None:
             raise CatalogError("a counted item needs an accounting code (acc_code), S03 §1")
         actor = _actor(actor_id)
-        target = effective_from(running_shift)
         requested = (label, resolved_kind.value, place, resolved_unit, floor, code, factor, retired)
         with self._database.write() as connection:
             latest = catalog_repo.find_item_latest(connection, resolved_id)
             if latest is not None and _content(latest) == requested:
                 return CatalogChange(_item(latest), created=False)
+            now = self._clock.now_utc()
+            target = require_monotonic(
+                effective_from(running_shift, now=to_tehran(now)),
+                None if latest is None else ShiftKey.parse(latest.effective_from_shift),
+            )
             if not retired:
                 self._require_active_location(connection, place, target)
-            self._require_free_acc_code(connection, resolved_id, code, target)
+            self._require_free_acc_code(connection, resolved_id, code)
             version = catalog_repo.item_next_version(connection, resolved_id)
             catalog_repo.insert_item_version(
                 connection,
@@ -301,7 +329,7 @@ class CatalogService:
                 retired=retired,
                 version=version,
                 effective_from_shift=target.text,
-                changed_at=utc_iso(self._clock.now_utc()),
+                changed_at=utc_iso(now),
                 changed_by=actor,
             )
         changed = Item(
@@ -328,18 +356,26 @@ class CatalogService:
         actor_id: str,
         running_shift: ShiftKey | None = None,
     ) -> CatalogChange:
-        """Grant or revoke one role from the shift after `running_shift` (R-08, R-09)."""
+        """Grant or revoke one role from the shift after `running_shift` (R-08, R-09).
+
+        With no running shift the target comes from the Tehran clock, and a change can never
+        start before the newest version.
+        """
         resolved_staff = _staff_id(staff_id)
         try:
             resolved_role = Role(role)
         except ValueError as exc:
             raise CatalogError(f"unknown role: {role!r}") from exc
         actor = _actor(actor_id)
-        target = effective_from(running_shift)
         with self._database.write() as connection:
             latest = catalog_repo.find_role_latest(connection, resolved_staff, resolved_role.value)
             if latest is not None and latest.granted == granted:
                 return CatalogChange(_staff_role(latest), created=False)
+            now = self._clock.now_utc()
+            target = require_monotonic(
+                effective_from(running_shift, now=to_tehran(now)),
+                None if latest is None else ShiftKey.parse(latest.effective_from_shift),
+            )
             version = catalog_repo.role_next_version(connection, resolved_staff, resolved_role.value)
             catalog_repo.insert_role_version(
                 connection,
@@ -348,7 +384,7 @@ class CatalogService:
                 granted=granted,
                 version=version,
                 effective_from_shift=target.text,
-                changed_at=utc_iso(self._clock.now_utc()),
+                changed_at=utc_iso(now),
                 changed_by=actor,
             )
         return CatalogChange(StaffRole(resolved_staff, resolved_role, granted, version, target), created=True)
@@ -360,15 +396,15 @@ class CatalogService:
             raise CatalogError(f"location {location_id!r} is not in use from {target.text}")
 
     @staticmethod
-    def _require_free_acc_code(connection: Connection, item_id: str, acc_code: str | None, target: ShiftKey) -> None:
+    def _require_free_acc_code(connection: Connection, item_id: str, acc_code: str | None) -> None:
         """One accounting code names one item for ever (S01 §4, S03 §1).
 
         Retiring an item does not free its code: accounting rows already carry it, and the
-        bridge resolves them back to this item. A successor product is a new version of the
-        same item, not a new item.
+        bridge resolves them back to this item. The check spans every version, so a code
+        registered for a later shift is still taken for an earlier one.
         """
         if acc_code is None:
             return
-        for row in catalog_repo.list_items_effective(connection, target.text):
-            if row.item_id != item_id and row.acc_code == acc_code:
-                raise CatalogError(f"acc_code {acc_code!r} already belongs to item {row.item_id!r}")
+        owner = catalog_repo.find_item_with_acc_code(connection, acc_code, exclude_item_id=item_id)
+        if owner is not None:
+            raise CatalogError(f"acc_code {acc_code!r} already belongs to item {owner!r}")
