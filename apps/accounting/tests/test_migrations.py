@@ -69,6 +69,7 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "column added: consumable_tariffs.stock_factor",
             "column added: users.staff_id",
             "index added: idx_expenses_spent_on",
+            "index added: idx_invoice_voids_voided_at",
             "index added: idx_invoices_closed_at",
             "index added: idx_injections_doctor_work_date",
             "index added: idx_injections_nurse_work_date",
@@ -77,6 +78,7 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "index added: idx_procedures_nurse_work_date",
             "index added: idx_invoices_patient_work_date",
             "index added: idx_invoices_work_date_status",
+            "index added: idx_patients_created_at",
             "index added: idx_payment_lines_closed_at",
             "index added: idx_tariff_changes_changed_at",
             "index added: idx_users_staff_id",
@@ -91,6 +93,7 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "view added: v_shift_patient_registrations_v1",
             "view added: v_shift_payment_lines_v1",
             "view added: v_shift_vitals_services_v1",
+            "view added: v_shift_voids_v1",
         ]
     )
     assert after["user_version"] == LATEST
