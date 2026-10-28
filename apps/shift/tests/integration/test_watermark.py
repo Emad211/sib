@@ -18,7 +18,7 @@ from shift.adapters.accounting import views
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import migrations, mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
-from shift.adapters.db.migrations import m0001_baseline
+from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror
 from shift.domain.cutoff import ShiftCutoff
 from shift.domain.events import EventType
 from shift.services.accounting_bridge import FEEDS, AccountingBridge
@@ -107,9 +107,9 @@ def test_the_first_poll_mirrors_the_shifts_cash_and_appends_one_event_per_invoic
     ]
     events = _events(database)
     assert {event["key"] for event in events} == {
-        "acc:v_shift_cash_receipts_v1:1",
-        "acc:v_shift_cash_receipts_v1:2",
-        "acc:v_shift_cash_receipts_v1:3",
+        "acc:v_shift_cash_receipts_v1:1@2026-09-24 08:10:00@150000",
+        "acc:v_shift_cash_receipts_v1:2@2026-09-24 09:05:00@40000",
+        "acc:v_shift_cash_receipts_v1:3@2026-09-24 13:40:00@25000",
     }
     assert {event["type"] for event in events} == {"acc.cash_receipt"}
     assert {event["shift_id"] for event in events} == {"shift-morning"}
@@ -252,6 +252,7 @@ def test_money_is_rounded_once_at_ingest_and_the_raw_value_is_kept(
     assert cash["2026-09-24 13:55:00"] == (1_000, 1_000.4)
     assert cash["2026-09-24 13:56:00"] == (1_001, 1_000.5)  # half-up, and only once
     assert [event["payload"]["amount"] for event in _events(database)][-2:] == [1_000, 1_001]
+    assert [event["payload"]["amount_raw"] for event in _events(database)][-2:] == [1_000.4, 1_000.5]
 
 
 def test_an_empty_page_is_a_no_op_for_every_mirror(database: Database) -> None:
@@ -296,7 +297,7 @@ def test_a_version_1_database_gains_the_mirrors_with_a_backup_first(tmp_path: Pa
     try:
         report = database.migrate(backup_dir=tmp_path / "backups")
         assert (report.from_version, report.to_version) == (1, migrations.LATEST)
-        assert report.applied == ["0003_accounting_mirror"]
+        assert report.applied == ["0003_accounting_mirror", "0006_bridge_corrections"]
         assert report.backup is not None
         with database.read() as connection:
             tables = {str(row[0]) for row in connection.exec_driver_sql("SELECT name FROM sqlite_master")}
@@ -315,3 +316,42 @@ def test_a_version_1_database_gains_the_mirrors_with_a_backup_first(tmp_path: Pa
     } <= tables
     assert {"events", "proj_stock", "proj_cash"} <= tables  # the step 4/5 tables are untouched
     assert version == migrations.LATEST
+
+
+def test_a_version_3_database_keeps_its_cash_history_and_rewinds_the_cash_watermark(tmp_path: Path) -> None:
+    """Migration 6 re-keys acc_cash and re-reads cash once, so a pre-upgrade re-close is healed."""
+    path = tmp_path / "v3.db"
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        m0001_baseline.up(connection)
+        m0003_accounting_mirror.up(connection)
+        connection.exec_driver_sql("PRAGMA user_version = 3")
+        connection.exec_driver_sql(
+            "INSERT INTO acc_cash (invoice_id, closed_at, amount, amount_raw, ingested_at) "
+            "VALUES (7, '2026-09-24 11:30:00', 70000, 70000.0, '2026-09-24T00:00:00Z')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO acc_watermark (view_name, last_key_at, last_key_id, updated_at) "
+            "VALUES ('v_shift_cash_receipts_v1', '2026-09-24 13:40:00', 3, '2026-09-24T00:00:00Z')"
+        )
+    engine.dispose()
+
+    database = Database(path)
+    try:
+        database.migrate(backup_dir=tmp_path / "backups")
+        with database.read() as connection:
+            cash = mirror_repo.rows(connection, mirror_repo.CASH)
+            watermark = watermark_repo.get(connection, "v_shift_cash_receipts_v1")
+            void_columns = {str(row[1]) for row in connection.exec_driver_sql("PRAGMA table_info(acc_void)")}
+            cash_key = [
+                (str(row[1]), int(row[5]))
+                for row in connection.exec_driver_sql("PRAGMA table_info(acc_cash)")
+                if row[5]
+            ]
+    finally:
+        database.close()
+
+    assert [(row["invoice_id"], row["amount"], row["superseded_at"]) for row in cash] == [(7, 70_000, None)]
+    assert cash_key == [("invoice_id", 1), ("closed_at", 2)]
+    assert (watermark.last_key_at, watermark.last_key_id) == (watermark_repo.EMPTY_WATERMARK_AT, -1)
+    assert "compensated_at" in void_columns

@@ -51,7 +51,8 @@ _COLUMNS: Mapping[str, tuple[str, ...]] = {
     ),
 }
 _PRIMARY_KEY: Mapping[str, str] = {
-    CASH: "invoice_id",
+    # A cash row is one version of one close, so an invoice may legitimately have several rows.
+    CASH: "invoice_id, closed_at",
     CONSUMPTION: "ledger_id",
     VITAL: "injection_id",
     REGISTRATION: "patient_id",
@@ -102,6 +103,57 @@ def insert_registrations(connection: Connection, rows: Sequence[Mapping[str, Any
 def insert_voids(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> int:
     """Copy refunds and cancellations; `void_id` is the identity, one void per invoice."""
     return _insert_ignoring(connection, VOID, rows)
+
+
+def cash_versions_for(connection: Connection, invoice_ids: Sequence[int]) -> dict[int, list[dict[str, Any]]]:
+    """Every ingested close of these invoices, oldest first, with `superseded_at` (correction state)."""
+    if not invoice_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in invoice_ids)
+    result = connection.exec_driver_sql(
+        f"SELECT invoice_id, closed_at, amount, amount_raw, ingested_at, superseded_at FROM {CASH} "
+        f"WHERE invoice_id IN ({placeholders}) ORDER BY invoice_id, closed_at",
+        tuple(invoice_ids),
+    )
+    versions: dict[int, list[dict[str, Any]]] = {}
+    for row in result.mappings():
+        versions.setdefault(int(row["invoice_id"]), []).append(dict(row))
+    return versions
+
+
+def supersede_cash(connection: Connection, invoice_id: int, closed_at: str, superseded_at: str) -> None:
+    """Mark one cash version as replaced by a newer close; the row stays for audit (R-03)."""
+    connection.exec_driver_sql(
+        f"UPDATE {CASH} SET superseded_at = ? WHERE invoice_id = ? AND closed_at = ? AND superseded_at IS NULL",
+        (superseded_at, invoice_id, closed_at),
+    )
+
+
+def update_cash_amount(
+    connection: Connection, invoice_id: int, closed_at: str, amount: int, amount_raw: float, ingested_at: str
+) -> None:
+    """Correct the amount of a close that accounting changed without moving its timestamp."""
+    connection.exec_driver_sql(
+        f"UPDATE {CASH} SET amount = ?, amount_raw = ?, ingested_at = ? WHERE invoice_id = ? AND closed_at = ?",
+        (amount, amount_raw, ingested_at, invoice_id, closed_at),
+    )
+
+
+def uncompensated_voids(connection: Connection) -> list[dict[str, Any]]:
+    """Voids that still need a reversing event, with the cash version they must cancel (if any)."""
+    result = connection.exec_driver_sql(
+        f"SELECT v.void_id, v.invoice_id, v.kind, v.voided_at, "
+        f"c.closed_at AS cash_closed_at, c.amount AS cash_amount, c.amount_raw AS cash_amount_raw "
+        f"FROM {VOID} v LEFT JOIN {CASH} c "
+        "ON c.invoice_id = v.invoice_id AND c.superseded_at IS NULL "
+        "WHERE v.compensated_at IS NULL ORDER BY v.void_id"
+    )
+    return [dict(row._mapping) for row in result]
+
+
+def mark_void_compensated(connection: Connection, void_id: int, compensated_at: str) -> None:
+    """Remember that a void was turned into an `acc.cash_reversal` (or had no cash to reverse)."""
+    connection.exec_driver_sql(f"UPDATE {VOID} SET compensated_at = ? WHERE void_id = ?", (compensated_at, void_id))
 
 
 def replace_open_invoices(connection: Connection, rows: Sequence[Mapping[str, Any]], refreshed_at: str) -> int:

@@ -125,8 +125,8 @@ def test_the_next_shift_ingests_that_invoice_under_its_own_shift_id(
     with database.read() as connection:
         mirrored = {row["invoice_id"] for row in mirror_repo.rows(connection, mirror_repo.CASH)}
         attributed = connection.exec_driver_sql(
-            "SELECT shift_id, payload FROM events WHERE idempotency_key = ?",
-            (f"acc:{ViewName.CASH_RECEIPTS.value}:{scenario.after_cutoff_invoice}",),
+            "SELECT shift_id, payload FROM events WHERE idempotency_key LIKE ?",
+            (f"acc:{ViewName.CASH_RECEIPTS.value}:{scenario.after_cutoff_invoice}@%",),
         ).one()
     assert report.events == 1
     assert scenario.after_cutoff_invoice in mirrored

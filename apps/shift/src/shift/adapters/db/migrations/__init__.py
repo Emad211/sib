@@ -6,13 +6,16 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Connection
 
-from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror
+from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror, m0006_bridge_corrections
 
 log = logging.getLogger(__name__)
 
+# Version 2 is intentionally unassigned: it is reserved for the outbox/photo schema (design §5,
+# step 13). Migration 3 was numbered after the step that introduced the accounting mirror.
 MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (1, "baseline", m0001_baseline.up),
     (3, "accounting_mirror", m0003_accounting_mirror.up),
+    (6, "bridge_corrections", m0006_bridge_corrections.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 
