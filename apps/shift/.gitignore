@@ -1,0 +1,11 @@
+# Local runtime artefacts: the shift database is never committed (ADR-006).
+.venv/
+shift.db
+shift.db-wal
+shift.db-shm
+logs/
+backups/
+.shift_secret_key
+.coverage
+htmlcov/
+__pycache__/

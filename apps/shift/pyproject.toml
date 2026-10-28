@@ -1,0 +1,23 @@
+# The shift service runs from a source checkout; dependencies are installed from
+# requirements*.lock, so this file carries metadata and tool policy, not a build.
+[project]
+name = "shift"
+version = "0.1.0"
+description = "Sib clinic shift management service (FastAPI + SQLAlchemy Core + SQLite)"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "SQLAlchemy",
+    "pydantic",
+    "jinja2",
+    "python-multipart",
+]
+
+[tool.coverage.run]
+source = ["shift"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

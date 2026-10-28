@@ -1,0 +1,40 @@
+name: shift
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/shift/**", ".github/workflows/shift.yml"]
+  pull_request:
+    paths: ["apps/shift/**", ".github/workflows/shift.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: shift-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/shift
+    shell: pwsh
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/shift/requirements-dev.lock
+      - run: python -m pip install -r requirements-dev.lock
+      - name: Guard — no databases or real data in the repo (ADR-006)
+        working-directory: .
+        run: |
+          $bad = git ls-files | Select-String -Pattern '\.(db|sqlite3?|db-wal|db-shm)$'
+          if ($bad) { Write-Error "database files are tracked: $bad"; exit 1 }
+      - run: ruff check .
+      - run: ruff format --check .
+      - name: Tests (synthetic data only)
+        run: python -m pytest
