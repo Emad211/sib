@@ -6,4 +6,4 @@ select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
 
 [lint.isort]
-known-first-party = ["shift"]
+known-first-party = ["shift", "event_fixtures", "verify_event_chain"]

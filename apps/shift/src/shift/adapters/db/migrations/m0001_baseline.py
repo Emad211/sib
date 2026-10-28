@@ -1,4 +1,4 @@
-"""v1 — projection bookkeeping tables; the SQLite event log arrives with step 4."""
+"""v1 — baseline schema: projection tables plus the SQLite event log and triggers."""
 
 from importlib.resources import files
 
@@ -8,5 +8,6 @@ from shift.adapters.db.sql_script import execute_script
 
 
 def up(connection: Connection) -> None:
-    schema = files("shift.adapters.db").joinpath("schema.sql").read_text(encoding="utf-8")
-    execute_script(connection, schema)
+    package = files("shift.adapters.db")
+    for resource in ("schema.sql", "sqlite/ddl.sql", "sqlite/triggers.sql"):
+        execute_script(connection, package.joinpath(resource).read_text(encoding="utf-8"))

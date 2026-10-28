@@ -33,7 +33,7 @@ def test_fresh_database_is_created_at_latest_version(tmp_path: Path) -> None:
         assert report.applied == [f"{v:04d}_{name}" for v, name, _ in migrations.MIGRATIONS]
         assert report.backup is None
         assert _version(database) == migrations.LATEST
-        assert {"meta_projection", "proj_stock", "proj_cash"} <= _tables(database)
+        assert {"meta_projection", "proj_stock", "proj_cash", "events"} <= _tables(database)
     finally:
         database.close()
 

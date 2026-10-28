@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.config.settings import Settings
+from shift.services.event_store import EventStore
 
 
 @pytest.fixture
@@ -32,6 +33,12 @@ def database(tmp_path: Path) -> Iterator[Database]:
         yield database
     finally:
         database.close()
+
+
+@pytest.fixture
+def store(database: Database) -> EventStore:
+    """An event store on the synthetic database."""
+    return EventStore(database)
 
 
 @pytest.fixture

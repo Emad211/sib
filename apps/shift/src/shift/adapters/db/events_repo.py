@@ -1,0 +1,112 @@
+"""SQL access for the append-only event log; no UPDATE or DELETE exists here."""
+
+import json
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from sqlalchemy import Connection
+
+_COLUMNS = (
+    "seq",
+    "event_id",
+    "type",
+    "schema_v",
+    "payload",
+    "actor_id",
+    "device_id",
+    "shift_id",
+    "work_date",
+    "client_at",
+    "server_at",
+    "at_tehran",
+    "ref_event_id",
+    "idempotency_key",
+    "prev_hash",
+    "hash",
+)
+_INSERT_COLUMNS = _COLUMNS[1:]
+_SELECT = f"SELECT {', '.join(_COLUMNS)} FROM events"
+
+
+@dataclass(frozen=True, slots=True)
+class EventRecord:
+    """One stored event; payload is decoded JSON and every time is ISO text."""
+
+    seq: int
+    event_id: str
+    type: str
+    schema_v: int
+    payload: dict[str, Any]
+    actor_id: str
+    device_id: str
+    shift_id: str | None
+    work_date: str
+    client_at: str
+    server_at: str
+    at_tehran: str
+    ref_event_id: str | None
+    idempotency_key: str
+    prev_hash: str
+    hash: str
+
+
+def _record(row: Any) -> EventRecord:
+    return EventRecord(
+        seq=int(row["seq"]),
+        event_id=str(row["event_id"]),
+        type=str(row["type"]),
+        schema_v=int(row["schema_v"]),
+        payload=json.loads(row["payload"]),
+        actor_id=str(row["actor_id"]),
+        device_id=str(row["device_id"]),
+        shift_id=row["shift_id"],
+        work_date=str(row["work_date"]),
+        client_at=str(row["client_at"]),
+        server_at=str(row["server_at"]),
+        at_tehran=str(row["at_tehran"]),
+        ref_event_id=row["ref_event_id"],
+        idempotency_key=str(row["idempotency_key"]),
+        prev_hash=str(row["prev_hash"]),
+        hash=str(row["hash"]),
+    )
+
+
+def insert_event(connection: Connection, values: Mapping[str, Any]) -> int:
+    """Insert one event and return its server sequence number."""
+    placeholders = ", ".join("?" for _ in _INSERT_COLUMNS)
+    result = connection.exec_driver_sql(
+        f"INSERT INTO events ({', '.join(_INSERT_COLUMNS)}) VALUES ({placeholders})",
+        tuple(values[column] for column in _INSERT_COLUMNS),
+    )
+    return int(result.lastrowid or 0)
+
+
+def find_by_idempotency_key(connection: Connection, key: str) -> EventRecord | None:
+    """Find the event already stored for a retried outbox item."""
+    row = connection.exec_driver_sql(f"{_SELECT} WHERE idempotency_key = ? LIMIT 1", (key,)).mappings().first()
+    return _record(row) if row is not None else None
+
+
+def find_by_event_id(connection: Connection, event_id: str) -> EventRecord | None:
+    """Find an event by its client-minted ULID."""
+    row = connection.exec_driver_sql(f"{_SELECT} WHERE event_id = ? LIMIT 1", (event_id,)).mappings().first()
+    return _record(row) if row is not None else None
+
+
+def last_event(connection: Connection) -> EventRecord | None:
+    """Return the highest-sequence event, the current hash-chain head."""
+    row = connection.exec_driver_sql(f"{_SELECT} ORDER BY seq DESC LIMIT 1").mappings().first()
+    return _record(row) if row is not None else None
+
+
+def iter_events(connection: Connection, after_seq: int = 0) -> Iterator[EventRecord]:
+    """Yield events in server order after `after_seq` (the only valid ordering)."""
+    result = connection.exec_driver_sql(f"{_SELECT} WHERE seq > ? ORDER BY seq", (after_seq,))
+    for row in result.mappings():
+        yield _record(row)
+
+
+def count_events(connection: Connection) -> int:
+    """Number of stored events; used by tests and health diagnostics."""
+    return int(connection.exec_driver_sql("SELECT COUNT(*) FROM events").scalar_one())
