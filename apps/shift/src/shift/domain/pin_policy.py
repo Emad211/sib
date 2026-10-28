@@ -16,6 +16,7 @@ class PinProblem(StrEnum):
     LENGTH = "pin_length"
     NOT_DIGITS = "pin_not_digits"
     REPEATED = "pin_repeated"
+    PATTERN = "pin_pattern"
     SEQUENCE = "pin_sequence"
     YEAR = "pin_contains_year"
 
@@ -45,6 +46,16 @@ def _is_repeated(pin: str) -> bool:
     return len(set(pin)) == 1
 
 
+def _is_repeating_block(pin: str) -> bool:
+    """True when a shorter block repeated makes the whole PIN (`121212`, `123123`).
+
+    `111111` is caught by `_is_repeated` first; this catches the 2- and 3-digit cycles that
+    are just as easy to guess and that no other rule looks at (`112233` is a pair run, not a
+    repetition, and stays allowed).
+    """
+    return any(pin == pin[:size] * (len(pin) // size) for size in range(2, len(pin) // 2 + 1))
+
+
 def _is_sequence(pin: str) -> bool:
     steps = {int(b) - int(a) for a, b in zip(pin, pin[1:], strict=False)}
     return len(steps) == 1 and steps <= {1, -1}
@@ -71,6 +82,8 @@ def validate_new_pin(pin: str) -> str:
         raise PinPolicyError(PinProblem.LENGTH)
     if _is_repeated(candidate):
         raise PinPolicyError(PinProblem.REPEATED)
+    if _is_repeating_block(candidate):
+        raise PinPolicyError(PinProblem.PATTERN)
     if _is_sequence(candidate):
         raise PinPolicyError(PinProblem.SEQUENCE)
     if _contains_year(candidate):

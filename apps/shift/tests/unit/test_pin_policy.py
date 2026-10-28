@@ -42,6 +42,9 @@ def test_a_plain_pin_is_accepted_and_returned_normalised() -> None:
     [
         ("111111", PinProblem.REPEATED),
         ("000000", PinProblem.REPEATED),
+        ("121212", PinProblem.PATTERN),
+        ("123123", PinProblem.PATTERN),
+        ("494949", PinProblem.PATTERN),
         ("123456", PinProblem.SEQUENCE),
         ("654321", PinProblem.SEQUENCE),
         ("012345", PinProblem.SEQUENCE),
@@ -62,8 +65,21 @@ def test_guessable_pins_name_the_rule_that_rejected_them(pin: str, problem: PinP
 
 
 def test_sequence_detection_needs_the_whole_pin_to_move_by_one() -> None:
-    assert validate_new_pin("112233") == "112233"
+    assert validate_new_pin("112233") == "112233", "a pair run is guessable, but it is not a repetition"
     assert validate_new_pin("234561") == "234561"
+
+
+@pytest.mark.parametrize("pin", ["482482", "913913", "262626", "808080"])
+def test_a_pin_that_repeats_a_two_or_three_digit_block_is_refused(pin: str) -> None:
+    with pytest.raises(PinPolicyError) as caught:
+        validate_new_pin(pin)
+    assert caught.value.problem == PinProblem.PATTERN
+
+
+@given(block=strategies.from_regex(r"[0-9]{2,3}", fullmatch=True))
+def test_a_pin_built_from_one_repeated_block_is_never_accepted(block: str) -> None:
+    with pytest.raises(PinPolicyError):
+        validate_new_pin((block * 3)[:PIN_LENGTH])
 
 
 @given(digit=strategies.integers(min_value=0, max_value=9))
