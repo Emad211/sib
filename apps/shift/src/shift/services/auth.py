@@ -1,0 +1,357 @@
+"""Login, sessions and credential administration: mobile + PIN on an enrolled device.
+
+Sessions are fixed 12-hour tokens (design §3): the cookie carries 32 random bytes and
+the database only their SHA-256, so a leaked database cannot be replayed as a cookie.
+Five consecutive wrong PINs lock the account until the manager unlocks it (S4).
+"""
+
+import re
+import secrets
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
+from argon2.low_level import Type
+from sqlalchemy import Connection
+
+from shift.adapters.db import devices_repo, sessions_repo, staff_repo
+from shift.adapters.db.core import Database
+from shift.adapters.db.devices_repo import DeviceRecord
+from shift.adapters.db.sessions_repo import SessionRecord
+from shift.adapters.db.staff_repo import StaffRecord
+from shift.common.clock import Clock, SystemClock, parse_iso, utc_iso
+from shift.common.hashing import sha256_hex
+from shift.config.logging import get_audit_logger
+from shift.domain.permissions import Permission, UnknownRole, permissions_for
+from shift.domain.pin_policy import (
+    LOCKOUT_MINUTES,
+    MAX_FAILED_ATTEMPTS,
+    normalise_digits,
+    validate_new_pin,
+)
+
+SESSION_TTL = timedelta(hours=12)
+SESSION_COOKIE = "shift_session"
+TOKEN_BYTES = 32
+_MOBILE = re.compile(r"09\d{9}")
+PIN_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16, type=Type.ID)
+
+log = get_audit_logger()
+
+
+class AuthError(Exception):
+    """Base class for every refusal the auth service can return."""
+
+
+class InvalidCredentials(AuthError):
+    """Mobile unknown, PIN wrong, or the mobile is not a mobile number."""
+
+
+class AccountLocked(AuthError):
+    """Too many wrong PINs; only a manager unlock clears the lock."""
+
+    def __init__(self, until: datetime) -> None:
+        super().__init__(f"account locked until {utc_iso(until)}")
+        self.until = until
+
+
+class StaffInactive(AuthError):
+    """The staff row was deactivated; the PIN must not work any more."""
+
+
+class DeviceNotEnrolled(AuthError):
+    """The request did not come from a device paired to this staff member."""
+
+
+class DeviceRevoked(AuthError):
+    """The device was revoked; it may no longer authenticate anyone."""
+
+
+class StaffNotFound(AuthError):
+    """Credential administration asked for a staff id that does not exist."""
+
+
+class SessionInvalid(AuthError):
+    """No usable session for the presented cookie (`reason` says why)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"session rejected: {reason}")
+        self.reason = reason
+
+
+@dataclass(frozen=True, slots=True)
+class Principal:
+    """The authenticated caller of one request, with the union of its roles' powers."""
+
+    staff_id: str
+    full_name: str
+    roles: tuple[str, ...]
+    permissions: frozenset[Permission]
+    device_id: str
+    device_label: str
+    session_hash: str
+    csrf_token: str
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedSession:
+    """A freshly minted session: the raw token goes into the cookie, nothing else."""
+
+    token: str
+    csrf_token: str
+    principal: Principal
+
+
+@dataclass(frozen=True, slots=True)
+class StaffSummary:
+    """A staff row as the credential administration screen shows it (never the hash)."""
+
+    staff_id: str
+    full_name: str
+    mobile: str
+    roles: tuple[str, ...]
+    active: bool
+    locked_until: str | None
+
+
+def normalise_mobile(raw: str) -> str:
+    """Return `09xxxxxxxxx`, accepting Persian digits, spaces, dashes and `+98`."""
+    text = normalise_digits(raw).replace(" ", "").replace("-", "")
+    if text.startswith("+98"):
+        text = "0" + text[3:]
+    elif text.startswith("0098"):
+        text = "0" + text[4:]
+    if not _MOBILE.fullmatch(text):
+        raise InvalidCredentials("mobile must be an 09xxxxxxxxx number")
+    return text
+
+
+def hash_pin(pin: str, *, hasher: PasswordHasher = PIN_HASHER) -> str:
+    """Argon2id digest of a PIN; the PIN itself is never stored or logged."""
+    return hasher.hash(pin)
+
+
+def verify_pin(pin_hash: str, pin: str, *, hasher: PasswordHasher = PIN_HASHER) -> bool:
+    """Constant-work PIN check that treats a corrupt digest as a mismatch."""
+    try:
+        return hasher.verify(pin_hash, pin)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+class AuthService:
+    """Orchestrates staff rows, devices and sessions; no SQL and no HTTP types."""
+
+    def __init__(
+        self,
+        database: Database,
+        *,
+        clock: Clock | None = None,
+        hasher: PasswordHasher = PIN_HASHER,
+        session_ttl: timedelta = SESSION_TTL,
+    ) -> None:
+        self._database = database
+        self._clock = clock or SystemClock()
+        self._hasher = hasher
+        self._session_ttl = session_ttl
+        # Built on the first "unknown mobile" login, not at startup: verifying against a
+        # real digest keeps that path as slow as a wrong PIN, so response time does not
+        # reveal which mobiles exist.
+        self._decoy_hash: str | None = None
+
+    def login(self, *, mobile: str, pin: str, device_id: str) -> IssuedSession:
+        """Open a session, or raise the specific `AuthError` that refused it."""
+        now = self._clock.now_utc()
+        normalised_mobile = normalise_mobile(mobile)
+        normalised_pin = normalise_digits(pin)
+        refusal: AuthError
+        with self._database.write() as connection:
+            device = self._require_usable_device(devices_repo.find_device(connection, device_id))
+            staff = staff_repo.find_by_mobile(connection, normalised_mobile)
+            if staff is None:
+                verify_pin(self._decoy(), normalised_pin, hasher=self._hasher)
+                log.info("auth.login result=unknown_mobile device=%s", device_id)
+                raise InvalidCredentials("mobile or PIN is wrong")
+            if not staff.active:
+                log.info("auth.login result=inactive staff=%s", staff.staff_id)
+                raise StaffInactive("staff account is deactivated")
+            if device.staff_id != staff.staff_id:
+                log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
+                raise DeviceNotEnrolled("device is not paired to this staff member")
+            self._require_unlocked(staff, now)
+            if not verify_pin(staff.pin_hash, normalised_pin, hasher=self._hasher):
+                # The counter must survive the refusal, so it is written here and the
+                # exception is raised after this transaction commits.
+                refusal = self._register_failure(connection, staff, now)
+            else:
+                return self._issue(connection, staff, device, now)
+        raise refusal
+
+    def authenticate(self, token: str) -> Principal:
+        """Resolve a session cookie into a `Principal`, failing closed on any doubt."""
+        if not token:
+            raise SessionInvalid("absent")
+        now = self._clock.now_utc()
+        with self._database.read() as connection:
+            session = sessions_repo.find(connection, sha256_hex(token))
+            if session is None:
+                raise SessionInvalid("unknown")
+            self._require_live_session(session, now)
+            staff = staff_repo.find(connection, session.staff_id)
+            if staff is None or not staff.active:
+                raise SessionInvalid("staff_inactive")
+            device = devices_repo.find_device(connection, session.device_id)
+            if device is None or not device.is_active:
+                raise SessionInvalid("device_revoked")
+            return self._principal(connection, staff, device, session)
+
+    def logout(self, *, token: str, reason: str = "logout") -> None:
+        """Revoke the presented session; logging out twice is not an error."""
+        now = utc_iso(self._clock.now_utc())
+        with self._database.write() as connection:
+            sessions_repo.revoke(connection, token_hash=sha256_hex(token), revoked_at=now, reason=reason)
+        log.info("auth.logout reason=%s", reason)
+
+    def revoke_staff_sessions(self, *, staff_ids: Sequence[str], reason: str) -> int:
+        """Kill every live session of these people; the shift-close hook calls this."""
+        now = utc_iso(self._clock.now_utc())
+        revoked = 0
+        with self._database.write() as connection:
+            for staff_id in staff_ids:
+                revoked += sessions_repo.revoke_for_staff(connection, staff_id=staff_id, revoked_at=now, reason=reason)
+        log.info("auth.revoke_sessions reason=%s staff=%s count=%d", reason, list(staff_ids), revoked)
+        return revoked
+
+    def directory(self) -> Sequence[StaffSummary]:
+        """Every staff member with roles and lock state, in one query."""
+        with self._database.read() as connection:
+            return [
+                StaffSummary(
+                    staff_id=entry.staff.staff_id,
+                    full_name=entry.staff.full_name,
+                    mobile=entry.staff.mobile,
+                    roles=entry.roles,
+                    active=entry.staff.active,
+                    locked_until=entry.staff.locked_until,
+                )
+                for entry in staff_repo.list_with_roles(connection)
+            ]
+
+    def unlock(self, *, staff_id: str, actor_id: str) -> None:
+        """Clear the failure counter and lock; the manager-only recovery path (S4)."""
+        with self._database.write() as connection:
+            staff = staff_repo.find(connection, staff_id)
+            if staff is None:
+                raise StaffNotFound(staff_id)
+            staff_repo.clear_failures(connection, staff_id=staff_id)
+        log.info("auth.unlock staff=%s actor=%s", staff_id, actor_id)
+
+    def reset_pin(self, *, staff_id: str, pin: str, actor_id: str) -> None:
+        """Set a policy-compliant PIN and drop every session of that person."""
+        validated = validate_new_pin(pin)
+        now = self._clock.now_utc()
+        with self._database.write() as connection:
+            if staff_repo.find(connection, staff_id) is None:
+                raise StaffNotFound(staff_id)
+            staff_repo.set_pin_hash(
+                connection,
+                staff_id=staff_id,
+                pin_hash=hash_pin(validated, hasher=self._hasher),
+                updated_at=utc_iso(now),
+            )
+            staff_repo.clear_failures(connection, staff_id=staff_id)
+            sessions_repo.revoke_for_staff(connection, staff_id=staff_id, revoked_at=utc_iso(now), reason="pin_reset")
+        log.info("auth.pin_reset staff=%s actor=%s", staff_id, actor_id)
+
+    def _decoy(self) -> str:
+        """A stable digest to verify against when the mobile is unknown (timing parity)."""
+        if self._decoy_hash is None:
+            self._decoy_hash = self._hasher.hash("000000")
+        return self._decoy_hash
+
+    def _require_usable_device(self, device: DeviceRecord | None) -> DeviceRecord:
+        if device is None:
+            raise DeviceNotEnrolled("device is not enrolled")
+        if not device.is_active:
+            raise DeviceRevoked(f"device was revoked: {device.revoked_reason or 'unspecified'}")
+        return device
+
+    def _require_unlocked(self, staff: StaffRecord, now: datetime) -> None:
+        if staff.locked_until is None:
+            return
+        until = parse_iso(staff.locked_until)
+        if until > now:
+            raise AccountLocked(until)
+
+    def _require_live_session(self, session: SessionRecord, now: datetime) -> None:
+        if session.revoked_at is not None:
+            raise SessionInvalid(f"revoked:{session.revoked_reason or 'unspecified'}")
+        if parse_iso(session.expires_at) <= now:
+            raise SessionInvalid("expired")
+
+    def _register_failure(self, connection: Connection, staff: StaffRecord, now: datetime) -> AuthError:
+        """Count the wrong PIN; returns the refusal to raise once the write commits."""
+        attempts = staff.failed_attempts + 1
+        until = now + timedelta(minutes=LOCKOUT_MINUTES)
+        if attempts >= MAX_FAILED_ATTEMPTS:
+            staff_repo.record_failure(
+                connection, staff_id=staff.staff_id, failed_attempts=0, locked_until=utc_iso(until)
+            )
+            log.info("auth.lock staff=%s until=%s", staff.staff_id, utc_iso(until))
+            return AccountLocked(until)
+        staff_repo.record_failure(connection, staff_id=staff.staff_id, failed_attempts=attempts, locked_until=None)
+        log.info("auth.login result=bad_pin staff=%s attempts=%d", staff.staff_id, attempts)
+        return InvalidCredentials("mobile or PIN is wrong")
+
+    def _issue(self, connection: Connection, staff: StaffRecord, device: DeviceRecord, now: datetime) -> IssuedSession:
+        token = secrets.token_urlsafe(TOKEN_BYTES)
+        csrf_token = secrets.token_urlsafe(TOKEN_BYTES)
+        expires_at = now + self._session_ttl
+        session = SessionRecord(
+            token_hash=sha256_hex(token),
+            csrf_token=csrf_token,
+            staff_id=staff.staff_id,
+            device_id=device.device_id,
+            issued_at=utc_iso(now),
+            expires_at=utc_iso(expires_at),
+            revoked_at=None,
+            revoked_reason=None,
+        )
+        sessions_repo.insert(
+            connection,
+            token_hash=session.token_hash,
+            csrf_token=csrf_token,
+            staff_id=staff.staff_id,
+            device_id=device.device_id,
+            issued_at=session.issued_at,
+            expires_at=session.expires_at,
+        )
+        if staff.failed_attempts:
+            staff_repo.clear_failures(connection, staff_id=staff.staff_id)
+        sessions_repo.purge_expired(connection, before=session.issued_at)
+        principal = self._principal(connection, staff, device, session)
+        log.info("auth.login result=ok staff=%s device=%s", staff.staff_id, device.device_id)
+        return IssuedSession(token=token, csrf_token=csrf_token, principal=principal)
+
+    def _principal(
+        self, connection: Connection, staff: StaffRecord, device: DeviceRecord, session: SessionRecord
+    ) -> Principal:
+        roles = staff_repo.roles_for(connection, staff.staff_id)
+        try:
+            permissions = permissions_for(roles)
+        except UnknownRole as exc:
+            raise SessionInvalid(f"unknown_role:{exc}") from exc
+        return Principal(
+            staff_id=staff.staff_id,
+            full_name=staff.full_name,
+            roles=roles,
+            permissions=permissions,
+            device_id=device.device_id,
+            device_label=device.label,
+            session_hash=session.token_hash,
+            csrf_token=session.csrf_token,
+            expires_at=parse_iso(session.expires_at),
+        )

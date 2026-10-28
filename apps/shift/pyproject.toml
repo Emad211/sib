@@ -12,6 +12,8 @@ dependencies = [
     "pydantic",
     "jinja2",
     "python-multipart",
+    "argon2-cffi",
+    "segno",
 ]
 
 [tool.coverage.run]
