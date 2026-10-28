@@ -7,8 +7,12 @@ from fastapi import FastAPI
 
 from shift.__version__ import __version__
 from shift.adapters.db.core import Database
+from shift.api import routes_auth, routes_devices
+from shift.api.errors import install_error_handlers
 from shift.config.logging import configure_logging
 from shift.config.settings import Settings
+from shift.services.auth import AuthService
+from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
 from shift.services.projections import ProjectionEngine
 
@@ -25,14 +29,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.database = database
         application.state.events = EventStore(database, hash_chain=resolved.hash_chain)
         application.state.projections = ProjectionEngine(database)
+        application.state.auth = AuthService(database)
+        application.state.devices = DeviceService(database)
         application.state.secret_key = resolved.read_or_create_secret()
         try:
             yield
         finally:
             database.close()
 
-    app = FastAPI(title="Sib Shift", version=__version__, lifespan=lifespan)
+    app = FastAPI(
+        title="Sib Shift",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.settings = resolved
+    install_error_handlers(app)
+    app.include_router(routes_auth.router)
+    app.include_router(routes_devices.router)
 
     @app.get("/healthz", tags=["ops"])
     def healthz() -> dict[str, str]:

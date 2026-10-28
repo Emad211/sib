@@ -1,0 +1,200 @@
+{
+ "GET /admin/devices [device_admin_page]": {
+  "guard": "permission:device.enroll",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/auth/me [me]": {
+  "guard": "authenticated",
+  "roles": {
+   "anon": 401,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /api/v1/devices [list_devices]": {
+  "guard": "permission:device.enroll",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /api/v1/staff [list_staff]": {
+  "guard": "permission:staff.manage",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /enroll [enroll_page]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /healthz [healthz]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /login [login_page]": {
+  "guard": "public",
+  "roles": {
+   "anon": 200,
+   "accountant": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "POST /api/v1/auth/login [login]": {
+  "guard": "public",
+  "note": "public by design; the empty body is refused by validation after the double-submit check",
+  "roles": {
+   "anon": 422,
+   "accountant": 422,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 422,
+   "reception": 422,
+   "shift_doctor": 422,
+   "storekeeper": 422
+  }
+ },
+ "POST /api/v1/auth/logout [logout]": {
+  "guard": "authenticated",
+  "roles": {
+   "anon": 401,
+   "accountant": 204,
+   "manager": 204,
+   "multi_role": 204,
+   "nurse": 204,
+   "purchaser": 204,
+   "reception": 204,
+   "shift_doctor": 204,
+   "storekeeper": 204
+  }
+ },
+ "POST /api/v1/devices/enroll [enroll]": {
+  "guard": "public",
+  "note": "the one-time token is the credential; an empty body never reaches the service",
+  "roles": {
+   "anon": 422,
+   "accountant": 422,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 422,
+   "reception": 422,
+   "shift_doctor": 422,
+   "storekeeper": 422
+  }
+ },
+ "POST /api/v1/devices/enrollment-tokens [mint_enrollment_token]": {
+  "guard": "permission:device.enroll",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 201,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/devices/{device_id}/revoke [revoke_device]": {
+  "guard": "permission:device.revoke",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
+  "guard": "permission:staff.pin.reset",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/staff/{staff_id}/unlock [unlock]": {
+  "guard": "permission:staff.unlock",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ }
+}
