@@ -4,12 +4,14 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from auth_fixtures import ALTERNATE_PIN, PIN, ROLES, SPARE, create_device, create_staff, login, seed_roster
 from fastapi.testclient import TestClient
 
 from shift.adapters.db import devices_repo, sessions_repo, staff_repo
 from shift.adapters.db.core import Database
+from shift.api.deps import PREAUTH_CSRF_COOKIE
 from shift.app import create_app
 from shift.common.clock import utc_iso
 from shift.common.hashing import sha256_hex
@@ -83,8 +85,36 @@ def test_production_cookies_are_secure(tmp_path: Path) -> None:
     with TestClient(create_app(settings), base_url="https://testserver") as client:
         seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
         response = _login(client)
+        logout = client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": response.json()["csrf_token"]})
 
     assert "Secure" in response.headers.get_list(SET_COOKIE)[0]
+    assert "Secure" in logout.headers.get_list(SET_COOKIE)[0], "the deletion must match the cookie it clears"
+
+
+def _cookie_headers(response: httpx.Response, name: str) -> list[str]:
+    """Every `Set-Cookie` header of this response that is about one cookie name."""
+    return [cookie for cookie in response.headers.get_list(SET_COOKIE) if cookie.startswith(f"{name}=")]
+
+
+def test_logout_clears_the_session_cookie_with_the_flags_it_was_set_with(seeded: TestClient) -> None:
+    issued = _login(seeded).json()
+
+    logout = seeded.post("/api/v1/auth/logout", headers={"X-CSRF-Token": issued["csrf_token"]})
+    cleared = _cookie_headers(logout, SESSION_COOKIE)
+
+    assert len(cleared) == 1
+    for attribute in ("max-age=0", "httponly", "samesite=strict", "path=/"):
+        assert attribute in cleared[0].lower(), attribute
+
+
+def test_login_clears_the_preauth_cookie_with_its_own_flags(seeded: TestClient) -> None:
+    response = _login(seeded)
+
+    cleared = _cookie_headers(response, PREAUTH_CSRF_COOKIE)
+
+    assert len(cleared) == 1
+    for attribute in ("max-age=0", "samesite=strict", "path=/"):
+        assert attribute in cleared[0].lower(), attribute
 
 
 def test_persian_digits_and_international_prefix_reach_the_same_account(seeded: TestClient) -> None:

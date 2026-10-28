@@ -130,7 +130,8 @@ def login(request: Request, body: LoginRequest) -> JSONResponse:
     issued = deps.auth_service(request).login(mobile=body.mobile, pin=body.pin, device_id=body.device_id)
     response = JSONResponse(_session_payload(issued.principal), headers={"Cache-Control": "no-store"})
     _set_session_cookie(response, issued.token, request)
-    response.delete_cookie(deps.PREAUTH_CSRF_COOKIE, path="/")
+    # Expired with the same path/secure/samesite it was set with, so strict browsers accept it.
+    response.delete_cookie(deps.PREAUTH_CSRF_COOKIE, path="/", secure=_cookies_are_secure(request), samesite="strict")
     return response
 
 
@@ -139,7 +140,15 @@ def logout(request: Request, principal: SessionUser) -> Response:
     """Revoke the current session and clear the cookie."""
     deps.auth_service(request).logout(token=request.cookies.get(SESSION_COOKIE, ""))
     response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    # Same attributes as `_set_session_cookie`: a mismatched deletion is ignored by some
+    # strict browser engines, which would leave a dead cookie on the phone.
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        secure=_cookies_are_secure(request),
+        samesite="strict",
+    )
     return response
 
 
