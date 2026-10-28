@@ -1,8 +1,4 @@
-"""Role and permission matrix (R-07, R-08): pure data, no IO.
-
-`purchaser` is a role, never a person field (S01 §7 item 1): whoever buys holds that
-role alongside others. Staff may hold several roles; their permission set is the union.
-"""
+"""Role and permission matrix (R-07, R-08): pure data; roles union, `purchaser` is a role."""
 
 from collections.abc import Iterable, Mapping
 from enum import StrEnum
@@ -20,6 +16,7 @@ class Role(StrEnum):
 
 
 class Permission(StrEnum):
+    EVENTS_APPEND = "events.append"
     HANDOVER_START = "handover.start"
     HANDOVER_COUNT_SUBMIT = "handover.count.submit"
     HANDOVER_COUNT_OUTGOING = "handover.count.outgoing"
@@ -56,6 +53,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
     {
         Role.RECEPTION: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.HANDOVER_START,
                 _P.HANDOVER_COUNT_SUBMIT,
                 _P.HANDOVER_COUNT_OUTGOING,
@@ -69,6 +67,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         ),
         Role.NURSE: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.HANDOVER_COUNT_SUBMIT,
                 _P.HANDOVER_COUNT_OUTGOING,
                 _P.CASH_WITHDRAW_REQUEST,
@@ -80,6 +79,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         ),
         Role.STOREKEEPER: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.HANDOVER_COUNT_SUBMIT,
                 _P.HANDOVER_COUNT_OUTGOING,
                 _P.CASH_WITHDRAW_REQUEST,
@@ -94,6 +94,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         ),
         Role.PURCHASER: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.PURCHASE_ORDER_DRAFT,
                 _P.PURCHASE_DELIVERY_RECEIVE,
                 _P.PURCHASE_PAYMENT_RECORD,
@@ -101,6 +102,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         ),
         Role.ACCOUNTANT: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.HANDOVER_CASH_SUBMIT,
                 _P.HANDOVER_SIGN,
                 _P.CASH_DEPOSIT_RECORD,
@@ -110,6 +112,7 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         ),
         Role.SHIFT_DOCTOR: frozenset(
             {
+                _P.EVENTS_APPEND,
                 _P.HANDOVER_COUNT_SUBMIT,
                 _P.HANDOVER_COUNT_OUTGOING,
                 _P.STOCK_WITHDRAW_EMERGENCY,
@@ -117,8 +120,6 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.PARCEL_HANDLE,
             }
         ),
-        # The manager owns the system: the whole vocabulary, so a permission added later
-        # can never lock the owner out of a feature by being forgotten in this table.
         Role.MANAGER: frozenset(Permission),
     }
 )

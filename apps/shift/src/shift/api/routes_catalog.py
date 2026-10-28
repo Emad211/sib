@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.domain.policy import PolicyError, Role, ShiftKey
+from shift.services.auth import Principal
 from shift.services.catalog import CatalogError, CatalogService, Item, ItemKind, Location, StaffRole
 
-# One-line wiring when the auth step lands: pass `api.deps.require(Permission.catalog_manage)`,
-# which answers with the acting manager's staff id or raises 403 before any handler runs.
-ManagerGuard = Callable[[], str]
+# The guard is `deps.require(Permission.CATALOG_MANAGE)` in `create_app`: it resolves the
+# acting manager's session or raises 403 before any handler runs.
+ManagerGuard = Callable[..., Principal]
 
 
 class LocationUpdate(BaseModel):
@@ -119,20 +120,20 @@ def _role(value: StaffRole) -> StaffRoleOut:
 def build_catalog_router(
     *,
     guard: ManagerGuard,
-    catalog: Callable[[], CatalogService],
-    running_shift: Callable[[], ShiftKey | None],
+    catalog: Callable[..., CatalogService],
+    running_shift: Callable[..., ShiftKey | None],
 ) -> APIRouter:
     """Build the router; a manager guard and a shift source are required, never defaulted."""
     router = APIRouter(prefix="/api/v1/catalog", tags=["catalog"])
 
     @router.get("/roles", response_model=list[Role])
-    def list_roles(_manager: Annotated[str, Depends(guard)]) -> list[Role]:
+    def list_roles(_manager: Annotated[Principal, Depends(guard)]) -> list[Role]:
         """The role vocabulary a manager may grant (S03 §1)."""
         return list(Role)
 
     @router.get("/locations", response_model=list[LocationOut])
     def list_locations(
-        _manager: Annotated[str, Depends(guard)],
+        _manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
         include_retired: Annotated[bool, Query()] = False,
@@ -144,14 +145,14 @@ def build_catalog_router(
     def save_location(
         location_id: str,
         body: LocationUpdate,
-        manager: Annotated[str, Depends(guard)],
+        manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> LocationOut:
         """Record a location version from the next shift on."""
         try:
             saved = service.save_location(
-                location_id, name=body.name, retired=body.retired, actor_id=manager, running_shift=shift
+                location_id, name=body.name, retired=body.retired, actor_id=manager.staff_id, running_shift=shift
             )
         except (CatalogError, PolicyError) as error:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
@@ -159,7 +160,7 @@ def build_catalog_router(
 
     @router.get("/items", response_model=list[ItemOut])
     def list_items(
-        _manager: Annotated[str, Depends(guard)],
+        _manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
         location_id: Annotated[str | None, Query(max_length=48)] = None,
@@ -176,7 +177,7 @@ def build_catalog_router(
     def save_item(
         item_id: str,
         body: ItemUpdate,
-        manager: Annotated[str, Depends(guard)],
+        manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> ItemOut:
@@ -192,7 +193,7 @@ def build_catalog_router(
                 acc_code=body.acc_code,
                 stock_factor=body.stock_factor,
                 retired=body.retired,
-                actor_id=manager,
+                actor_id=manager.staff_id,
                 running_shift=shift,
             )
         except (CatalogError, PolicyError) as error:
@@ -202,7 +203,7 @@ def build_catalog_router(
     @router.get("/staff/{staff_id}/roles", response_model=list[StaffRoleOut])
     def list_staff_roles(
         staff_id: str,
-        _manager: Annotated[str, Depends(guard)],
+        _manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> list[StaffRoleOut]:
@@ -218,13 +219,15 @@ def build_catalog_router(
         staff_id: str,
         role: Role,
         body: RoleUpdate,
-        manager: Annotated[str, Depends(guard)],
+        manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> StaffRoleOut:
         """Grant or revoke one role from the next shift on (R-08)."""
         try:
-            saved = service.set_role(staff_id, role, granted=body.granted, actor_id=manager, running_shift=shift)
+            saved = service.set_role(
+                staff_id, role, granted=body.granted, actor_id=manager.staff_id, running_shift=shift
+            )
         except (CatalogError, PolicyError) as error:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
         return _role(saved.value)

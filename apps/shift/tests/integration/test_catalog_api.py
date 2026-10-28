@@ -1,6 +1,7 @@
 """The catalog API is manager-only and versions every change by shift (R-08, R-09)."""
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException, status
@@ -39,10 +40,10 @@ def api(database: Database, *, shift: ShiftKey | None = RUNNING, manager: str | 
     service = CatalogService(database)
     app = FastAPI()
 
-    def guard() -> str:
+    def guard() -> SimpleNamespace:
         if manager is None:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "manager_only")
-        return manager
+        return SimpleNamespace(staff_id=manager)
 
     app.include_router(build_catalog_router(guard=guard, catalog=lambda: service, running_shift=lambda: shift))
     return TestClient(app)

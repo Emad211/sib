@@ -1,9 +1,9 @@
 """Events API: single idempotent ingest endpoint for offline outbox replay.
 
-The endpoint never trusts client-asserted identity: ``actor_id``, ``device_id``
-and ``shift_id`` come from the authenticated :class:`~shift.api.principal.Principal`.
-It fails closed (503) when the auth guard has not been installed, and unsafe
-requests need a double-submit CSRF token.
+The endpoint never trusts client-asserted identity: ``actor_id``, ``device_id``,
+``shift_id`` and the business date come from the authenticated session and the clinic
+clock, through ``api.deps.require(Permission.EVENTS_APPEND)``. Unsafe requests need a
+CSRF proof (session token or the shell's double-submit cookie).
 """
 
 from collections.abc import Awaitable, Callable
@@ -14,7 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
-from shift.api.principal import as_principal, require_csrf_token, require_principal
+from shift.api.deps import require, running_shift
+from shift.domain.permissions import Permission
+from shift.domain.policy import ShiftKey
+from shift.services.auth import Principal
 from shift.services.event_store import EventStore
 from shift.services.outbox import EventSubmission, OutboxService, OutboxValidationError
 from shift.services.projections import ProjectionEngine
@@ -67,7 +70,7 @@ class EventIn(BaseModel):
         default=None, max_length=_MAX_IDENTIFIER, description="Replay prevention key (defaults to client_event_id)"
     )
     # Accepted only so a PWA build cached before this change does not 422 after
-    # deploy; the route overwrites every one of them from the Principal.
+    # deploy; the route overwrites every one of them from the session principal.
     actor_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER, description="Ignored; from session")
     device_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER, description="Ignored; from session")
     shift_id: str | None = Field(default=None, max_length=_MAX_IDENTIFIER, description="Ignored; from session")
@@ -101,32 +104,29 @@ def get_projections(request: Request) -> ProjectionEngine:
 def post_event(
     event_in: EventIn,
     response: Response,
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    shift: Annotated[ShiftKey, Depends(running_shift)],
     store: Annotated[EventStore, Depends(get_event_store)],
     projections: Annotated[ProjectionEngine, Depends(get_projections)],
-    principal_result: Annotated[Any, Depends(require_principal)],
-    _csrf: Annotated[None, Depends(require_csrf_token)],
 ) -> EventOut:
     """Validate an event payload and insert it idempotently for the session principal.
 
     Duplicate idempotency_key replays return the existing seq with HTTP 200.
-    Invalid payloads return HTTP 422; anonymous requests fail closed.
+    Invalid payloads return HTTP 422; anonymous requests fail closed with 401.
     """
-    # Coerce again so an `app.dependency_overrides[require_principal]` wired to
-    # the auth lane's session object still yields a validated Principal.
-    principal = as_principal(principal_result)
     submission = EventSubmission(
         type=event_in.type,
         payload=event_in.payload,
-        actor_id=principal.actor_id,
+        actor_id=principal.staff_id,
         device_id=principal.device_id,
         client_at=event_in.client_at,
         client_event_id=event_in.client_event_id,
         event_id=event_in.event_id,
-        shift_id=principal.shift_id,
+        shift_id=shift.text,
         ref_event_id=event_in.ref_event_id,
         idempotency_key=event_in.idempotency_key,
         requested_work_date=event_in.work_date,
-        shift_work_date=principal.work_date,
+        shift_work_date=shift.work_date,
     )
 
     outbox_svc = OutboxService(store, projections)

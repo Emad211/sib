@@ -117,5 +117,5 @@ def login(client: TestClient, *, mobile: str, device_id: str, pin: str = PIN):
     return client.post(
         "/api/v1/auth/login",
         json={"mobile": mobile, "pin": pin, "device_id": device_id},
-        headers={"X-CSRF-Token": csrf},
+        headers={"X-CSRFToken": csrf},
     )

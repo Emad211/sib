@@ -85,7 +85,7 @@ def test_production_cookies_are_secure(tmp_path: Path) -> None:
     with TestClient(create_app(settings), base_url="https://testserver") as client:
         seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
         response = _login(client)
-        logout = client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": response.json()["csrf_token"]})
+        logout = client.post("/api/v1/auth/logout", headers={"X-CSRFToken": response.json()["csrf_token"]})
 
     assert "Secure" in response.headers.get_list(SET_COOKIE)[0]
     assert "Secure" in logout.headers.get_list(SET_COOKIE)[0], "the deletion must match the cookie it clears"
@@ -99,7 +99,7 @@ def _cookie_headers(response: httpx.Response, name: str) -> list[str]:
 def test_logout_clears_the_session_cookie_with_the_flags_it_was_set_with(seeded: TestClient) -> None:
     issued = _login(seeded).json()
 
-    logout = seeded.post("/api/v1/auth/logout", headers={"X-CSRF-Token": issued["csrf_token"]})
+    logout = seeded.post("/api/v1/auth/logout", headers={"X-CSRFToken": issued["csrf_token"]})
     cleared = _cookie_headers(logout, SESSION_COOKIE)
 
     assert len(cleared) == 1
@@ -190,7 +190,7 @@ def test_five_wrong_pins_lock_the_account_until_the_manager_unlocks_it(seeded: T
     assert still_locked.status_code == 423, "the right PIN must not bypass the lock"
 
     csrf = _manager_session(seeded)
-    unlocked = seeded.post(f"/api/v1/staff/{ROLES['reception'].staff_id}/unlock", headers={"X-CSRF-Token": csrf})
+    unlocked = seeded.post(f"/api/v1/staff/{ROLES['reception'].staff_id}/unlock", headers={"X-CSRFToken": csrf})
 
     assert unlocked.status_code == 204
     assert _login(seeded).status_code == 200
@@ -238,7 +238,7 @@ def test_logout_revokes_the_session_on_the_server(seeded: TestClient) -> None:
     issued = _login(seeded).json()
     token = seeded.cookies.get(SESSION_COOKIE)
 
-    logout = seeded.post("/api/v1/auth/logout", headers={"X-CSRF-Token": issued["csrf_token"]})
+    logout = seeded.post("/api/v1/auth/logout", headers={"X-CSRFToken": issued["csrf_token"]})
 
     assert logout.status_code == 204
     seeded.cookies.set(SESSION_COOKIE, token)
@@ -250,7 +250,7 @@ def test_unsafe_verbs_without_the_csrf_header_are_refused(seeded: TestClient) ->
     _login(seeded)
 
     missing = seeded.post("/api/v1/auth/logout")
-    wrong = seeded.post("/api/v1/auth/logout", headers={"X-CSRF-Token": "not-the-token"})
+    wrong = seeded.post("/api/v1/auth/logout", headers={"X-CSRFToken": "not-the-token"})
 
     assert missing.status_code == 403
     assert missing.json()["error"]["code"] == "csrf_failed"
@@ -263,7 +263,7 @@ def test_login_without_the_preauth_cookie_is_refused(seeded: TestClient) -> None
     response = seeded.post(
         "/api/v1/auth/login",
         json={"mobile": person.mobile, "pin": PIN, "device_id": person.device_id},
-        headers={"X-CSRF-Token": "invented"},
+        headers={"X-CSRFToken": "invented"},
     )
 
     assert response.status_code == 403
@@ -312,19 +312,19 @@ def test_pin_reset_is_manager_only_and_policy_checked(seeded: TestClient) -> Non
     reception_token = seeded.cookies.get(SESSION_COOKIE)
     url = f"/api/v1/staff/{reception.staff_id}/pin-reset"
 
-    forbidden = seeded.post(url, json={"pin": ALTERNATE_PIN}, headers={"X-CSRF-Token": issued["csrf_token"]})
+    forbidden = seeded.post(url, json={"pin": ALTERNATE_PIN}, headers={"X-CSRFToken": issued["csrf_token"]})
 
     assert forbidden.status_code == 403
     assert forbidden.json()["error"]["code"] == "forbidden"
 
     csrf = _manager_session(seeded)
-    weak = seeded.post(url, json={"pin": "123456"}, headers={"X-CSRF-Token": csrf})
+    weak = seeded.post(url, json={"pin": "123456"}, headers={"X-CSRFToken": csrf})
 
     assert weak.status_code == 400
     assert weak.json()["error"]["code"] == "pin_rejected"
     assert weak.json()["error"]["details"]["rule"] == "pin_sequence"
 
-    accepted = seeded.post(url, json={"pin": ALTERNATE_PIN}, headers={"X-CSRF-Token": csrf})
+    accepted = seeded.post(url, json={"pin": ALTERNATE_PIN}, headers={"X-CSRFToken": csrf})
 
     assert accepted.status_code == 204
     seeded.cookies.set(SESSION_COOKIE, reception_token)
@@ -336,7 +336,7 @@ def test_pin_reset_is_manager_only_and_policy_checked(seeded: TestClient) -> Non
 def test_the_staff_directory_never_exposes_pin_hashes(seeded: TestClient) -> None:
     csrf = _manager_session(seeded)
 
-    response = seeded.get("/api/v1/staff", headers={"X-CSRF-Token": csrf})
+    response = seeded.get("/api/v1/staff", headers={"X-CSRFToken": csrf})
 
     assert response.status_code == 200
     assert len(response.json()) == len(ROLES) + 1
@@ -393,11 +393,11 @@ def test_the_audit_trail_records_lock_unlock_and_reset(seeded: TestClient, setti
     for _ in range(5):
         _login(seeded, pin=ALTERNATE_PIN)
     csrf = _manager_session(seeded)
-    seeded.post(f"/api/v1/staff/{ROLES['reception'].staff_id}/unlock", headers={"X-CSRF-Token": csrf})
+    seeded.post(f"/api/v1/staff/{ROLES['reception'].staff_id}/unlock", headers={"X-CSRFToken": csrf})
     seeded.post(
         f"/api/v1/staff/{ROLES['reception'].staff_id}/pin-reset",
         json={"pin": ALTERNATE_PIN},
-        headers={"X-CSRF-Token": csrf},
+        headers={"X-CSRFToken": csrf},
     )
 
     audit = (settings.log_dir / "audit.log").read_text(encoding="utf-8")
@@ -450,9 +450,9 @@ def test_a_role_outside_the_matrix_invalidates_the_session(seeded: TestClient) -
 def test_unlock_and_reset_report_a_missing_staff(seeded: TestClient) -> None:
     csrf = _manager_session(seeded)
 
-    unlocked = seeded.post("/api/v1/staff/staff-ghost/unlock", headers={"X-CSRF-Token": csrf})
+    unlocked = seeded.post("/api/v1/staff/staff-ghost/unlock", headers={"X-CSRFToken": csrf})
     reset = seeded.post(
-        "/api/v1/staff/staff-ghost/pin-reset", json={"pin": ALTERNATE_PIN}, headers={"X-CSRF-Token": csrf}
+        "/api/v1/staff/staff-ghost/pin-reset", json={"pin": ALTERNATE_PIN}, headers={"X-CSRFToken": csrf}
     )
 
     assert unlocked.status_code == 404

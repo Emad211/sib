@@ -95,7 +95,7 @@
     async function call(url, body, method) {
       const response = await fetch(url, {
         method: method || "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: body ? JSON.stringify(body) : undefined,
       });
       const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));

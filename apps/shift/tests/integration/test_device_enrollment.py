@@ -33,7 +33,7 @@ def _mint(client: TestClient, csrf: str, staff_id: str):
     return client.post(
         "/api/v1/devices/enrollment-tokens",
         json={"staff_id": staff_id},
-        headers={"X-CSRF-Token": csrf},
+        headers={"X-CSRFToken": csrf},
     )
 
 
@@ -125,7 +125,7 @@ def test_a_paired_phone_can_log_in_and_revocation_kills_that_session(seeded: Tes
 
     manager_csrf = _manager(seeded)
     revoked = seeded.post(
-        f"/api/v1/devices/{enrolled.json()['device_id']}/revoke", headers={"X-CSRF-Token": manager_csrf}
+        f"/api/v1/devices/{enrolled.json()['device_id']}/revoke", headers={"X-CSRFToken": manager_csrf}
     )
 
     assert revoked.status_code == 204
@@ -140,8 +140,8 @@ def test_revocation_is_idempotent_and_records_the_reason(seeded: TestClient) -> 
     csrf = _manager(seeded)
     device_id = ROLES["accountant"].device_id
 
-    first = seeded.post(f"/api/v1/devices/{device_id}/revoke", headers={"X-CSRF-Token": csrf})
-    second = seeded.post(f"/api/v1/devices/{device_id}/revoke", headers={"X-CSRF-Token": csrf})
+    first = seeded.post(f"/api/v1/devices/{device_id}/revoke", headers={"X-CSRFToken": csrf})
+    second = seeded.post(f"/api/v1/devices/{device_id}/revoke", headers={"X-CSRFToken": csrf})
 
     assert first.status_code == 204
     assert second.status_code == 204
@@ -153,7 +153,7 @@ def test_revocation_is_idempotent_and_records_the_reason(seeded: TestClient) -> 
 def test_revoking_an_unknown_device_is_a_404(seeded: TestClient) -> None:
     csrf = _manager(seeded)
 
-    response = seeded.post("/api/v1/devices/device-that-never-existed/revoke", headers={"X-CSRF-Token": csrf})
+    response = seeded.post("/api/v1/devices/device-that-never-existed/revoke", headers={"X-CSRFToken": csrf})
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "device_not_found"
@@ -189,7 +189,7 @@ def test_a_token_for_a_deactivated_staff_member_is_refused(seeded: TestClient) -
 
 def test_non_managers_cannot_mint_or_revoke(seeded: TestClient) -> None:
     issued = login(seeded, mobile=ROLES["reception"].mobile, device_id=ROLES["reception"].device_id, pin=PIN).json()
-    headers = {"X-CSRF-Token": issued["csrf_token"]}
+    headers = {"X-CSRFToken": issued["csrf_token"]}
 
     minted = seeded.post(
         "/api/v1/devices/enrollment-tokens",
@@ -207,7 +207,7 @@ def test_tokens_never_reach_the_logs_or_the_device_list(seeded: TestClient, sett
     offer = _mint(seeded, csrf, ROLES["nurse"].staff_id).json()
     token = offer["enrollment_url"].split("#t=", 1)[1]
 
-    devices = seeded.get("/api/v1/devices", headers={"X-CSRF-Token": csrf})
+    devices = seeded.get("/api/v1/devices", headers={"X-CSRFToken": csrf})
 
     assert token not in devices.text
     for log_name in ("audit.log", "shift.log"):
@@ -325,7 +325,7 @@ def test_the_audit_trail_records_mint_enroll_and_revoke(seeded: TestClient, sett
     offer = _mint(seeded, csrf, SPARE.staff_id).json()
     enrolled = _enroll(seeded, offer["enrollment_url"].split("#t=", 1)[1])
     manager_csrf = _manager(seeded)
-    seeded.post(f"/api/v1/devices/{enrolled.json()['device_id']}/revoke", headers={"X-CSRF-Token": manager_csrf})
+    seeded.post(f"/api/v1/devices/{enrolled.json()['device_id']}/revoke", headers={"X-CSRFToken": manager_csrf})
 
     audit = (settings.log_dir / "audit.log").read_text(encoding="utf-8")
 

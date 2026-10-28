@@ -1,14 +1,12 @@
 """Shared fixtures: a migrated synthetic database and an app bound to temp paths."""
 
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from shift.adapters.db.core import Database
-from shift.api.principal import Principal, install_principal_guard
 from shift.app import create_app
 from shift.config.settings import Settings
 from shift.services.event_store import EventStore
@@ -60,36 +58,6 @@ def client(settings: Settings) -> Iterator[TestClient]:
     """A TestClient that runs the app lifespan against the synthetic settings."""
     with TestClient(create_app(settings)) as test_client:
         yield test_client
-
-
-@pytest.fixture
-def default_principal() -> Principal:
-    """A valid authenticated principal for tests that do not vary identity."""
-    return Principal(
-        actor_id="staff_guard_1",
-        device_id="device_guard_1",
-        shift_id="shift_guard_1",
-    )
-
-
-@pytest.fixture
-def client_factory(settings: Settings) -> Callable[..., AbstractContextManager[TestClient]]:
-    """Build clients with an optional fake guard; no guard means fail-closed."""
-
-    @contextmanager
-    def build(
-        principal: Principal | None = None,
-        guard: Callable[[object], object] | None = None,
-    ) -> Iterator[TestClient]:
-        application = create_app(settings)
-        if guard is not None:
-            install_principal_guard(application, guard)
-        elif principal is not None:
-            install_principal_guard(application, lambda _request: principal)
-        with TestClient(application) as test_client:
-            yield test_client
-
-    return build
 
 
 @pytest.fixture

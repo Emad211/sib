@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.domain.policy import PolicyError, SettingKey, ShiftKey
+from shift.services.auth import Principal
 from shift.services.settings import SettingError, SettingsService, SettingValue
 
-# One-line wiring when the auth step lands: pass `api.deps.require(Permission.settings_change)`,
-# which answers with the acting manager's staff id or raises 403 before any handler runs.
-ManagerGuard = Callable[[], str]
+# The guard is `deps.require(Permission.SETTINGS_CHANGE)` in `create_app`: it resolves the
+# acting manager's session or raises 403 before any handler runs.
+ManagerGuard = Callable[..., Principal]
 
 
 class SettingUpdate(BaseModel):
@@ -54,15 +55,15 @@ def _setting_key(text: str) -> SettingKey:
 def build_settings_router(
     *,
     guard: ManagerGuard,
-    settings: Callable[[], SettingsService],
-    running_shift: Callable[[], ShiftKey | None],
+    settings: Callable[..., SettingsService],
+    running_shift: Callable[..., ShiftKey | None],
 ) -> APIRouter:
     """Build the router; a manager guard and a shift source are required, never defaulted."""
     router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
     @router.get("", response_model=list[SettingOut])
     def list_settings(
-        _manager: Annotated[str, Depends(guard)],
+        _manager: Annotated[Principal, Depends(guard)],
         service: Annotated[SettingsService, Depends(settings)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> list[SettingOut]:
@@ -77,13 +78,13 @@ def build_settings_router(
     def change_setting(
         setting: str,
         body: SettingUpdate,
-        manager: Annotated[str, Depends(guard)],
+        manager: Annotated[Principal, Depends(guard)],
         service: Annotated[SettingsService, Depends(settings)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> SettingOut:
         """Record a new version; a shift already running keeps the version it started with."""
         try:
-            changed = service.change(_setting_key(setting), body.value, actor_id=manager, running_shift=shift)
+            changed = service.change(_setting_key(setting), body.value, actor_id=manager.staff_id, running_shift=shift)
         except PolicyError as error:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
         return _out(changed.value)
@@ -91,7 +92,7 @@ def build_settings_router(
     @router.get("/{setting}/history", response_model=list[SettingOut])
     def setting_history(
         setting: str,
-        _manager: Annotated[str, Depends(guard)],
+        _manager: Annotated[Principal, Depends(guard)],
         service: Annotated[SettingsService, Depends(settings)],
     ) -> list[SettingOut]:
         """Every version of one setting, newest first, so a changed value stays traceable."""

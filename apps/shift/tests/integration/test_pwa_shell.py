@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from shift.__version__ import __version__
+from shift.api.deps import CSRF_HEADER
 from shift.api.principal import CSRF_COOKIE_NAME
 from shift.app import create_app
 from shift.config.settings import Settings
@@ -115,6 +116,7 @@ def test_csrf_client_uses_the_accounting_header_name() -> None:
     """A shared server-side check must not reject the PWA's header spelling."""
     script = (_STATIC_DIR / "csrf.js").read_text(encoding="utf-8")
 
+    assert CSRF_HEADER == "X-CSRFToken"
     assert "X-CSRFToken" in script
     assert "X-CSRF-Token" not in script
 
