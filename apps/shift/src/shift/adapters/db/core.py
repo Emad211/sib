@@ -1,5 +1,6 @@
 """SQLAlchemy Core access to the shift SQLite database."""
 
+import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -12,6 +13,8 @@ from sqlalchemy.engine import URL
 from sqlalchemy.pool import QueuePool
 
 from shift.adapters.db.migrations import MigrationReport, run_migrations
+
+log = logging.getLogger(__name__)
 
 BUSY_TIMEOUT_MS = 5000
 SQLITE_TIMEOUT_SECONDS = 5.0
@@ -71,7 +74,10 @@ class Database:
                 yield connection
                 connection.exec_driver_sql("COMMIT" if commit else "ROLLBACK")
             except BaseException:
-                connection.exec_driver_sql("ROLLBACK")
+                try:
+                    connection.exec_driver_sql("ROLLBACK")
+                except Exception:  # noqa: BLE001 — the original failure is the useful one
+                    log.debug("rollback after failed write also failed", exc_info=True)
                 raise
 
     def migrate(self, backup_dir: str | Path | None = None) -> MigrationReport:

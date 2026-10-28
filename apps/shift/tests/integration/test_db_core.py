@@ -28,6 +28,21 @@ def test_write_transaction_rolls_back_on_error(database: Database) -> None:
         )
 
 
+def test_write_error_is_not_masked_by_a_rollback_that_cannot_run(database: Database) -> None:
+    with pytest.raises(RuntimeError, match="boom"):
+        with database.write() as connection:
+            connection.exec_driver_sql("ROLLBACK")  # the driver already ended the transaction
+            raise RuntimeError("boom")
+
+    with database.write() as connection:
+        connection.exec_driver_sql("UPDATE meta_projection SET last_seq = 7 WHERE name = 'proj_stock'")
+    with database.read() as connection:
+        assert (
+            int(connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name='proj_stock'").scalar_one())
+            == 7
+        )
+
+
 def test_concurrent_writers_are_serialized_by_the_single_writer_pool(database: Database) -> None:
     with database.write() as connection:
         connection.exec_driver_sql(
