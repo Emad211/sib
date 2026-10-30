@@ -10,7 +10,7 @@ from shift.services.backup import BackupRejected, BackupService  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Exit 0 when an intact snapshot exists in both locations, 1 when the copy is rejected."""
+    """Exit 0 when every asked-for location holds an intact snapshot, 1 when one is rejected."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", required=True, type=Path, help="path to the live shift SQLite database")
     parser.add_argument("--to", required=True, type=Path, help="primary backup directory")
@@ -30,10 +30,13 @@ def main(argv: list[str] | None = None) -> int:
         f"snapshot {snapshot.path}: {snapshot.size_bytes} bytes, "
         f"schema v{snapshot.schema_version}, {snapshot.events} events"
     )
-    if report.mirror is not None:
-        print(f"mirror {report.mirror}")
     for path in report.pruned:
         print(f"pruned {path}")
+    if report.mirror_error is not None:
+        print(f"mirror unavailable: {report.mirror_error}")
+        return 1
+    if report.mirror is not None:
+        print(f"mirror {report.mirror}")
     return 0
 
 

@@ -3,14 +3,16 @@
 The lifespan starts these loops and stops them on shutdown (S02 §2, O01 §2). Each loop runs its
 job in a worker thread, because SQLite and the accounting file are blocking, and one job's
 failure is logged and retried on the next tick: a broken accounting copy must never stop the
-backups or the app (R-06). A test drives one pass with `tick()` instead of waiting for a timer,
-and the app only starts the loops when `Settings.background_jobs` asks for them.
+backups or the app (R-06). A second backup location that cannot be reached is the same kind of
+failure: logged, retried on a later pass, and never a reason to take another primary snapshot
+(review F1). A test drives one pass with `tick()` instead of waiting for a timer, and the app only
+starts the loops when `Settings.background_jobs` asks for them.
 """
 
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +55,7 @@ class BackgroundJobs:
         self._bridge = bridge
         self._accounting_path = None if accounting_path is None else Path(accounting_path)
         self._tick = tick
-        self._last_snapshot_on: date | None = None
+        self._last_snapshot_at: datetime | None = None
         self._stop = asyncio.Event()
         self._tasks: list[asyncio.Task[None]] = []
 
@@ -64,7 +66,7 @@ class BackgroundJobs:
 
     def tick(self) -> None:
         """One pass of the periodic work; every job fails alone and is retried next tick."""
-        for job in (self.run_scheduled_jobs, self.poll_accounting, self.backup_if_due):
+        for job in (self.run_scheduled_jobs, self.poll_accounting, self.backup_if_due, self.retry_mirror):
             self._guard(job)
 
     def run_scheduled_jobs(self) -> tuple[TaskRun, ...]:
@@ -88,7 +90,7 @@ class BackgroundJobs:
             log.error("%s snapshot rejected: %s", reason, exc)
             self._record("backup.failed", AuditOutcome.FAILED, {"reason": reason, "error": str(exc)})
             return None
-        self._last_snapshot_on = to_tehran(self._clock.now_utc()).date()
+        self._last_snapshot_at = to_tehran(self._clock.now_utc())
         self._record(
             "backup.created",
             AuditOutcome.OK,
@@ -97,13 +99,22 @@ class BackgroundJobs:
         return report
 
     def backup_if_due(self, now: datetime | None = None) -> BackupReport | None:
-        """Take the daily snapshot once 04:00 Tehran has passed and today has none (O01 §2)."""
+        """Take the daily snapshot once 04:00 Tehran has passed and nothing covers it yet (O01 §2).
+
+        A snapshot at or after today's 04:00 covers the day whatever its reason: a restart at
+        03:30 leaves the daily due, a restart at 04:30 is the day's checkpoint and is not doubled.
+        """
         moment = to_tehran(self._clock.now_utc() if now is None else now)
         if moment.time() < DAILY_BACKUP_TIME:
             return None
-        if self._last_snapshot_on is not None and self._last_snapshot_on >= moment.date():
+        daily = moment.replace(hour=DAILY_BACKUP_TIME.hour, minute=DAILY_BACKUP_TIME.minute, second=0, microsecond=0)
+        if self._last_snapshot_at is not None and self._last_snapshot_at >= daily:
             return None
         return self.create_snapshot("daily")
+
+    def retry_mirror(self) -> Path | None:
+        """Deliver the snapshot a second backup location refused earlier, without a new one."""
+        return self._backup.retry_mirror()
 
     async def start(self) -> None:
         """Take the startup snapshot, then run the periodic work until `stop()`."""
