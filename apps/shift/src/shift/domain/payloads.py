@@ -19,7 +19,9 @@ class Payload(BaseModel):
 
 
 class ShiftOpened(Payload):
-    opening_cash: Toman
+    """A flow started; only reception opens the cash box, so nursing carries no amount (H-12)."""
+
+    opening_cash: Toman | None
 
 
 class CashCounted(Payload):

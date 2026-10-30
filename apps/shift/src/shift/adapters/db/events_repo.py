@@ -16,6 +16,7 @@ _COLUMNS = (
     "actor_id",
     "device_id",
     "shift_id",
+    "handover_id",
     "work_date",
     "client_at",
     "server_at",
@@ -31,7 +32,11 @@ _SELECT = f"SELECT {', '.join(_COLUMNS)} FROM events"
 
 @dataclass(frozen=True, slots=True)
 class EventRecord:
-    """One stored event; payload is decoded JSON and every time is ISO text."""
+    """One stored event; payload is decoded JSON and every time is ISO text.
+
+    `handover_id` names the flow a handover event belongs to (H-12). It is metadata: the hash chain
+    covers `HASH_FIELDS` only, so adding it left every stored hash exactly as it was.
+    """
 
     seq: int
     event_id: str
@@ -41,6 +46,7 @@ class EventRecord:
     actor_id: str
     device_id: str
     shift_id: str | None
+    handover_id: str | None
     work_date: str
     client_at: str
     server_at: str
@@ -61,6 +67,7 @@ def _record(row: Mapping[str, Any]) -> EventRecord:
         actor_id=str(row["actor_id"]),
         device_id=str(row["device_id"]),
         shift_id=row["shift_id"],
+        handover_id=row["handover_id"],
         work_date=str(row["work_date"]),
         client_at=str(row["client_at"]),
         server_at=str(row["server_at"]),
@@ -103,6 +110,13 @@ def last_event(connection: Connection) -> EventRecord | None:
 def iter_events(connection: Connection, after_seq: int = 0) -> Iterator[EventRecord]:
     """Yield events in server order after `after_seq` (the only valid ordering)."""
     result = connection.exec_driver_sql(f"{_SELECT} WHERE seq > ? ORDER BY seq", (after_seq,))
+    for row in result.mappings():
+        yield _record(row)
+
+
+def iter_handover_events(connection: Connection, handover_id: str) -> Iterator[EventRecord]:
+    """Yield one flow's events in server order; a handover is rebuilt from these, never from memory."""
+    result = connection.exec_driver_sql(f"{_SELECT} WHERE handover_id = ? ORDER BY seq", (handover_id,))
     for row in result.mappings():
         yield _record(row)
 

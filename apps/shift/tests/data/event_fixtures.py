@@ -23,6 +23,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"item_id": "item-1", "location_id": "location-1", "counted": 10}
     if event_type == "handover.joint_counted":
         return {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 10}
+    if event_type == "handover.count_settled":
+        return {"scope": "cash", "counted": 1_000_000, "basis": "joint"}
     if event_type == "handover.checklist_answered":
         return {"item_id": "item-1", "ok": True}
     if event_type == "handover.parcel_handed":
@@ -56,6 +58,7 @@ def build_event(
     *,
     payload: dict[str, Any] | None = None,
     shift_id: str | None = "shift-1",
+    handover_id: str | None = None,
     actor_id: str = "actor-1",
     device_id: str = "device-1",
     client_event_id: str | None = None,
@@ -74,6 +77,7 @@ def build_event(
         work_date=work_date,
         client_at=client_at or CLIENT_AT,
         shift_id=shift_id,
+        handover_id=handover_id,
         ref_event_id=ref_event_id,
         idempotency_key=idempotency_key,
     )
@@ -103,6 +107,7 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
         ("cash.withdrawn", "cash", 10),
         ("cash.deposited", "cash", 10),
         ("handover.cash_counted", "cash", 10),
+        ("handover.count_settled", "settle", 4),
         ("handover.item_counted", "count", 10),
         ("stock.shelf_restocked", "stock", 10),
         ("acc.consumption", "stock", 10),
@@ -122,6 +127,10 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
                 payload = {"counted": rng.randrange(0, 5_000_001)}
             elif event_type == "acc.cash_reversal":
                 payload = {"amount": payload["amount"], "reason": "reclosed"}
+        elif shape == "settle":
+            counted = rng.randrange(0, 5_000_001)
+            basis = rng.choice(["joint", "agreeing_blind"])
+            payload = {"scope": "cash", "counted": counted, "basis": basis}
         elif shape == "count":
             payload = {"item_id": item, "location_id": location, "counted": rng.randrange(0, 50)}
         else:

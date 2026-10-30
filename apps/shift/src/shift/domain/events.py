@@ -15,6 +15,7 @@ from shift.domain.effects import (
     cash_count,
     cash_delta,
     cash_open,
+    cash_settle,
     joint_count,
     no_effects,
     stock_delta,
@@ -22,6 +23,7 @@ from shift.domain.effects import (
 )
 from shift.domain.handover_payloads import (
     ChecklistAnswered,
+    CountSettled,
     DiscrepancyRecorded,
     EarlyLeaveReported,
     EmergencyStartConfirmed,
@@ -54,6 +56,7 @@ class EventType(StrEnum):
     HANDOVER_RECOUNT_REQUESTED = "handover.recount_requested"
     HANDOVER_OUTGOING_COUNTED = "handover.outgoing_counted"
     HANDOVER_JOINT_COUNTED = "handover.joint_counted"
+    HANDOVER_COUNT_SETTLED = "handover.count_settled"
     HANDOVER_CHECKLIST_ANSWERED = "handover.checklist_answered"
     HANDOVER_PARCEL_HANDED = "handover.parcel_handed"
     HANDOVER_SIGNED = "handover.signed"
@@ -92,6 +95,9 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     # (Q-09); a mismatched one is provisional and belongs to the joint count. See `OutgoingCounted`.
     EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, stock_set, requires_shift=True),
     EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, joint_count, requires_shift=True),
+    # A settled cash chain rebases the box, so the next shift's reference starts from the agreed
+    # figure rather than from the gap of the shift before it (H-02, H-13).
+    EventType.HANDOVER_COUNT_SETTLED: EventSpec(CountSettled, cash_settle, requires_shift=True),
     EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),
     EventType.HANDOVER_PARCEL_HANDED: EventSpec(ParcelHanded, no_effects, requires_shift=True),
     EventType.HANDOVER_SIGNED: EventSpec(HandoverSigned, no_effects, requires_shift=True),

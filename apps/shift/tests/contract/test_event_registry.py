@@ -14,6 +14,7 @@ EXPECTED_EFFECTS = {
     EventType.HANDOVER_RECOUNT_REQUESTED: None,
     EventType.HANDOVER_OUTGOING_COUNTED: ("stock", StockOperation.SET),
     EventType.HANDOVER_JOINT_COUNTED: ("stock", StockOperation.SET),
+    EventType.HANDOVER_COUNT_SETTLED: ("cash", CashOperation.SETTLE),
     EventType.HANDOVER_CHECKLIST_ANSWERED: None,
     EventType.HANDOVER_PARCEL_HANDED: None,
     EventType.HANDOVER_SIGNED: None,
@@ -55,13 +56,31 @@ def test_payload_and_effect_contract(event_type: EventType) -> None:
     assert effect.operation == operation
 
 
-def test_a_joint_cash_count_updates_the_counted_cash() -> None:
-    payload = validate_payload("handover.joint_counted", {"scope": "cash", "counted": 1_200_000})
-    effects = effects_for("handover.joint_counted", payload, "shift-1")
+def test_a_settled_cash_chain_rebases_the_box_and_a_joint_count_moves_it_not() -> None:
+    """H-13: the agreed figure is the next shift's N0, so only the settlement rebases the projection."""
+    joint = validate_payload("handover.joint_counted", {"scope": "cash", "counted": 1_200_000})
+    settled = validate_payload(
+        "handover.count_settled", {"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind"}
+    )
 
-    assert effects.stock is None
-    assert effects.cash is not None
-    assert (effects.cash.operation, effects.cash.amount) == (CashOperation.COUNT, 1_200_000)
+    assert effects_for("handover.joint_counted", joint, "shift-1").cash is None
+    cash = effects_for("handover.count_settled", settled, "shift-1").cash
+    assert cash is not None
+    assert (cash.operation, cash.amount, cash.cash_box_id) == (CashOperation.SETTLE, 1_200_000, "reception")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 1, "basis": "joint"},
+        {"scope": "cash", "counted": 1},
+        {"scope": "cash", "counted": 1, "basis": "guess"},
+        {"scope": "cash", "item_id": "item-1", "counted": 1, "basis": "joint"},
+    ],
+)
+def test_a_settlement_is_a_cash_chain_with_a_real_basis(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("handover.count_settled", payload)
 
 
 def test_unknown_type_has_no_spec() -> None:
@@ -130,6 +149,7 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.HANDOVER_RECOUNT_REQUESTED,
         EventType.HANDOVER_OUTGOING_COUNTED,
         EventType.HANDOVER_JOINT_COUNTED,
+        EventType.HANDOVER_COUNT_SETTLED,
         EventType.HANDOVER_CHECKLIST_ANSWERED,
         EventType.HANDOVER_PARCEL_HANDED,
         EventType.HANDOVER_SIGNED,

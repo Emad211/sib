@@ -43,7 +43,7 @@ class MovableClock:
 class BrokenBridge:
     """A bridge whose poll raises, standing in for any job that fails on its way to the writer."""
 
-    def poll(self, _path: object, _shift: object) -> None:
+    def poll(self, _path: object) -> None:
         raise RuntimeError("the accounting copy disappeared")
 
 

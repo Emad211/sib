@@ -113,9 +113,9 @@ class ProjectionEngine:
         if include_stock and effects.stock is not None:
             projections_repo.apply_stock(connection, stock_table, effects.stock)
         if include_cash and effects.cash is not None:
-            if not event.shift_id:
-                raise ProjectionError(f"event seq {event.seq} has a cash effect without shift_id")
-            projections_repo.apply_cash(connection, cash_table, effects.cash, event.shift_id)
+            if not effects.cash.cash_box_id:
+                raise ProjectionError(f"event seq {event.seq} has a cash effect without a cash box")
+            projections_repo.apply_cash(connection, cash_table, effects.cash)
 
     @staticmethod
     def _shadow_for(name: str) -> str:

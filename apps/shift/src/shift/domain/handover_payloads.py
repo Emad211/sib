@@ -8,6 +8,7 @@ from shift.domain.payloads import AmountRaw, Identifier, ItemCounted, Payload, Q
 
 CountScope = Literal["cash", "item"]
 SignerSide = Literal["incoming", "outgoing"]
+SettlementBasis = Literal["joint", "agreeing_blind"]
 DifferenceAmount = Annotated[int, Field(strict=True)]
 
 
@@ -45,6 +46,23 @@ class JointCounted(CountTarget):
     """The figure both people agree on after counting together (H-05, H-13)."""
 
     counted: Quantity
+
+
+class CountSettled(CountTarget):
+    """A cash chain settled on one figure; `basis` says what really happened to get there (H-13).
+
+    Only a cash chain settles a box, so this event never names an item. The agreed figure is what
+    the next shift opens with, which is why it — not the joint count — rebases the projection.
+    """
+
+    counted: Quantity
+    basis: SettlementBasis
+
+    @model_validator(mode="after")
+    def _cash_only(self) -> "CountSettled":
+        if self.scope != "cash":
+            raise ValueError("only a cash chain settles; items settle through their own count")
+        return self
 
 
 class ChecklistAnswered(Payload):

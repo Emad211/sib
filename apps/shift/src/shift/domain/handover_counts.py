@@ -53,7 +53,7 @@ class _BlindChain:
             raise HandoverError("a count cannot be negative")
 
     def _count_alone(self, counted: int) -> tuple[Self, CountStatus]:
-        """Alone: one count, then one self-recount before an unnamed settlement (H-08; provisional 2026-10-31)."""
+        """Alone: one count, then one self-recount before an unnamed settlement (H-08)."""
         if counted == self.reference:
             return self._settled(counted)
         if self.status is CountStatus.FIRST:

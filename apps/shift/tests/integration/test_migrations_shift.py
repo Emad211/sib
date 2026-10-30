@@ -1,15 +1,45 @@
-"""Versioned migrations: fresh, idempotent, backed up and rollback-safe (step 2)."""
+"""Versioned migrations: fresh, idempotent, backed up and rollback-safe (step 2).
+
+The handover slice adds v9: the persisted flows, `proj_cash` keyed by cash box and `events.handover_id`.
+These tests pin both directions — a fresh install and an existing v8 database whose cash rows and
+event hashes must survive untouched.
+"""
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Connection, create_engine
 from sqlalchemy.engine import URL
 
-from shift.adapters.db import migrations
+from shift.adapters.db import events_repo, migrations, mirror_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.migrations import MigrationError, run_migrations
+from shift.common.clock import tehran_iso, utc_iso
+from shift.common.hashing import GENESIS_HASH, canonical_json
+from shift.common.ids import new_ulid
+from shift.domain.event_hash import event_hash
+from shift.services.event_chain import verify_chain
+
+CLIENT_AT = datetime(2026, 9, 24, 10, 0, tzinfo=UTC)  # 13:30 Tehran
+V8_EVENT_COLUMNS = (
+    "event_id",
+    "type",
+    "schema_v",
+    "payload",
+    "actor_id",
+    "device_id",
+    "shift_id",
+    "work_date",
+    "client_at",
+    "server_at",
+    "at_tehran",
+    "ref_event_id",
+    "idempotency_key",
+    "prev_hash",
+    "hash",
+)
 
 
 def _tables(database: Database) -> set[str]:
@@ -18,9 +48,52 @@ def _tables(database: Database) -> set[str]:
         return {str(row[0]) for row in rows}
 
 
+def _columns(database: Database, table: str) -> tuple[str, ...]:
+    with database.read() as connection:
+        return tuple(str(row[1]) for row in connection.exec_driver_sql(f"PRAGMA table_info({table})"))
+
+
 def _version(database: Database) -> int:
     with database.read() as connection:
         return int(connection.exec_driver_sql("PRAGMA user_version").scalar_one())
+
+
+def _migrate_to(path: Path, version: int) -> None:
+    """Build a database the way an installed older version left it."""
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        for number, _name, up in migrations.MIGRATIONS:
+            if number <= version:
+                up(connection)
+        connection.exec_driver_sql(f"PRAGMA user_version = {int(version)}")
+    engine.dispose()
+
+
+def _write_v8_event(connection: Connection) -> str:
+    """One event exactly as the v8 writer stored it, hash chain included; returns its hash."""
+    values = {
+        "event_id": new_ulid(CLIENT_AT),
+        "type": "handover.started",
+        "schema_v": 1,
+        "payload": canonical_json({"opening_cash": 1_000_000}),
+        "actor_id": "actor-1",
+        "device_id": "device-1",
+        "shift_id": "2026-09-24#1",
+        "work_date": "2026-09-24",
+        "client_at": CLIENT_AT.isoformat(timespec="microseconds"),
+        "server_at": utc_iso(CLIENT_AT),
+        "at_tehran": tehran_iso(CLIENT_AT),
+        "ref_event_id": None,
+        "idempotency_key": "v8-event-1",
+        "prev_hash": GENESIS_HASH,
+        "hash": "",
+    }
+    values["hash"] = event_hash(GENESIS_HASH, values)
+    connection.exec_driver_sql(
+        f"INSERT INTO events ({', '.join(V8_EVENT_COLUMNS)}) VALUES ({', '.join('?' for _ in V8_EVENT_COLUMNS)})",
+        tuple(values[column] for column in V8_EVENT_COLUMNS),
+    )
+    return str(values["hash"])
 
 
 def test_fresh_database_is_created_at_latest_version(tmp_path: Path) -> None:
@@ -148,5 +221,58 @@ def test_database_newer_than_code_is_left_alone(tmp_path: Path) -> None:
         assert report.applied == []
         assert report.backup is None
         assert _version(database) == migrations.LATEST + 5
+    finally:
+        database.close()
+
+
+def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
+    database = Database(tmp_path / "fresh.db")
+    try:
+        database.migrate()
+        assert _version(database) == migrations.LATEST == 9
+        assert "handover" in _tables(database)
+        assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
+        assert "handover_id" in _columns(database, "events")
+        with database.read() as connection:
+            indexes = {str(row[0]) for row in connection.exec_driver_sql("SELECT name FROM sqlite_master")}
+            assert {
+                "idx_handover_signed_at",
+                "idx_handover_flow_opened_at",
+                "idx_events_handover_seq",
+            } <= indexes
+            assert projections_repo.cash_rows(connection) == []
+    finally:
+        database.close()
+
+
+def test_a_v8_database_upgrades_in_place_keeping_its_cash_figure_and_its_hashes(tmp_path: Path) -> None:
+    """v9 copies the newest per-shift cash row onto the single box and never rewrites an event."""
+    path = tmp_path / "v8.db"
+    _migrate_to(path, 8)
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        old_hash = _write_v8_event(connection)
+        connection.exec_driver_sql(
+            "INSERT INTO proj_cash (shift_id, expected, counted, variance) VALUES "
+            "('2026-09-24#1', 1050000, 900000, -150000), ('2026-09-24#2', 500000, 480000, -20000)"
+        )
+    engine.dispose()
+
+    database = Database(path)
+    try:
+        report = database.migrate(backup_dir=tmp_path / "backups")
+        assert (report.from_version, report.to_version) == (8, 9)
+        assert report.backup is not None
+        with database.read() as connection:
+            cash = projections_repo.cash_rows(connection)
+            events = list(events_repo.iter_events(connection))
+            chain = verify_chain(events)
+            mirrored = mirror_repo.count(connection, mirror_repo.CASH)
+        assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
+        assert cash == [{"cash_box_id": "reception", "expected": 500_000, "counted": 480_000, "variance": -20_000}]
+        assert [event.handover_id for event in events] == [None]
+        assert events[0].hash == old_hash
+        assert chain.ok is True and chain.checked == 1
+        assert mirrored == 0
     finally:
         database.close()

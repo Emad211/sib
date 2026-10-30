@@ -15,6 +15,7 @@ from shift.services.projections import ProjectionEngine
 
 
 def _replay(events) -> tuple[dict[tuple[str, str], int], dict[str, dict[str, int]]]:
+    """Replay every event by hand; the cash side mirrors the per-box rule (ADR-017 item 8)."""
     stock: dict[tuple[str, str], int] = {}
     cash: dict[str, dict[str, int]] = {}
     for event in events:
@@ -30,15 +31,21 @@ def _replay(events) -> tuple[dict[tuple[str, str], int], dict[str, dict[str, int
             else:
                 stock[key] = stock.get(key, 0) - effects.stock.quantity
         if effects.cash is not None:
-            row = cash.setdefault(event.shift_id or "", {"expected": 0, "counted": 0, "variance": 0})
+            box = str(effects.cash.cash_box_id)
+            seeded = box in cash
+            row = cash.setdefault(box, {"expected": 0, "counted": 0, "variance": 0})
             if effects.cash.operation is CashOperation.OPEN:
-                row["expected"] = effects.cash.amount
-                row["counted"] = effects.cash.amount
+                if not seeded:  # the opening only seeds a box that has no figure yet
+                    row["expected"] = effects.cash.amount
+                    row["counted"] = effects.cash.amount
             elif effects.cash.operation is CashOperation.ADD:
                 row["expected"] += effects.cash.amount
             elif effects.cash.operation is CashOperation.SUBTRACT:
                 row["expected"] -= effects.cash.amount
             elif effects.cash.operation is CashOperation.COUNT:
+                row["counted"] = effects.cash.amount
+            elif effects.cash.operation is CashOperation.SETTLE:
+                row["expected"] = effects.cash.amount
                 row["counted"] = effects.cash.amount
             row["variance"] = row["counted"] - row["expected"]
     return stock, cash
@@ -50,7 +57,7 @@ def _stock_dict(rows: list[dict[str, Any]]) -> dict[tuple[str, str], int]:
 
 def _cash_dict(rows: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
     return {
-        row["shift_id"]: {
+        row["cash_box_id"]: {
             "expected": row["expected"],
             "counted": row["counted"],
             "variance": row["variance"],

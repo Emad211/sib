@@ -1,7 +1,8 @@
 """Watermark paging: every accounting row is ingested exactly once (S01 R-05, S04 §2).
 
 The watermark is the contract with the past: keyset paging, one commit per page together with the
-rows it covers, and idempotency keys that make a crash or a re-poll a no-op.
+rows it covers, and idempotency keys that make a crash or a re-poll a no-op. The bridge reads up to
+the clock's now, so these tests pin that clock at the scenario's own 14:00 handover.
 """
 
 import json
@@ -10,6 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from clocks import FixedClock
 from make_synthetic_acc_db import SyntheticAccounting, build
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL
@@ -19,7 +21,6 @@ from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import migrations, mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror
-from shift.domain.cutoff import ShiftCutoff
 from shift.domain.events import EventType
 from shift.services.accounting_bridge import FEEDS, AccountingBridge
 from shift.services.event_store import EventStore
@@ -32,15 +33,15 @@ def scenario(tmp_path: Path) -> SyntheticAccounting:
 
 
 @pytest.fixture()
-def morning(scenario: SyntheticAccounting) -> ShiftCutoff:
-    """The 14:00 handover of the synthetic morning shift."""
-    return ShiftCutoff(shift_id="shift-morning", work_date=scenario.work_date, cutoff_at=parse_time(scenario.cutoff_at))
+def clock(scenario: SyntheticAccounting) -> FixedClock:
+    """The bridge reads up to this instant: the scenario's own 14:00 handover."""
+    return FixedClock(parse_time(scenario.cutoff_at))
 
 
 @pytest.fixture()
-def bridge(database: Database, store: EventStore) -> AccountingBridge:
+def bridge(database: Database, store: EventStore, clock: FixedClock) -> AccountingBridge:
     """The bridge under test, writing into the shift app's own database."""
-    return AccountingBridge(database, store)
+    return AccountingBridge(database, store, clock=clock)
 
 
 def _run_sql(path: Path, statements: Sequence[tuple[str, Sequence[object]]]) -> None:
@@ -91,12 +92,12 @@ def _events(database: Database) -> list[dict[str, object]]:
 
 
 def test_the_first_poll_mirrors_the_shifts_cash_and_appends_one_event_per_invoice(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.degraded is False
-    assert report.rows["v_shift_cash_receipts_v1"] == 3  # the 14:20 invoice belongs to the next shift
+    assert report.rows["v_shift_cash_receipts_v1"] == 3  # the 14:20 invoice is not closed at 14:00 yet
     assert report.events == 3
     with database.read() as connection:
         cash = mirror_repo.rows(connection, mirror_repo.CASH)
@@ -112,16 +113,22 @@ def test_the_first_poll_mirrors_the_shifts_cash_and_appends_one_event_per_invoic
         "acc:v_shift_cash_receipts_v1:3@2026-09-24 13:40:00@25000",
     }
     assert {event["type"] for event in events} == {"acc.cash_receipt"}
-    assert {event["shift_id"] for event in events} == {"shift-morning"}
+    # No handover flow exists yet, so the clinic clock places each fact: 08:10 and 09:05 are inside
+    # the morning shift and 13:40 is already the evening one (H-11, D3).
+    assert {event["key"]: event["shift_id"] for event in events} == {
+        "acc:v_shift_cash_receipts_v1:1@2026-09-24 08:10:00@150000": "2026-09-24#1",
+        "acc:v_shift_cash_receipts_v1:2@2026-09-24 09:05:00@40000": "2026-09-24#1",
+        "acc:v_shift_cash_receipts_v1:3@2026-09-24 13:40:00@25000": "2026-09-24#2",
+    }
     assert [event["payload"]["amount"] for event in events] == [150_000, 40_000, 25_000]
 
 
 def test_a_second_poll_adds_no_row_and_no_event(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
 
-    again = bridge.poll(scenario.path, morning)
+    again = bridge.poll(scenario.path)
 
     assert again.events == 0
     assert set(again.rows.values()) == {0}
@@ -129,11 +136,11 @@ def test_a_second_poll_adds_no_row_and_no_event(
 
 
 def test_paging_one_row_at_a_time_never_double_counts(
-    scenario: SyntheticAccounting, store: EventStore, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, store: EventStore, database: Database, clock: FixedClock
 ) -> None:
-    small_pages = AccountingBridge(database, store, page_size=1)
+    small_pages = AccountingBridge(database, store, page_size=1, clock=clock)
 
-    report = small_pages.poll(scenario.path, morning)
+    report = small_pages.poll(scenario.path)
 
     assert report.rows["v_shift_cash_receipts_v1"] == 3
     assert report.events == 3
@@ -144,13 +151,13 @@ def test_paging_one_row_at_a_time_never_double_counts(
 
 
 def test_a_lost_watermark_cannot_duplicate_a_row_or_an_event(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     with database.write() as connection:
         connection.exec_driver_sql("DELETE FROM acc_watermark")
 
-    replay = bridge.poll(scenario.path, morning)
+    replay = bridge.poll(scenario.path)
 
     assert replay.events == 0  # the idempotency key returns the stored event
     assert replay.rows["v_shift_cash_receipts_v1"] == 0  # the mirror keeps the row it already has
@@ -160,12 +167,12 @@ def test_a_lost_watermark_cannot_duplicate_a_row_or_an_event(
 
 
 def test_cash_closed_after_a_poll_is_picked_up_by_the_next_poll(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     _close_invoice(scenario.path, closed_at="2026-09-24 13:58:00", cash=5_000)
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.rows["v_shift_cash_receipts_v1"] == 1
     assert report.events == 1
@@ -174,9 +181,9 @@ def test_cash_closed_after_a_poll_is_picked_up_by_the_next_poll(
 
 
 def test_the_watermark_records_the_last_row_it_read(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
 
     with database.read() as connection:
         watermark = watermark_repo.get(connection, "v_shift_cash_receipts_v1")
@@ -192,7 +199,7 @@ def test_the_watermark_records_the_last_row_it_read(
 
 
 def test_a_view_that_breaks_mid_flight_is_recorded_and_the_other_feeds_still_sync(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
     _run_sql(
         scenario.path,
@@ -202,7 +209,7 @@ def test_a_view_that_breaks_mid_flight_is_recorded_and_the_other_feeds_still_syn
         ],
     )
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.degraded is True
     assert "v_shift_cash_receipts_v1" in (report.error or "")
@@ -214,9 +221,9 @@ def test_a_view_that_breaks_mid_flight_is_recorded_and_the_other_feeds_still_syn
 
 
 def test_the_open_invoice_snapshot_is_replaced_not_accumulated(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    first = bridge.poll(scenario.path, morning)
+    first = bridge.poll(scenario.path)
     _run_sql(
         scenario.path,
         [
@@ -226,7 +233,7 @@ def test_the_open_invoice_snapshot_is_replaced_not_accumulated(
             )
         ],
     )
-    second = bridge.poll(scenario.path, morning)
+    second = bridge.poll(scenario.path)
 
     assert first.open_invoices == 2
     assert second.open_invoices == 1
@@ -237,12 +244,12 @@ def test_the_open_invoice_snapshot_is_replaced_not_accumulated(
 
 
 def test_money_is_rounded_once_at_ingest_and_the_raw_value_is_kept(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
     _close_invoice(scenario.path, closed_at="2026-09-24 13:55:00", cash=1_000.4)
     _close_invoice(scenario.path, closed_at="2026-09-24 13:56:00", cash=1_000.5)
 
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
 
     with database.read() as connection:
         cash = {

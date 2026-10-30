@@ -10,10 +10,12 @@ that re-polling adds nothing, and that a rebuild reproduces the live projection.
 import json
 import sqlite3
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import pytest
+from clocks import FixedClock
 from make_synthetic_acc_db import SyntheticAccounting, build
 
 from event_fixtures import build_event
@@ -21,7 +23,6 @@ from shift.adapters.accounting import views
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import projections_repo, watermark_repo
 from shift.adapters.db.core import Database
-from shift.domain.cutoff import ShiftCutoff
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.event_store import EventStore
 from shift.services.projections import ProjectionEngine
@@ -37,15 +38,9 @@ def scenario(tmp_path: Path) -> SyntheticAccounting:
 
 
 @pytest.fixture()
-def morning(scenario: SyntheticAccounting) -> ShiftCutoff:
-    """The 14:00 handover of the synthetic morning shift."""
-    return ShiftCutoff(shift_id="shift-morning", work_date=scenario.work_date, cutoff_at=parse_time(scenario.cutoff_at))
-
-
-@pytest.fixture()
-def bridge(database: Database, store: EventStore) -> AccountingBridge:
-    """The bridge under test, writing into the shift app's own database."""
-    return AccountingBridge(database, store)
+def bridge(database: Database, store: EventStore, scenario: SyntheticAccounting) -> AccountingBridge:
+    """The bridge under test, reading up to the scenario's own 14:00 handover."""
+    return AccountingBridge(database, store, clock=FixedClock(parse_time(scenario.cutoff_at)))
 
 
 def _run_sql(path: Path, statements: Sequence[tuple[str, Sequence[object]]]) -> None:
@@ -181,16 +176,15 @@ def _invoice_events(database: Database, invoice_id: int) -> tuple[list[dict[str,
 def test_reclosing_a_polled_invoice_reverses_the_superseded_receipt(
     scenario: SyntheticAccounting,
     bridge: AccountingBridge,
-    morning: ShiftCutoff,
     database: Database,
     projections: ProjectionEngine,
 ) -> None:
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     before = _net_cash(database, projections)
     _reopen(scenario.path, scenario.cash_invoice)
     _reclose(scenario.path, scenario.cash_invoice, closed_at="2026-09-24 13:45:00", cash=200_000)
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.events == 2  # one reversal and one corrected receipt
     assert report.rows[CASH_VIEW] == 1
@@ -212,7 +206,7 @@ def test_reclosing_a_polled_invoice_reverses_the_superseded_receipt(
         ("2026-09-24 13:45:00", 200_000, False),
     ]
 
-    again = bridge.poll(scenario.path, morning)
+    again = bridge.poll(scenario.path)
 
     assert again.events == 0
     assert set(again.rows.values()) == {0}
@@ -222,17 +216,16 @@ def test_reclosing_a_polled_invoice_reverses_the_superseded_receipt(
 def test_a_reclose_at_the_same_stamp_corrects_the_amount_in_place(
     scenario: SyntheticAccounting,
     bridge: AccountingBridge,
-    morning: ShiftCutoff,
     database: Database,
     projections: ProjectionEngine,
 ) -> None:
     invoice = _close_invoice(scenario.path, closed_at="2026-09-24 13:20:00", cash=100_000)
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     before = _net_cash(database, projections)
     _reopen(scenario.path, invoice)
     _reclose(scenario.path, invoice, closed_at="2026-09-24 13:20:00", cash=120_000)
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.events == 2
     assert report.rows[CASH_VIEW] == 1
@@ -245,25 +238,24 @@ def test_a_reclose_at_the_same_stamp_corrects_the_amount_in_place(
         (version["closed_at"], version["amount"], version["superseded_at"])
         for version in _cash_versions(database, invoice)
     ] == [("2026-09-24 13:20:00", 120_000, None)]
-    assert bridge.poll(scenario.path, morning).events == 0
+    assert bridge.poll(scenario.path).events == 0
 
 
 def test_two_recloses_net_to_the_latest_amount_and_still_rebuild(
     scenario: SyntheticAccounting,
     bridge: AccountingBridge,
-    morning: ShiftCutoff,
     database: Database,
     projections: ProjectionEngine,
 ) -> None:
     invoice = _close_invoice(scenario.path, closed_at="2026-09-24 13:10:00", cash=100_000)
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     before = _net_cash(database, projections)
     _reopen(scenario.path, invoice)
     _reclose(scenario.path, invoice, closed_at="2026-09-24 13:15:00", cash=130_000)
-    assert bridge.poll(scenario.path, morning).events == 2
+    assert bridge.poll(scenario.path).events == 2
     _reopen(scenario.path, invoice)
     _reclose(scenario.path, invoice, closed_at="2026-09-24 13:20:00", cash=110_000)
-    assert bridge.poll(scenario.path, morning).events == 2
+    assert bridge.poll(scenario.path).events == 2
 
     assert _net_cash(database, projections) == before - 100_000 + 110_000
     assert _net_cash(database, projections) == _accounting_net(scenario.path, scenario.cutoff_at)
@@ -284,14 +276,13 @@ def test_two_recloses_net_to_the_latest_amount_and_still_rebuild(
     check = projections.rebuild(dry_run=True)
     assert check.drift == ()
     assert projections.rebuild().drift == ()
-    assert bridge.poll(scenario.path, morning).events == 0
+    assert bridge.poll(scenario.path).events == 0
 
 
 @pytest.mark.parametrize(("kind", "method", "reason"), [("refund", "cash", "refunded"), ("void", None, "voided")])
 def test_voiding_a_polled_invoice_nets_its_cash_to_zero(
     scenario: SyntheticAccounting,
     bridge: AccountingBridge,
-    morning: ShiftCutoff,
     database: Database,
     projections: ProjectionEngine,
     kind: str,
@@ -299,11 +290,11 @@ def test_voiding_a_polled_invoice_nets_its_cash_to_zero(
     reason: str,
 ) -> None:
     invoice = _close_invoice(scenario.path, closed_at="2026-09-24 13:10:00", cash=80_000)
-    bridge.poll(scenario.path, morning)
+    bridge.poll(scenario.path)
     before = _net_cash(database, projections)
     _void(scenario.path, invoice, amount=80_000, voided_at="2026-09-24 13:30:00", kind=kind, method=method)
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.events == 1
     assert report.rows[VOIDS_VIEW] == 1
@@ -319,7 +310,7 @@ def test_voiding_a_polled_invoice_nets_its_cash_to_zero(
         ).scalar_one()
     assert compensated_at is not None
 
-    again = bridge.poll(scenario.path, morning)
+    again = bridge.poll(scenario.path)
 
     assert again.events == 0
     assert set(again.rows.values()) == {0}
@@ -327,9 +318,9 @@ def test_voiding_a_polled_invoice_nets_its_cash_to_zero(
 
 
 def test_a_void_for_an_invoice_with_no_ingested_cash_adds_no_event(
-    scenario: SyntheticAccounting, bridge: AccountingBridge, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.events == 3
     assert [event for event in _events(database) if event["type"] == "acc.cash_reversal"] == []
@@ -343,7 +334,6 @@ def test_a_void_for_an_invoice_with_no_ingested_cash_adds_no_event(
 def test_a_receipt_written_before_corrections_is_reversed_by_its_legacy_key(
     scenario: SyntheticAccounting,
     bridge: AccountingBridge,
-    morning: ShiftCutoff,
     database: Database,
     store: EventStore,
     projections: ProjectionEngine,
@@ -354,8 +344,8 @@ def test_a_receipt_written_before_corrections_is_reversed_by_its_legacy_key(
         build_event(
             "acc.cash_receipt",
             payload={"amount": 80_000},
-            shift_id=morning.shift_id,
-            work_date=morning.work_date,
+            shift_id="2026-09-24#1",
+            work_date=date(2026, 9, 24),
             client_at=parse_time("2026-09-24 13:10:00"),
             idempotency_key=f"acc:{CASH_VIEW}:{invoice}",
         )
@@ -369,7 +359,7 @@ def test_a_receipt_written_before_corrections_is_reversed_by_its_legacy_key(
     _reopen(scenario.path, invoice)
     _reclose(scenario.path, invoice, closed_at="2026-09-24 13:45:00", cash=90_000)
 
-    report = bridge.poll(scenario.path, morning)
+    report = bridge.poll(scenario.path)
 
     assert report.events == 5  # three synthetic receipts, the reversal and the corrected receipt
     assert report.rows[CASH_VIEW] == 4
@@ -379,4 +369,4 @@ def test_a_receipt_written_before_corrections_is_reversed_by_its_legacy_key(
     assert reversals[0]["payload"]["amount"] == 80_000
     assert [event["payload"]["amount"] for event in receipts] == [90_000]
     assert _net_cash(database, projections) == _accounting_net(scenario.path, scenario.cutoff_at)
-    assert bridge.poll(scenario.path, morning).events == 0
+    assert bridge.poll(scenario.path).events == 0
