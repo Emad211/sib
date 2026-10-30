@@ -1,0 +1,9 @@
+line-length = 120
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["shift", "event_fixtures", "verify_event_chain"]

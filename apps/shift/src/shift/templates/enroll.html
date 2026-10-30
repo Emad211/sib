@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ثبت دستگاه — شیفت سیب</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f6f8;
+           color: #1f2933; font-family: system-ui, "Segoe UI", Tahoma, sans-serif; }
+    main { width: min(24rem, 92vw); background: #fff; padding: 1.75rem; border-radius: .75rem;
+           box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
+    h1 { margin: 0 0 .4rem; font-size: 1.15rem; }
+    p { line-height: 1.7; font-size: .9rem; }
+    label { display: block; margin: 1rem 0 .3rem; font-size: .9rem; }
+    input { width: 100%; padding: .6rem .7rem; font-size: 1rem; border: 1px solid #cbd2d9;
+            border-radius: .5rem; box-sizing: border-box; }
+    button { width: 100%; margin-top: 1.1rem; padding: .7rem; font-size: 1rem; border: 0;
+             border-radius: .5rem; background: #1f6feb; color: #fff; cursor: pointer; }
+    button:disabled { background: #8ea6c8; cursor: progress; }
+    #message { min-height: 1.2rem; margin: .9rem 0 0; font-size: .88rem; color: #b42318; }
+    #message.ok { color: #067647; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ثبت این گوشی</h1>
+    <p id="intro">این صفحه گوشی را با کد یک‌بارمصرفی که مدیر ساخته است به پرسنل وصل می‌کند.</p>
+    <form id="enroll-form" class="hidden" novalidate>
+      <label for="label">نام این گوشی</label>
+      <input id="label" name="label" maxlength="64" placeholder="مثلاً گوشی پذیرش" required>
+      <button id="submit" type="submit">ثبت دستگاه</button>
+    </form>
+    <p id="message" role="status"></p>
+    <a id="login-link" class="hidden" href="/login">ورود با موبایل و رمز</a>
+  </main>
+  <script>
+    const message = document.getElementById("message");
+    const form = document.getElementById("enroll-form");
+    const button = document.getElementById("submit");
+
+    function fail(text) {
+      message.className = "";
+      message.textContent = text;
+      form.classList.add("hidden");
+    }
+
+    function base64(bytes) {
+      let binary = "";
+      bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+      return btoa(binary);
+    }
+
+    function openIdentityDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open("shift_identity", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("keys", { keyPath: "device_id" });
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function rememberPrivateKey(record) {
+      const database = await openIdentityDb();
+      await new Promise((resolve, reject) => {
+        const transaction = database.transaction("keys", "readwrite");
+        transaction.objectStore("keys").put(record);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+    }
+
+    async function pair(token, label) {
+      const keyPair = await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"],
+      );
+      const spki = await crypto.subtle.exportKey("spki", keyPair.publicKey);
+      const response = await fetch("/api/v1/devices/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: token,
+          device_label: label,
+          device_pubkey: base64(new Uint8Array(spki)),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((body.error && body.error.message) || "ثبت دستگاه انجام نشد.");
+      }
+      await rememberPrivateKey({
+        device_id: body.device_id,
+        private_key: await crypto.subtle.exportKey("jwk", keyPair.privateKey),
+      });
+      localStorage.setItem("shift_device_id", body.device_id);
+      return body.device_id;
+    }
+
+    const token = new URLSearchParams(location.hash.slice(1)).get("t");
+    history.replaceState(null, "", location.pathname);
+    if (!token) {
+      fail("کد ثبت دستگاه در نشانی نیست؛ کد را دوباره از مدیر بگیرید.");
+    } else if (!window.crypto || !crypto.subtle) {
+      fail("این صفحه باید روی نشانی امن (HTTPS) باز شود.");
+    } else {
+      form.classList.remove("hidden");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.className = "";
+        message.textContent = "";
+        button.disabled = true;
+        try {
+          const deviceId = await pair(token, form.label.value);
+          form.classList.add("hidden");
+          message.className = "ok";
+          message.textContent = `این گوشی ثبت شد (${deviceId.slice(-6)}).`;
+          document.getElementById("login-link").classList.remove("hidden");
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

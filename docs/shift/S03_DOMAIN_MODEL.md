@@ -1,6 +1,6 @@
 # مدل دامنهٔ اپ شیفت
 
-> نسخه 1.0 (پیش‌نویس، در SHF-1 دقیق می‌شود) · ۱۴۰۵/۰۸/۰۴
+> نسخه 1.3 · ۱۴۰۵/۰۸/۰۹ (پیش‌نویس، در SHF-1 دقیق می‌شود)
 
 ## ۱. موجودیت‌های پایه (قابل تنظیم و نسخه‌دار)
 
@@ -17,16 +17,23 @@
 
 ## ۲. شیفت
 
-- `shift_session`: شروع (با تحویل گرفتن)، مسئول صندوق، افراد حاضر، `cutoff_at`، پایان (با امضای دو طرف)، و `block_id` برای شیفت‌های پشت‌سرهم.
+- `shift_session`: شروع، مسئول صندوق، افراد حاضر، پایان، و `block_id` برای شیفت‌های پشت‌سرهم.
+- `handover`: هر تحویل یک رکورد مستقل با `handover_id`؛ فیلدها: `shift_id`، `flow` (`reception`: صندوق + قفسهٔ پذیرش | `nurse`: اتاق CPR + ترالی)، `opened_at`، `signed_at`، و دو امضا. `opened_at` همان برش زمانی (`cutoff_at`) همین جریان است (H-11). دو جریان هم‌زمان و مستقل‌اند و هیچ‌کدام منتظر دیگری نمی‌ماند (H-12، ADR-017).
 - شیفت جاری هر کاربر = آخرین `shift_session` باز که در آن حاضر است.
+
+> **برش زمانی و کلید صندوق (ADR-017، ۱۴۰۵/۰۸/۰۹):** هر جریان تحویل برش زمانی خودش را دارد — لحظهٔ شروع همان جریان؛ هر مصرف یا دریافت نقدی که در حسابداری پس از آن ثبت شود، مال شیفت بعد است (H-11، بند ۶). `proj_cash` به ازای هر صندوق (cash box) کلید می‌خورد، نه هر شیفت (بند ۸). کد فعلی هنوز `proj_cash` را با `shift_id` و `ShiftCutoff` را روی شیفت کلید می‌زند؛ اصلاح در SHF-2.
 
 ## ۳. رویدادها (فقط‌افزودنی)
 
-همه با: `id`، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `shift_id`، `at`، `ref_event_id`.
+همه با: `id` (شماره ترتیبی سرور `seq`)، `client_event_id` / `idempotency_key` (کلید یکتای کلاینت)، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `device_id`، `shift_id`، `handover_id` (فقط رویدادهای گروه تحویل؛ H-12)، `client_at` (زمان کلاینت)، `server_at` (زمان سرور)، `ref_event_id`.
+
+> **تکرارناپذیری و مدیریت خطای ساعت:**
+> - وجود `client_event_id` / `idempotency_key` تضمین می‌کند که بازپخش رویدادها از صف آفلاین گوشی (Outbox) پس از وصل مجدد شبکه هرگز رویداد تکراری درج نکرده و کاملاً تکرارناپذیر (Idempotent) عمل کند (`INSERT ... ON CONFLICT(idempotency_key) DO NOTHING`).
+> - تفکیک `client_at` (زمان ثبت در دستگاه پرسنل) از `server_at` (زمان دریافت قطعی در سرور محلی) خطای ساعت گوشی‌ها (Clock Skew) را مهار می‌کند؛ مرجع معتبر برای برش‌های شیفت (`cutoff_at`)، گزارش‌ها و ترتیب بازسازی projectionها منحصراً `server_at` و ترتیبی سرور (`seq`) است.
 
 | گروه | انواع |
 |---|---|
-| تحویل | `handover_started`، `cash_counted`، `item_counted`، `recount_requested`، `outgoing_counted`، `joint_counted`، `checklist_answered`، `parcel_handed`، `handover_signed`، `early_leave_reported` |
+| تحویل | `handover_started`، `cash_counted`، `item_counted`، `recount_requested`، `outgoing_counted`، `joint_counted`، `checklist_answered`، `parcel_handed`، `handover_signed`، `early_leave_reported`، `emergency_start_confirmed` |
 | مغایرت | `discrepancy_recorded` (خودکار) |
 | رویداد شیفت | `card_transfer_reported`، `refund_requested`، `campaign_discount_applied`، `cash_withdrawn`، `waste_reported`، `patient_item_held`، `patient_item_delivered`، `emergency_withdrawal`، `equipment_fault`، `fault_assigned`، `fault_fixed`، `vitals_recorded`، `followup_opened`، `cleaning_confirmed` |
 | تأیید | `approved`، `rejected`، `changed` (همه با `ref_event_id`) |
@@ -47,7 +54,23 @@ pending ─count(x)─► [x == E] ─► matched
 settled(j): discrepancy_recorded(E − j, به نام خروجی) ؛ مرجع شیفت بعد = j
 ```
 
-> **سؤال Q-09:** اگر شمارش دوم ورودی با مرجع نخواند ولی شمارش کور خروجی بخواند، نتیجه «matched» است یا به شمارش مشترک می‌رود؟ نمودار بالا فرض اول را گرفته است. سند منبع این حالت را صریح نگفته.
+> **Q-09 بسته شد (ADR-017، ۱۴۰۵/۰۸/۰۹):** اگر شمارش کور نفر خروجی (شمارش سوم) با مرجع بخواند، نتیجه «matched» است؛ شمارش مشترک لازم نیست و هیچ مغایرتی ثبت نمی‌شود. نمودار بالا همین را می‌گوید و اکنون تأییدِ مالک را دارد.
+
+### مغایرت صندوق (H-13)
+
+```text
+pending ─blind─► a, b ─► [a == b] ─► settled(a)
+                     ─► [a ≠ b] ─► joint ─count(j)─► settled(j)   یک بازشماری مشترک، هر دو نفر حاضر
+settled(v): عدد توافق‌شده v ثبت می‌شود ؛ اختلاف v با مرجع (اگر بود) ← discrepancy_recorded به نام نفر خروجی، فقط هشدار به مدیر و بدون کسر از حقوق (H-06، H-13)
+```
+
+### شروع اضطراری تک‌نفره (H-08)
+
+```text
+early_leave_reported ─► emergency_start_confirmed (تأییدکنندهٔ تلفنی، server_at) ─► تحویل تک‌نفره
+هر discrepancy_recorded این مسیر: بدون نام مسئول، در `open_decisions` برای بررسی مدیر؛
+هرگز خودکار به نام نفر غایب نوشته نمی‌شود.
+```
 
 ### سفارش خرید
 
@@ -67,7 +90,7 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 | projection | تعریف |
 |---|---|
 | `stock(item, location)` | از رویدادهای شمارش تأییدشده + شارژ + مصرف حسابداری − برداشت − ضایعات |
-| `cash(shift)` | N0 + نقد حسابداری − برداشت‌ها − واریزها |
+| `cash(cash_box)` | N0 + نقد حسابداری − برداشت‌ها − واریزها؛ کلید: صندوق (cash box)، نه شیفت (ADR-017) |
 | `open_decisions` | هر رویداد نیازمند تأیید مدیر که هنوز `approved/rejected/changed` ندارد |
 | `my_queue(user)` | کارهای باز نقش‌های کاربر در شیفت جاری (R-01، R-07) |
 | `reward_ledger(month)` | پاداش‌های تأییدشده منهای ابطال‌ها |
@@ -75,3 +98,6 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 ## تاریخچه
 
 - 1.0، ۱۴۰۵/۰۸/۰۴: پیش‌نویس اول.
+- 1.1، ۱۴۰۵/۰۸/۰۶: افزودن فیلدهای `client_event_id` / `idempotency_key` برای تکرارناپذیری همگام‌سازی آفلاین، و تفکیک `client_at` و `server_at` برای مدیریت خطای اختلاف ساعت (Clock Skew).
+- 1.2، ۱۴۰۵/۰۸/۰۹: افزودن موجودیت `handover` با `handover_id` و دو جریان مستقل (H-12)، فیلد `handover_id` روی رویدادهای تحویل، رویداد `emergency_start_confirmed` (H-08)، بستن Q-09 در ماشین حالت شمارش، و ماشین حالت مغایرت صندوق (H-13) — همه طبق ADR-017.
+- 1.3، ۱۴۰۵/۰۸/۰۹: برش زمانی به هر جریان تحویل منتقل شد (`opened_at` همان `cutoff_at` جریان، H-11)؛ projection صندوق از `cash(shift)` به `cash(cash_box)` تغییر کرد و اثر باز ADR-017 بسته شد؛ نام مغایرت صندوق پس از بازشماری مشترک در ماشین حالت H-13 ثبت شد (نفر خروجی، فقط هشدار).

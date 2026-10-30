@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>دستگاه‌ها — شیفت سیب</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <style>
+    body { margin: 0; padding: 1.5rem; background: #f4f6f8; color: #1f2933;
+           font-family: system-ui, "Segoe UI", Tahoma, sans-serif; }
+    main { width: min(52rem, 96vw); margin: 0 auto; display: grid; gap: 1.25rem; }
+    section { background: #fff; padding: 1.25rem 1.5rem; border-radius: .75rem;
+              box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
+    h1 { margin: 0 0 1rem; font-size: 1.15rem; }
+    h2 { margin: 0 0 .75rem; font-size: 1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    label { font-size: .88rem; display: grid; gap: .3rem; }
+    select { padding: .55rem .7rem; font-size: .95rem; border: 1px solid #cbd2d9; border-radius: .5rem;
+             min-width: 16rem; }
+    button { padding: .55rem 1rem; font-size: .95rem; border: 0; border-radius: .5rem;
+             background: #1f6feb; color: #fff; cursor: pointer; }
+    button.danger { background: #b42318; }
+    button:disabled { background: #8ea6c8; cursor: progress; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { text-align: right; padding: .55rem .4rem; border-bottom: 1px solid #e4e7eb; }
+    th { color: #616e7c; font-weight: 600; }
+    .muted { color: #616e7c; }
+    .revoked { color: #b42318; }
+    #enrollment { display: none; gap: 1rem; align-items: center; margin-top: 1rem; }
+    #enrollment.visible { display: flex; flex-wrap: wrap; }
+    #enrollment img { width: 12rem; height: 12rem; border: 1px solid #e4e7eb; border-radius: .5rem; }
+    #enrollment-url { font-size: .8rem; word-break: break-all; direction: ltr; color: #3e4c59; }
+    #message { min-height: 1.2rem; color: #b42318; font-size: .88rem; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>دستگاه‌های ثبت‌شده</h1>
+      <form id="mint-form" class="row">
+        <label>کارمند
+          <select id="staff" name="staff_id" required>
+            <option value="" disabled selected>انتخاب کنید</option>
+            {% for person in staff %}
+            <option value="{{ person.id }}">{{ person.name }} — {{ person.roles }}{% if not person.active %} (غیرفعال){% endif %}{% if person.locked %} (قفل){% endif %}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button id="mint-button" type="submit">ساخت کد ثبت دستگاه</button>
+      </form>
+      <p id="message" role="status"></p>
+      <div id="enrollment">
+        <img id="enrollment-qr" alt="کد ثبت دستگاه">
+        <div>
+          <p class="muted">این کد ۱۰ دقیقه اعتبار دارد و فقط یک بار کار می‌کند. QR را روی صفحهٔ گوشی اسکن کنید یا نشانی زیر را روی همان گوشی باز کنید.</p>
+          <p id="enrollment-url"></p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>فهرست گوشی‌ها</h2>
+      <table>
+        <thead>
+          <tr><th>نام گوشی</th><th>کارمند</th><th>تاریخ ثبت</th><th>وضعیت</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for row in devices %}
+          <tr>
+            <td>{{ row.device.label }}</td>
+            <td>{{ row.staff_name }}</td>
+            <td>{{ row.enrolled_at_fa }}</td>
+            <td>{% if row.device.revoked_at %}<span class="revoked">لغو شده</span>{% else %}فعال{% endif %}</td>
+            <td>
+              {% if not row.device.revoked_at %}
+              <button class="danger" data-revoke="{{ row.device.device_id }}" type="button">لغو دسترسی</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">هنوز گوشی‌ای ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const message = document.getElementById("message");
+    const mintForm = document.getElementById("mint-form");
+    const mintButton = document.getElementById("mint-button");
+    const panel = document.getElementById("enrollment");
+
+    async function call(url, body, method) {
+      const response = await fetch(url, {
+        method: method || "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const payload = response.status === 204 ? {} : await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload.error && payload.error.message) || "درخواست انجام نشد.");
+      }
+      return payload;
+    }
+
+    mintForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      message.textContent = "";
+      if (!mintForm.staff_id.value) { return; }
+      mintButton.disabled = true;
+      try {
+        const offer = await call("/api/v1/devices/enrollment-tokens", { staff_id: mintForm.staff_id.value });
+        document.getElementById("enrollment-qr").src = offer.qr_svg;
+        document.getElementById("enrollment-url").textContent = offer.enrollment_url;
+        panel.classList.add("visible");
+        message.className = "muted";
+        message.textContent = `معتبر تا ${offer.expires_at_fa}`;
+      } catch (error) {
+        message.className = "";
+        message.textContent = error.message;
+      } finally {
+        mintButton.disabled = false;
+      }
+    });
+
+    document.querySelectorAll("button[data-revoke]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await call(`/api/v1/devices/${button.dataset.revoke}/revoke`);
+          location.reload();
+        } catch (error) {
+          message.className = "";
+          message.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    });
+  </script>
+</body>
+</html>
