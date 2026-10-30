@@ -5,12 +5,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from pathlib import Path
 
+from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
 from shift.services import scheduler as scheduler_module
-from shift.services.scheduler import DAILY_CARD, WEEKLY_COUNT_WARNING, Scheduler
+from shift.services.scheduler import DAILY_CARD, WEEKLY_COUNT_WARNING, PolicySchedule, Scheduler
+from shift.services.settings import SettingsService
 
 TUESDAY_BEFORE_OPENING = datetime(2026, 10, 27, 3, 59, tzinfo=UTC)  # 07:29 Tehran
 TUESDAY_OPENING = datetime(2026, 10, 27, 4, 0, tzinfo=UTC)  # 07:30 Tehran
+TUESDAY_JUST_AFTER_OPENING = datetime(2026, 10, 27, 4, 1, tzinfo=UTC)  # 07:31 Tehran
 TUESDAY_LATE = datetime(2026, 10, 27, 9, 0, tzinfo=UTC)  # 12:30 Tehran
 WEDNESDAY_OPENING = datetime(2026, 10, 28, 4, 0, tzinfo=UTC)  # 07:30 Tehran, next day
 MONDAY_WARNING = datetime(2026, 10, 26, 4, 30, tzinfo=UTC)  # 08:00 Tehran
@@ -125,6 +128,16 @@ def test_the_tehran_date_not_the_utc_date_names_the_period() -> None:
 
     daily = next(run for run in runs if run.name == DAILY_CARD)
     assert daily.period == "2026-10-28"
+
+
+def test_the_scheduler_reads_its_schedule_from_the_versioned_settings(database: Database) -> None:
+    """The times and days are rows now: a schedule drawn from the database still raises the card."""
+    scheduler = Scheduler(PolicySchedule(SettingsService(database)), clock=FrozenClock(TUESDAY_JUST_AFTER_OPENING))
+
+    due = next(task for task in scheduler.due() if task.name == DAILY_CARD)
+
+    assert due.due_at == datetime(2026, 10, 27, 7, 30, tzinfo=TEHRAN)
+    assert due.period == "2026-10-27"
 
 
 def test_the_scheduler_source_holds_no_literal_times() -> None:

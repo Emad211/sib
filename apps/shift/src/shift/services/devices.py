@@ -7,9 +7,10 @@ it is a single conditional UPDATE, so two phones scanning the same QR cannot bot
 
 import re
 import secrets
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from shift.adapters.db import devices_repo, sessions_repo, staff_repo
 from shift.adapters.db.core import Database
@@ -18,6 +19,7 @@ from shift.common.clock import Clock, SystemClock, parse_iso, utc_iso
 from shift.common.hashing import sha256_hex
 from shift.common.ids import new_ulid
 from shift.config.logging import get_audit_logger
+from shift.services.audit import AuditOutcome, AuditService, record_action
 
 ENROLLMENT_TTL = timedelta(minutes=10)
 ENROLLMENT_PATH = "/enroll#t="
@@ -108,10 +110,37 @@ class DeviceService:
         *,
         clock: Clock | None = None,
         token_ttl: timedelta = ENROLLMENT_TTL,
+        audit: AuditService | None = None,
     ) -> None:
         self._database = database
         self._clock = clock or SystemClock()
         self._token_ttl = token_ttl
+        # The lifespan injects the durable audit trail; a unit test without one keeps the sink.
+        self._audit = audit
+
+    def _note(
+        self,
+        action: str,
+        message: str,
+        message_args: tuple[object, ...],
+        *,
+        actor: str,
+        outcome: AuditOutcome = AuditOutcome.OK,
+        subject: str | None = None,
+        detail: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Audit one device action: a durable row plus the audit sink, never the public log."""
+        record_action(
+            self._audit,
+            log,
+            action=action,
+            actor=actor,
+            outcome=outcome,
+            subject=subject,
+            detail=detail,
+            message=message,
+            message_args=message_args,
+        )
 
     def mint(self, *, staff_id: str, created_by: str, origin: str) -> EnrollmentOffer:
         """Create a single-use token for one staff member and the URL to render it in."""
@@ -134,7 +163,14 @@ class DeviceService:
                 expires_at=utc_iso(expires_at),
             )
         url = f"{origin.rstrip('/')}{ENROLLMENT_PATH}{token}"
-        log.info("device.token_minted staff=%s device=%s by=%s", staff_id, device_id, created_by)
+        self._note(
+            "device.token_minted",
+            "device.token_minted staff=%s device=%s by=%s",
+            (staff_id, device_id, created_by),
+            actor=created_by,
+            subject=device_id,
+            detail={"staff": staff_id},
+        )
         return EnrollmentOffer(device_id=device_id, staff_id=staff_id, token=token, url=url, expires_at=expires_at)
 
     def enroll(self, *, token: str, label: str, pubkey: str) -> EnrolledDevice:
@@ -164,7 +200,14 @@ class DeviceService:
                 pubkey=cleaned_pubkey,
                 enrolled_at=utc_iso(now),
             )
-        log.info("device.enrolled staff=%s device=%s label=%s", record.staff_id, record.device_id, cleaned_label)
+        self._note(
+            "device.enrolled",
+            "device.enrolled staff=%s device=%s label=%s",
+            (record.staff_id, record.device_id, cleaned_label),
+            actor=record.staff_id,
+            subject=record.device_id,
+            detail={"staff": record.staff_id, "label": cleaned_label},
+        )
         return EnrolledDevice(
             device_id=record.device_id,
             staff_id=record.staff_id,
@@ -185,7 +228,14 @@ class DeviceService:
             killed = sessions_repo.revoke_for_device(
                 connection, device_id=device_id, revoked_at=now, reason="device_revoked"
             )
-        log.info("device.revoked device=%s by=%s sessions=%d", device_id, actor_id, killed)
+        self._note(
+            "device.revoked",
+            "device.revoked device=%s by=%s sessions=%d",
+            (device_id, actor_id, killed),
+            actor=actor_id,
+            subject=device_id,
+            detail={"sessions": killed, "reason": reason},
+        )
         return killed
 
     def list_devices(self) -> Sequence[EnrolledDevice]:

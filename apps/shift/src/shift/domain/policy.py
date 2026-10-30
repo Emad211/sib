@@ -1,9 +1,6 @@
 """Clinic policy a manager tunes at runtime instead of a deploy (R-08, R-09).
 
-Only rules live here, never defaults: the values themselves are rows in `setting_versions`,
-each starting at an `effective_from_shift`. A shift is identified by a `ShiftKey` whose text
-form sorts chronologically, which is what lets a change made during a running shift apply
-only from the next one.
+Only rules live here, never defaults: a value is a row in `setting_versions`, effective from a shift.
 """
 
 import re
@@ -28,11 +25,17 @@ class SettingKey(StrEnum):
     TAKEOVER_WINDOW_MINUTES = "takeover_window_minutes"
     WITHDRAWAL_CAP_TOMAN = "withdrawal_cap_toman"
     SESSION_TTL_HOURS = "session_ttl_hours"
+    DAILY_CARD_SKIP_WEEKDAY = "daily_card_skip_weekday"
+    WEEKLY_COUNT_TIME = "weekly_count_time"
+    WEEKLY_COUNT_WEEKDAY = "weekly_count_weekday"
 
 
 class SettingKind(StrEnum):
+    """How a value is read. A `WEEKDAY` is `date.weekday()` (Monday=0 … Sunday=6), not the Persian week."""
+
     CLOCK_TIME = "clock_time"
     INTEGER = "integer"
+    WEEKDAY = "weekday"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,9 @@ SETTING_SPECS: Mapping[SettingKey, SettingSpec] = {
     SettingKey.TAKEOVER_WINDOW_MINUTES: SettingSpec(SettingKind.INTEGER, 0, 180),
     SettingKey.WITHDRAWAL_CAP_TOMAN: SettingSpec(SettingKind.INTEGER, 0, 100_000_000),
     SettingKey.SESSION_TTL_HOURS: SettingSpec(SettingKind.INTEGER, 1, 24),
+    SettingKey.DAILY_CARD_SKIP_WEEKDAY: SettingSpec(SettingKind.WEEKDAY, 0, 6),
+    SettingKey.WEEKLY_COUNT_TIME: SettingSpec(SettingKind.CLOCK_TIME),
+    SettingKey.WEEKLY_COUNT_WEEKDAY: SettingSpec(SettingKind.WEEKDAY, 0, 6),
 }
 
 

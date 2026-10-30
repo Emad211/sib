@@ -14,6 +14,8 @@ from datetime import datetime, time, timedelta
 from typing import Protocol
 
 from shift.common.clock import TEHRAN, Clock, SystemClock, to_tehran
+from shift.domain.policy import SettingKey
+from shift.services.settings import SettingsService
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +66,33 @@ _ACTIONS: dict[str, Callable[[datetime], str]] = {
     DAILY_CARD: _daily_card_stub,
     WEEKLY_COUNT_WARNING: _weekly_count_stub,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class PolicySchedule:
+    """`ScheduleSettings` backed by the versioned settings (R-09): a change needs no deploy."""
+
+    settings: SettingsService
+
+    @property
+    def daily_card_time(self) -> time:
+        """When the daily manager card falls due."""
+        return self.settings.clock_time(SettingKey.CARD_TIME)
+
+    @property
+    def daily_card_skip_weekday(self) -> int:
+        """The weekday without a card; a Python weekday number, so Monday is 0."""
+        return self.settings.number(SettingKey.DAILY_CARD_SKIP_WEEKDAY)
+
+    @property
+    def weekly_count_time(self) -> time:
+        """When the weekly shelf-count warning falls due."""
+        return self.settings.clock_time(SettingKey.WEEKLY_COUNT_TIME)
+
+    @property
+    def weekly_count_weekday(self) -> int:
+        """The weekday the count is expected by; a Python weekday number, so Monday is 0."""
+        return self.settings.number(SettingKey.WEEKLY_COUNT_WEEKDAY)
 
 
 class Scheduler:

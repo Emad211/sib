@@ -3,7 +3,7 @@
 import logging
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -14,6 +14,7 @@ from sqlalchemy.engine import URL
 from sqlalchemy.pool import QueuePool
 
 from shift.adapters.db.migrations import MigrationReport, run_migrations
+from shift.adapters.db.sqlite_copy import copy_database
 
 log = logging.getLogger(__name__)
 
@@ -99,18 +100,18 @@ class Database:
 
 
 def _backup_database(source_path: Path, backup_dir: Path) -> Path:
-    """Take a verified online backup before a migration (ADR-008)."""
+    """Take a verified online backup before a migration (ADR-008).
+
+    The copy comes from `copy_database`, the same primitive the periodic snapshot uses, so a
+    pre-migration file is one self-contained database that restores without its source's WAL.
+    """
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     destination_path = backup_dir / f"shift_pre_migration_{stamp}.db"
-    source = sqlite3.connect(source_path)
-    destination = sqlite3.connect(destination_path)
-    try:
-        source.backup(destination)
-        result = destination.execute("PRAGMA integrity_check").fetchone()
-        if result is None or result[0] != "ok":
-            raise RuntimeError(f"pre-migration backup failed integrity_check: {result!r}")
-    finally:
-        source.close()
-        destination.close()
+    copy_database(source_path, destination_path)
+    with closing(sqlite3.connect(destination_path)) as copy:
+        result = copy.execute("PRAGMA integrity_check").fetchone()
+    if result is None or result[0] != "ok":
+        destination_path.unlink(missing_ok=True)
+        raise RuntimeError(f"pre-migration backup failed integrity_check: {result!r}")
     return destination_path

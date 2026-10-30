@@ -7,9 +7,10 @@ Five consecutive wrong PINs lock the account until the manager unlocks it (S4).
 
 import re
 import secrets
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
@@ -31,6 +32,7 @@ from shift.domain.pin_policy import (
     normalise_digits,
     validate_new_pin,
 )
+from shift.services.audit import AuditOutcome, AuditService, record_action
 
 SESSION_TTL = timedelta(hours=12)
 SESSION_COOKIE = "shift_session"
@@ -163,6 +165,7 @@ class AuthService:
         hasher: PasswordHasher = PIN_HASHER,
         session_ttl: timedelta = SESSION_TTL,
         pepper: str = "",
+        audit: AuditService | None = None,
     ) -> None:
         self._database = database
         self._clock = clock or SystemClock()
@@ -171,6 +174,9 @@ class AuthService:
         # The per-install secret from `Settings.secret_file`: a stolen database alone is
         # not enough to run an offline PIN search (S02 §4 asks for salt *and* pepper).
         self._pepper = pepper
+        # The lifespan injects the durable audit trail; without it (a unit test, a script)
+        # every audited action still reaches the audit sink and nothing else changes.
+        self._audit = audit
         # Built on the first "unknown mobile" login, not at startup: verifying against a
         # real digest keeps that path as slow as a wrong PIN, so response time does not
         # reveal which mobiles exist.
@@ -194,19 +200,112 @@ class AuthService:
         device, staff = self._identify(device_id=device_id, mobile=normalised_mobile)
         matches = self._pin_matches(staff=staff, pin=normalised_pin)
         if staff is None:
-            log.info("auth.login result=unknown_mobile device=%s", device_id)
+            self._note(
+                "auth.login",
+                "auth.login result=unknown_mobile device=%s",
+                (device_id,),
+                actor="unknown",
+                outcome=AuditOutcome.DENIED,
+                subject=device_id,
+                detail={"result": "unknown_mobile", "device": device_id},
+            )
             raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
         if not staff.active:
-            log.info("auth.login result=inactive staff=%s", staff.staff_id)
+            self._note(
+                "auth.login",
+                "auth.login result=inactive staff=%s",
+                (staff.staff_id,),
+                actor=staff.staff_id,
+                outcome=AuditOutcome.DENIED,
+                subject=staff.staff_id,
+                detail={"result": "inactive"},
+            )
             raise StaffInactive("staff account is deactivated")
         if device.staff_id != staff.staff_id:
-            log.info("auth.login result=device_not_owned staff=%s device=%s", staff.staff_id, device_id)
+            self._note(
+                "auth.login",
+                "auth.login result=device_not_owned staff=%s device=%s",
+                (staff.staff_id, device_id),
+                actor=staff.staff_id,
+                outcome=AuditOutcome.DENIED,
+                subject=staff.staff_id,
+                detail={"result": "device_not_owned", "device": device_id},
+            )
             raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
         self._require_unlocked(staff, now)
         outcome = self._record_attempt(staff=staff, device=device, matches=matches, now=now)
+        # Outside the transaction on purpose: the audit write takes the single writer again.
+        self._note_attempt(outcome, staff=staff, device=device)
         if isinstance(outcome, AuthError):
             raise outcome
         return outcome
+
+    def _note(
+        self,
+        action: str,
+        message: str,
+        message_args: tuple[object, ...],
+        *,
+        actor: str,
+        outcome: AuditOutcome = AuditOutcome.OK,
+        subject: str | None = None,
+        detail: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Audit one action: a durable row plus the audit sink, never the public log (S02 §3.2)."""
+        record_action(
+            self._audit,
+            log,
+            action=action,
+            actor=actor,
+            outcome=outcome,
+            subject=subject,
+            detail=detail,
+            message=message,
+            message_args=message_args,
+        )
+
+    def _note_attempt(self, outcome: AuthError | IssuedSession, *, staff: StaffRecord, device: DeviceRecord) -> None:
+        """Audit what the committed attempt did: opened a session, locked the row or refused it."""
+        attempts = staff.failed_attempts + 1
+        if isinstance(outcome, IssuedSession):
+            self._note(
+                "auth.login",
+                "auth.login result=ok staff=%s device=%s",
+                (staff.staff_id, device.device_id),
+                actor=staff.staff_id,
+                subject=staff.staff_id,
+                detail={"result": "ok", "device": device.device_id},
+            )
+        elif isinstance(outcome, AccountLocked):
+            self._note(
+                "auth.lock",
+                "auth.lock staff=%s until=%s",
+                (staff.staff_id, utc_iso(outcome.until)),
+                actor=staff.staff_id,
+                outcome=AuditOutcome.DENIED,
+                subject=staff.staff_id,
+                detail={"result": "locked", "until": utc_iso(outcome.until)},
+            )
+        elif isinstance(outcome, InvalidCredentials):
+            self._note(
+                "auth.login",
+                "auth.login result=bad_pin staff=%s attempts=%d",
+                (staff.staff_id, attempts),
+                actor=staff.staff_id,
+                outcome=AuditOutcome.DENIED,
+                subject=staff.staff_id,
+                detail={"result": "bad_pin", "attempts": attempts},
+            )
+        else:  # the row was deactivated between `_identify` and the writer
+            self._note(
+                "auth.login",
+                "auth.login result=inactive staff=%s",
+                (staff.staff_id,),
+                actor=staff.staff_id,
+                outcome=AuditOutcome.DENIED,
+                subject=staff.staff_id,
+                detail={"result": "inactive"},
+            )
 
     def _identify(self, *, device_id: str, mobile: str) -> tuple[DeviceRecord, StaffRecord | None]:
         """Read the phone and the staff row in one read transaction, never the writer."""
@@ -267,7 +366,13 @@ class AuthService:
         now = utc_iso(self._clock.now_utc())
         with self._database.write() as connection:
             sessions_repo.revoke(connection, token_hash=sha256_hex(token), revoked_at=now, reason=reason)
-        log.info("auth.logout reason=%s", reason)
+        self._note(
+            "auth.logout",
+            "auth.logout reason=%s",
+            (reason,),
+            actor="session",
+            detail={"reason": reason},
+        )
 
     def revoke_staff_sessions(self, *, staff_ids: Sequence[str], reason: str) -> int:
         """Kill every live session of these people; the shift-close hook calls this."""
@@ -276,7 +381,13 @@ class AuthService:
         with self._database.write() as connection:
             for staff_id in staff_ids:
                 revoked += sessions_repo.revoke_for_staff(connection, staff_id=staff_id, revoked_at=now, reason=reason)
-        log.info("auth.revoke_sessions reason=%s staff=%s count=%d", reason, list(staff_ids), revoked)
+        self._note(
+            "auth.revoke_sessions",
+            "auth.revoke_sessions reason=%s staff=%s count=%d",
+            (reason, list(staff_ids), revoked),
+            actor="shift-close",
+            detail={"reason": reason, "staff": list(staff_ids), "count": revoked},
+        )
         return revoked
 
     def directory(self) -> Sequence[StaffSummary]:
@@ -301,7 +412,14 @@ class AuthService:
             if staff is None:
                 raise StaffNotFound(staff_id)
             staff_repo.clear_failures(connection, staff_id=staff_id)
-        log.info("auth.unlock staff=%s actor=%s", staff_id, actor_id)
+        self._note(
+            "auth.unlock",
+            "auth.unlock staff=%s actor=%s",
+            (staff_id, actor_id),
+            actor=actor_id,
+            subject=staff_id,
+            detail={"rationale": "manager unlock"},
+        )
 
     def reset_pin(self, *, staff_id: str, pin: str, actor_id: str) -> None:
         """Set a policy-compliant PIN and drop every session of that person."""
@@ -315,7 +433,14 @@ class AuthService:
             staff_repo.set_pin_hash(connection, staff_id=staff_id, pin_hash=digest, updated_at=utc_iso(now))
             staff_repo.clear_failures(connection, staff_id=staff_id)
             sessions_repo.revoke_for_staff(connection, staff_id=staff_id, revoked_at=utc_iso(now), reason="pin_reset")
-        log.info("auth.pin_reset staff=%s actor=%s", staff_id, actor_id)
+        self._note(
+            "auth.pin_reset",
+            "auth.pin_reset staff=%s actor=%s",
+            (staff_id, actor_id),
+            actor=actor_id,
+            subject=staff_id,
+            detail={"sessions_revoked": True},
+        )
 
     def _decoy(self) -> str:
         """A stable digest to verify against when the mobile is unknown (timing parity)."""
@@ -353,10 +478,8 @@ class AuthService:
             staff_repo.record_failure(
                 connection, staff_id=staff.staff_id, failed_attempts=0, locked_until=utc_iso(until)
             )
-            log.info("auth.lock staff=%s until=%s", staff.staff_id, utc_iso(until))
             return AccountLocked(until)
         staff_repo.record_failure(connection, staff_id=staff.staff_id, failed_attempts=attempts, locked_until=None)
-        log.info("auth.login result=bad_pin staff=%s attempts=%d", staff.staff_id, attempts)
         return InvalidCredentials("mobile or PIN is wrong")
 
     def _issue(self, connection: Connection, staff: StaffRecord, device: DeviceRecord, now: datetime) -> IssuedSession:
@@ -386,7 +509,6 @@ class AuthService:
             staff_repo.clear_failures(connection, staff_id=staff.staff_id)
         sessions_repo.purge_expired(connection, before=session.issued_at)
         principal = self._principal(connection, staff, device, session)
-        log.info("auth.login result=ok staff=%s device=%s", staff.staff_id, device.device_id)
         return IssuedSession(token=token, csrf_token=csrf_token, principal=principal)
 
     def _principal(
