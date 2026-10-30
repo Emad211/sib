@@ -84,7 +84,12 @@
           <option value="">همه</option>
           <option value="open" {% if active_filters.status == 'open' %}selected{% endif %}>باز</option>
           <option value="closed" {% if active_filters.status == 'closed' %}selected{% endif %}>بسته</option>
+          <option value="voided" {% if active_filters.status == 'voided' %}selected{% endif %}>باطل‌شده</option>
         </select>
+      </div>
+      <div class="field">
+        <label>استثناها</label>
+        <label style="display:flex;gap:.3rem;align-items:center"><input type="checkbox" name="special" value="1" {% if active_filters.special %}checked{% endif %}> فقط ابطال‌شده، بازگشایی‌شده و مصرفی استثنا</label>
       </div>
       <div class="field">
         <label>بیمه</label>
@@ -122,7 +127,8 @@
       <div class="sum-box"><div class="sum-label">تعداد فاکتور</div><div class="sum-value">{{ total_count }}</div></div>
       <div class="sum-box"><div class="sum-label">باز</div><div class="sum-value">{{ total_open }}</div></div>
       <div class="sum-box"><div class="sum-label">بسته</div><div class="sum-value">{{ total_closed }}</div></div>
-      <div class="sum-box"><div class="sum-label">جمع مبلغ (ت)</div><div class="sum-value">{{ (total_amount or 0)|int | fa_num }}</div></div>
+      <div class="sum-box"><div class="sum-label">باطل‌شده</div><div class="sum-value">{{ total_voided }}</div></div>
+      <div class="sum-box"><div class="sum-label">جمع فاکتورهای بسته (ت)</div><div class="sum-value">{{ (total_amount or 0)|int | fa_num }}</div></div>
     </div>
   </div>
 
@@ -139,14 +145,11 @@
         <thead>
           <tr>
             <th>شماره</th>
-            <th>باز شده</th>
-            <th>بسته شده</th>
+            <th>زمان</th>
             <th>وضعیت</th>
-            <th>مبلغ کل</th>
+            <th>مبلغ</th>
             <th>بیمه</th>
-            <th>بیمه تکمیلی</th>
             <th>پذیرش</th>
-            <th>بسته توسط</th>
             <th>جزئیات</th>
             <th>بیمار</th>
           </tr>
@@ -155,20 +158,17 @@
         {% for r in invoices %}
           <tr>
             <td><a href="{{ url_for('manager.invoice_history', invoice_id=r.id) }}" style="color:#a78bfa">{{ r.id }}</a></td>
-            <td>{{ r.opened_at | jalali_datetime }}</td>
-            <td>{{ r.closed_at and (r.closed_at | jalali_datetime) or '—' }}</td>
-            <td>{{ r.status }}</td>
+            <td>{{ (r.closed_at or r.opened_at) | jalali_datetime }}</td>
+            <td>{{ {'open': 'باز', 'closed': 'بسته', 'voided': 'باطل'}.get(r.status, r.status) }}</td>
             <td>{{ (r.total_amount or 0)|int | fa_num }}</td>
-            <td>{{ r.insurance_type or 'آزاد' }}</td>
-            <td>{{ r.supplementary_insurance or '—' }}</td>
-            <td>{{ r.opened_by_name or r.opened_by or '—' }}</td>
-            <td>{{ r.closed_by_name or r.closed_by or '—' }}</td>
+            <td>{{ r.insurance_type or 'آزاد' }}{% if r.supplementary_insurance %} + {{ r.supplementary_insurance }}{% endif %}</td>
+            <td>{{ r.closed_by_name or r.closed_by or r.opened_by_name or r.opened_by or '—' }}</td>
             <td><button class="btn-secondary" onclick="showInvoiceDetails({{ r.id }})">مشاهده</button></td>
             <td style="font-weight:600;">{{ r.patient_name }}</td>
           </tr>
         {% endfor %}
         {% if not invoices %}
-          <tr><td colspan="11" style="text-align:center;color:#6b7280;padding:1.5rem;">هیچ فاکتوری با این فیلترها یافت نشد</td></tr>
+          <tr><td colspan="8" style="text-align:center;color:#6b7280;padding:1.5rem;">هیچ فاکتوری با این فیلترها یافت نشد</td></tr>
         {% endif %}
         </tbody>
       </table>

@@ -1013,6 +1013,24 @@
    "status": 302
   }
  },
+ "POST /manager/invoice/<int:invoice_id>/reopen [manager.invoice_reopen]": {
+  "anon": {
+   "location": "/auth/login",
+   "status": 302
+  },
+  "manager": {
+   "location": "/manager/invoice/1/history",
+   "status": 302
+  },
+  "reception": {
+   "location": "/reception/",
+   "status": 302
+  },
+  "retired_doctor": {
+   "location": "/auth/login",
+   "status": 302
+  }
+ },
  "POST /manager/invoice/<int:invoice_id>/void [manager.invoice_void]": {
   "anon": {
    "location": "/auth/login",

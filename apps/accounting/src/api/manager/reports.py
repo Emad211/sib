@@ -38,6 +38,7 @@ def invoices_report():
     status = request.args.get("status", "").strip() or None  # open/closed
     insurance_type = request.args.get("insurance_type", "").strip() or None
     reception_user = request.args.get("reception_user", "").strip() or None
+    special = request.args.get("special") == "1"  # FB-25: exceptions only
 
     start_dt = jalali_to_start_end(date_from, True)
     end_dt = jalali_to_start_end(date_to, False)
@@ -58,6 +59,12 @@ def invoices_report():
     if reception_user:
         where.append("i.opened_by = :reception_user")
         params["reception_user"] = reception_user
+    if special:
+        where.append(
+            """(i.status = 'voided'
+               OR EXISTS (SELECT 1 FROM consumables_ledger c WHERE c.invoice_id = i.id AND COALESCE(c.is_exception, 0) = 1)
+               OR EXISTS (SELECT 1 FROM activity_logs a WHERE a.invoice_id = i.id AND a.action_type = 'invoice_reopen'))"""
+        )
     where_sql = " AND ".join(where)
 
     rows = db.execute(
@@ -80,8 +87,9 @@ def invoices_report():
 
     total_count = len(invoices)
     total_closed = sum(1 for r in invoices if r["status"] == "closed")
-    total_open = total_count - total_closed
-    total_amount = sum((r["total_amount"] or 0) for r in invoices)
+    total_open = sum(1 for r in invoices if r["status"] == "open")
+    total_voided = sum(1 for r in invoices if r["status"] == "voided")
+    total_amount = sum((r["total_amount"] or 0) for r in invoices if r["status"] == "closed")  # voided/open excluded
 
     # فیلترها
     users = db.execute("SELECT username, full_name FROM users ORDER BY full_name").fetchall()
@@ -119,6 +127,7 @@ def invoices_report():
         total_count=total_count,
         total_closed=total_closed,
         total_open=total_open,
+        total_voided=total_voided,
         total_amount=total_amount,
         users=users,
         insurances=insurances,
@@ -129,6 +138,7 @@ def invoices_report():
             "status": status,
             "insurance_type": insurance_type,
             "reception_user": reception_user,
+            "special": "1" if special else None,
         },
     )
 
@@ -540,7 +550,7 @@ def users_report():
             inv_count = db.execute(
                 """
                 SELECT COUNT(*) as cnt FROM invoices
-                WHERE opened_by = ? AND work_date BETWEEN ? AND ?
+                WHERE opened_by = ? AND work_date BETWEEN ? AND ? AND status != 'voided'
             """,
                 (uname, start_date, end_date),
             ).fetchone()["cnt"]
@@ -958,12 +968,12 @@ def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_
             """SELECT patient_id FROM (
                SELECT patient_id, work_date, id,
                       ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY work_date, id) AS rn
-               FROM invoices WHERE work_date BETWEEN ? AND ?)
+               FROM invoices WHERE work_date BETWEEN ? AND ? AND status != 'voided')
            WHERE rn = 1 ORDER BY work_date, id""",
             rng,
         )
     ]
-    in_range = "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ?"
+    in_range = "SELECT DISTINCT patient_id FROM invoices WHERE work_date BETWEEN ? AND ? AND status != 'voided'"
 
     patients = {
         r["id"]: r
@@ -975,7 +985,7 @@ def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_
         r["patient_id"]: r
         for r in db.execute(
             """SELECT patient_id, COUNT(*) AS cnt, MAX(opened_at) AS last_date FROM invoices
-           WHERE work_date BETWEEN ? AND ? GROUP BY patient_id""",
+           WHERE work_date BETWEEN ? AND ? AND status != 'voided' GROUP BY patient_id""",
             rng,
         )
     }
