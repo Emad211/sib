@@ -48,7 +48,7 @@ def index():
     today_invoices = db.execute(
         """
         SELECT COUNT(*) as count FROM invoices 
-        WHERE work_date = ?
+        WHERE work_date = ? AND status != 'voided'
     """,
         (today_date,),
     ).fetchone()["count"]
@@ -91,7 +91,7 @@ def index():
     today_patients = db.execute(
         """
         SELECT COUNT(DISTINCT patient_id) as count FROM invoices 
-        WHERE work_date = ?
+        WHERE work_date = ? AND status != 'voided'
     """,
         (today_date,),
     ).fetchone()["count"]
@@ -189,7 +189,7 @@ def index():
     month_invoices = db.execute(
         """
         SELECT COUNT(*) as count FROM invoices 
-        WHERE work_date >= ?
+        WHERE work_date >= ? AND status != 'voided'
     """,
         (month_start_date,),
     ).fetchone()["count"]
@@ -323,6 +323,12 @@ def invoice_history(invoice_id):
         items += [
             {"kind": label, "name": r["name"], "amount": r["amount"] or 0} for r in db.execute(sql, (invoice_id,))
         ]
+    grouped = {}
+    for it in items:  # FB-28: identical lines once, ×N, summed
+        g_ = grouped.setdefault((it["kind"], it["name"]), {"kind": it["kind"], "name": it["name"], "amount": 0, "count": 0})
+        g_["amount"] += it["amount"]
+        g_["count"] += 1
+    items = list(grouped.values())
     events = [
         dict(r) | {"at_fa": format_jalali_datetime(r["created_at"], include_seconds=True)}
         for r in db.execute(
@@ -389,6 +395,54 @@ def invoice_void(invoice_id):
         description=("بازپرداخت فاکتور: " if kind == "refund" else "ابطال فاکتور: ") + reason,
     )
     flash("فاکتور باطل شد و از گزارش‌ها کم شد.", "success")
+    return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
+
+
+@bp.route("/invoice/<int:invoice_id>/reopen", methods=["POST"])
+@login_required
+@manager_required
+def invoice_reopen(invoice_id):
+    """Reopen a closed invoice of the shift that is running now, so reception can correct it (FB-25).
+
+    Older invoices cannot be reopened: items added now would carry today's shift and date.
+    For those the manager voids the invoice and reception enters a correct one.
+    """
+    from src.domain.shifts import scheduled_shift
+
+    db = get_db()
+    reason = " ".join(request.form.get("reason", "").split())[:300]
+    inv = db.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+    if inv is None:
+        abort(404)
+    shift, work_date = scheduled_shift(iran_now())
+    problem = None
+    if inv["status"] != "closed":
+        problem = "فقط فاکتور بسته‌شده را می‌توان دوباره باز کرد."
+    elif not reason:
+        problem = "دلیل را بنویسید."
+    elif (inv["work_date"], inv["shift"]) != (work_date, shift):
+        problem = "فقط فاکتور شیفتِ جاری قابل بازگشایی است؛ برای فاکتور قدیمی‌تر آن را باطل کنید تا پذیرش فاکتور درست را ثبت کند."
+    if problem:
+        flash(problem, "error")
+        return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
+    db.execute(
+        "UPDATE invoices SET status = 'open', closed_at = NULL, closed_by = NULL, closed_by_name = NULL "
+        "WHERE id = ? AND status = 'closed'",
+        (invoice_id,),
+    )
+    db.execute("DELETE FROM invoice_payment_lines WHERE invoice_id = ?", (invoice_id,))  # rewritten when closed again
+    db.commit()
+    log_activity(
+        ActionType.INVOICE_REOPEN,
+        ActionCategory.INVOICE,
+        invoice_id=invoice_id,
+        patient_id=inv["patient_id"],
+        amount=inv["total_amount"] or 0,
+        old_value=f"closed by {inv['closed_by']} at {inv['closed_at']}",
+        new_value="open",
+        description="بازگشایی برای اصلاح: " + reason,
+    )
+    flash("فاکتور دوباره باز شد؛ پذیرش شیفت می‌تواند اصلاح و دوباره ببندد.", "success")
     return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
 
 
@@ -495,7 +549,7 @@ def chart_data():
             result = db.execute(
                 """
                 SELECT COUNT(*) as val FROM invoices 
-                WHERE work_date = ?
+                WHERE work_date = ? AND status != 'voided'
             """,
                 (day_key,),
             ).fetchone()["val"]
@@ -504,7 +558,7 @@ def chart_data():
             result = db.execute(
                 """
                 SELECT COUNT(DISTINCT patient_id) as val FROM invoices 
-                WHERE work_date = ?
+                WHERE work_date = ? AND status != 'voided'
             """,
                 (day_key,),
             ).fetchone()["val"]

@@ -51,7 +51,7 @@
         {% if items %}
         <div class="table-scroll"><table>
             <thead><tr><th>نوع</th><th>عنوان</th><th>مبلغ</th></tr></thead>
-            <tbody>{% for it in items %}<tr><td>{{ it.kind }}</td><td>{{ it.name or '—' }}</td><td>{{ "{:,.0f}".format(it.amount) }}</td></tr>{% endfor %}</tbody>
+            <tbody>{% for it in items %}<tr><td>{{ it.kind }}</td><td>{{ it.name or '—' }}{% if it.count > 1 %} ×{{ it.count }}{% endif %}</td><td>{{ "{:,.0f}".format(it.amount) }}</td></tr>{% endfor %}</tbody>
         </table></div>
         {% else %}<div class="muted">فاکتور آیتمی ندارد.</div>{% endif %}
     </div>
@@ -62,6 +62,13 @@
         <div class="muted">{{ void.reason }} · {{ void.voided_by }} · مبلغ اصلی {{ "{:,.0f}".format(void.amount) }}{% if void.refund_method %} · بازپرداخت با {{ 'کارت' if void.refund_method == 'card' else 'نقد' }}{% endif %}</div>
     </div>
     {% elif inv.status == 'closed' %}
+    <div class="card"><h2>بازگشایی برای اصلاح</h2>
+        <form method="post" action="{{ url_for('manager.invoice_reopen', invoice_id=inv.id) }}" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
+            <input type="text" name="reason" maxlength="300" placeholder="دلیل اصلاح (الزامی)" required style="min-width:260px">
+            <button type="submit">باز کردن دوباره</button>
+        </form>
+        <div class="muted" style="margin-top:.4rem">فقط برای فاکتور شیفتِ جاری. برای فاکتور قدیمی‌تر از «ابطال» استفاده کنید.</div>
+    </div>
     <div class="card"><h2>ابطال / بازپرداخت</h2>
         <form method="post" action="{{ url_for('manager.invoice_void', invoice_id=inv.id) }}" onsubmit="return confirm('این فاکتور از همهٔ گزارش‌ها کم می‌شود و قابل بازگشت نیست. ادامه؟');" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
             <select name="kind" onchange="this.form.refund_method.style.display = this.value === 'refund' ? '' : 'none'"><option value="void">ابطال (پولی پس داده نشده)</option><option value="refund">بازپرداخت پول به بیمار</option></select>

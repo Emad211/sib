@@ -77,3 +77,41 @@ def test_staff_performance_page_matches_db(synthetic_app):
     rec = perf.receptionists(conn, "2000-01-01", "2100-01-01")
     conn.close()
     assert sum(r["visits"] for r in rec) == visits
+
+
+def test_reopen_current_shift_invoice_then_close_again(synthetic_app, monkeypatch):
+    from src.common import utils
+    from src.domain.shifts import scheduled_shift
+
+    iid, _ = closed_invoice(synthetic_app)
+    shift, wd = scheduled_shift(utils.iran_now())
+    c = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
+    c.execute("UPDATE invoices SET work_date=?, shift=? WHERE id=?", (wd, shift, iid))
+    c.commit()
+    c.close()
+    m = mgr(synthetic_app)
+    m.post(f"/manager/invoice/{iid}/reopen", data={"reason": ""})
+    assert q(synthetic_app, "SELECT status FROM invoices WHERE id=?", iid) == [("closed",)]
+    m.post(f"/manager/invoice/{iid}/reopen", data={"reason": "آیتم اشتباه"})
+    assert q(synthetic_app, "SELECT status, closed_at, closed_by FROM invoices WHERE id=?", iid) == [("open", None, None)]
+    assert q(synthetic_app, "SELECT COUNT(*) FROM invoice_payment_lines WHERE invoice_id=?", iid) == [(0,)]
+    assert q(synthetic_app, "SELECT COUNT(*) FROM activity_logs WHERE action_type='invoice_reopen' AND invoice_id=?", iid) == [(1,)]
+
+
+def test_reopen_refused_for_older_shift(synthetic_app):
+    iid, _ = closed_invoice(synthetic_app)
+    q(synthetic_app, "SELECT 1")
+    mgr(synthetic_app).post(f"/manager/invoice/{iid}/reopen", data={"reason": "x"})
+    assert q(synthetic_app, "SELECT status FROM invoices WHERE id=?", iid) == [("closed",)]
+
+
+def test_invoice_report_excludes_voided_from_sum_and_filters_exceptions(synthetic_app):
+    iid, total = closed_invoice(synthetic_app)
+    m = mgr(synthetic_app)
+    url = "/manager/reports/invoices?from=1404/01/01&to=1405/12/29"
+    base = m.get(url).get_data(as_text=True)
+    m.post(f"/manager/invoice/{iid}/void", data={"kind": "void", "reason": "تست"})
+    after = m.get(url).get_data(as_text=True)
+    assert "باطل" in after and base != after
+    sp = m.get(url + "&special=1").get_data(as_text=True)
+    assert f"invoice/{iid}/history" in sp
