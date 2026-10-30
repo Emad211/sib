@@ -3,6 +3,7 @@
 import threading
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from shift.adapters.db.core import BUSY_TIMEOUT_MS, Database
 
@@ -25,6 +26,32 @@ def test_write_transaction_rolls_back_on_error(database: Database) -> None:
         assert (
             int(connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name='proj_stock'").scalar_one())
             == 0
+        )
+
+
+def test_read_connections_are_query_only(database: Database) -> None:
+    with database.read() as connection:
+        assert int(connection.exec_driver_sql("PRAGMA query_only").scalar_one()) == 1
+        with pytest.raises(OperationalError, match="readonly"):
+            connection.exec_driver_sql("INSERT INTO meta_projection (name, last_seq) VALUES ('read-probe', 1)")
+
+    with database.write() as connection:
+        assert int(connection.exec_driver_sql("PRAGMA query_only").scalar_one()) == 0
+        connection.exec_driver_sql("INSERT INTO meta_projection (name, last_seq) VALUES ('write-probe', 1)")
+
+
+def test_write_error_is_not_masked_by_a_rollback_that_cannot_run(database: Database) -> None:
+    with pytest.raises(RuntimeError, match="boom"):
+        with database.write() as connection:
+            connection.exec_driver_sql("ROLLBACK")  # the driver already ended the transaction
+            raise RuntimeError("boom")
+
+    with database.write() as connection:
+        connection.exec_driver_sql("UPDATE meta_projection SET last_seq = 7 WHERE name = 'proj_stock'")
+    with database.read() as connection:
+        assert (
+            int(connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name='proj_stock'").scalar_one())
+            == 7
         )
 
 

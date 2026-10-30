@@ -1,9 +1,11 @@
 """SQLAlchemy Core access to the shift SQLite database."""
 
+import logging
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +15,13 @@ from sqlalchemy.pool import QueuePool
 
 from shift.adapters.db.migrations import MigrationReport, run_migrations
 
+log = logging.getLogger(__name__)
+
 BUSY_TIMEOUT_MS = 5000
 SQLITE_TIMEOUT_SECONDS = 5.0
 
 
-def _apply_pragmas(dbapi_connection: Any, _record: Any) -> None:
+def _apply_pragmas(dbapi_connection: Any, _record: Any, *, query_only: bool = False) -> None:
     """Set the WAL writer contract on every pooled connection (gap S2)."""
     cursor = dbapi_connection.cursor()
     try:
@@ -25,6 +29,9 @@ def _apply_pragmas(dbapi_connection: Any, _record: Any) -> None:
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA synchronous = NORMAL")
         cursor.execute("PRAGMA foreign_keys = ON")
+        if query_only:
+            # Read connections cannot write, so no errant write bypasses the single writer.
+            cursor.execute("PRAGMA query_only = 1")
     finally:
         cursor.close()
 
@@ -43,7 +50,7 @@ def _create_engine(path: Path, *, single_writer: bool) -> Engine:
         connect_args={"timeout": SQLITE_TIMEOUT_SECONDS, "check_same_thread": False},
         **options,
     )
-    event.listen(engine, "connect", _apply_pragmas)
+    event.listen(engine, "connect", partial(_apply_pragmas, query_only=not single_writer))
     return engine
 
 
@@ -58,7 +65,7 @@ class Database:
 
     @contextmanager
     def read(self) -> Iterator[Connection]:
-        """Yield a read connection; callers must not write through it."""
+        """Yield a read-only connection; SQLite itself rejects writes through it."""
         with self._read_engine.connect() as connection:
             yield connection
 
@@ -71,7 +78,10 @@ class Database:
                 yield connection
                 connection.exec_driver_sql("COMMIT" if commit else "ROLLBACK")
             except BaseException:
-                connection.exec_driver_sql("ROLLBACK")
+                try:
+                    connection.exec_driver_sql("ROLLBACK")
+                except Exception:  # noqa: BLE001 — the original failure is the useful one
+                    log.debug("rollback after failed write also failed", exc_info=True)
                 raise
 
     def migrate(self, backup_dir: str | Path | None = None) -> MigrationReport:

@@ -51,8 +51,9 @@ class ProjectionEngine:
             last_stock = projections_repo.last_seq(connection, projections_repo.STOCK)
             last_cash = projections_repo.last_seq(connection, projections_repo.CASH)
             start = min(last_stock, last_cash)
-            events = list(events_repo.iter_events(connection, start))
-            for event in events:
+            processed = 0
+            last_seq = start
+            for event in events_repo.iter_events(connection, start):
                 self._apply(
                     connection,
                     event,
@@ -63,10 +64,12 @@ class ProjectionEngine:
                 )
                 last_stock = max(last_stock, event.seq)
                 last_cash = max(last_cash, event.seq)
-            if events:
+                last_seq = event.seq
+                processed += 1
+            if processed:
                 projections_repo.set_meta(connection, projections_repo.STOCK, last_stock, checksum=None, built_at=None)
                 projections_repo.set_meta(connection, projections_repo.CASH, last_cash, checksum=None, built_at=None)
-            return SyncReport(processed=len(events), last_seq=events[-1].seq if events else start)
+            return SyncReport(processed=processed, last_seq=last_seq)
 
     def rebuild(self, *, dry_run: bool = False) -> RebuildReport:
         """Replay all events into shadow tables, compare checksums and swap (unless dry run)."""
