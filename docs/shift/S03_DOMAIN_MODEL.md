@@ -1,6 +1,6 @@
 # مدل دامنهٔ اپ شیفت
 
-> نسخه 1.1 · ۱۴۰۵/۰۸/۰۶ (پیش‌نویس، در SHF-1 دقیق می‌شود)
+> نسخه 1.2 · ۱۴۰۵/۰۸/۰۹ (پیش‌نویس، در SHF-1 دقیق می‌شود)
 
 ## ۱. موجودیت‌های پایه (قابل تنظیم و نسخه‌دار)
 
@@ -17,12 +17,15 @@
 
 ## ۲. شیفت
 
-- `shift_session`: شروع (با تحویل گرفتن)، مسئول صندوق، افراد حاضر، `cutoff_at`، پایان (با امضای دو طرف)، و `block_id` برای شیفت‌های پشت‌سرهم.
+- `shift_session`: شروع، مسئول صندوق، افراد حاضر، `cutoff_at`، پایان، و `block_id` برای شیفت‌های پشت‌سرهم.
+- `handover`: هر تحویل یک رکورد مستقل با `handover_id`؛ فیلدها: `shift_id`، `flow` (`reception`: صندوق + قفسهٔ پذیرش | `nurse`: اتاق CPR + ترالی)، `opened_at`، `signed_at`، و دو امضا. دو جریان هم‌زمان و مستقل‌اند و هیچ‌کدام منتظر دیگری نمی‌ماند (H-12، ADR-017).
 - شیفت جاری هر کاربر = آخرین `shift_session` باز که در آن حاضر است.
+
+> **اثر باز ADR-017:** انتخاب کلید projection صندوق (`proj_cash` امروز با `shift_id` کلید خورده است) و اینکه برش زمانی H-11 یک برش برای هر جریان باشد یا یکی برای شیفت، در این سند تعیین نشده و در SHF-2 به مالک ارائه می‌شود.
 
 ## ۳. رویدادها (فقط‌افزودنی)
 
-همه با: `id` (شماره ترتیبی سرور `seq`)، `client_event_id` / `idempotency_key` (کلید یکتای کلاینت)، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `device_id`، `shift_id`، `client_at` (زمان کلاینت)، `server_at` (زمان سرور)، `ref_event_id`.
+همه با: `id` (شماره ترتیبی سرور `seq`)، `client_event_id` / `idempotency_key` (کلید یکتای کلاینت)، `type`، `payload` (JSON با schema نسخه‌دار)، `actor_id`، `device_id`، `shift_id`، `handover_id` (فقط رویدادهای گروه تحویل؛ H-12)، `client_at` (زمان کلاینت)، `server_at` (زمان سرور)، `ref_event_id`.
 
 > **تکرارناپذیری و مدیریت خطای ساعت:**
 > - وجود `client_event_id` / `idempotency_key` تضمین می‌کند که بازپخش رویدادها از صف آفلاین گوشی (Outbox) پس از وصل مجدد شبکه هرگز رویداد تکراری درج نکرده و کاملاً تکرارناپذیر (Idempotent) عمل کند (`INSERT ... ON CONFLICT(idempotency_key) DO NOTHING`).
@@ -30,7 +33,7 @@
 
 | گروه | انواع |
 |---|---|
-| تحویل | `handover_started`، `cash_counted`، `item_counted`، `recount_requested`، `outgoing_counted`، `joint_counted`، `checklist_answered`، `parcel_handed`، `handover_signed`، `early_leave_reported` |
+| تحویل | `handover_started`، `cash_counted`، `item_counted`، `recount_requested`، `outgoing_counted`، `joint_counted`، `checklist_answered`، `parcel_handed`، `handover_signed`، `early_leave_reported`، `emergency_start_confirmed` |
 | مغایرت | `discrepancy_recorded` (خودکار) |
 | رویداد شیفت | `card_transfer_reported`، `refund_requested`، `campaign_discount_applied`، `cash_withdrawn`، `waste_reported`، `patient_item_held`، `patient_item_delivered`، `emergency_withdrawal`، `equipment_fault`، `fault_assigned`، `fault_fixed`، `vitals_recorded`، `followup_opened`، `cleaning_confirmed` |
 | تأیید | `approved`، `rejected`، `changed` (همه با `ref_event_id`) |
@@ -51,7 +54,23 @@ pending ─count(x)─► [x == E] ─► matched
 settled(j): discrepancy_recorded(E − j, به نام خروجی) ؛ مرجع شیفت بعد = j
 ```
 
-> **سؤال Q-09:** اگر شمارش دوم ورودی با مرجع نخواند ولی شمارش کور خروجی بخواند، نتیجه «matched» است یا به شمارش مشترک می‌رود؟ نمودار بالا فرض اول را گرفته است. سند منبع این حالت را صریح نگفته.
+> **Q-09 بسته شد (ADR-017، ۱۴۰۵/۰۸/۰۹):** اگر شمارش کور نفر خروجی (شمارش سوم) با مرجع بخواند، نتیجه «matched» است؛ شمارش مشترک لازم نیست و هیچ مغایرتی ثبت نمی‌شود. نمودار بالا همین را می‌گوید و اکنون تأییدِ مالک را دارد.
+
+### مغایرت صندوق (H-13)
+
+```text
+pending ─blind─► a, b ─► [a == b] ─► settled(a)
+                     ─► [a ≠ b] ─► joint ─count(j)─► settled(j)   یک بازشماری مشترک، هر دو نفر حاضر
+settled(v): عدد توافق‌شده v ثبت می‌شود ؛ اختلاف v با مرجع (اگر بود) ← discrepancy_recorded
+```
+
+### شروع اضطراری تک‌نفره (H-08)
+
+```text
+early_leave_reported ─► emergency_start_confirmed (تأییدکنندهٔ تلفنی، server_at) ─► تحویل تک‌نفره
+هر discrepancy_recorded این مسیر: بدون نام مسئول، در `open_decisions` برای بررسی مدیر؛
+هرگز خودکار به نام نفر غایب نوشته نمی‌شود.
+```
 
 ### سفارش خرید
 
@@ -80,3 +99,4 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 
 - 1.0، ۱۴۰۵/۰۸/۰۴: پیش‌نویس اول.
 - 1.1، ۱۴۰۵/۰۸/۰۶: افزودن فیلدهای `client_event_id` / `idempotency_key` برای تکرارناپذیری همگام‌سازی آفلاین، و تفکیک `client_at` و `server_at` برای مدیریت خطای اختلاف ساعت (Clock Skew).
+- 1.2، ۱۴۰۵/۰۸/۰۹: افزودن موجودیت `handover` با `handover_id` و دو جریان مستقل (H-12)، فیلد `handover_id` روی رویدادهای تحویل، رویداد `emergency_start_confirmed` (H-08)، بستن Q-09 در ماشین حالت شمارش، و ماشین حالت مغایرت صندوق (H-13) — همه طبق ADR-017.
