@@ -73,11 +73,16 @@ class SettingsService:
         return shift if shift is not None else covering(self._tehran_now())
 
     def snapshot(self, shift: ShiftKey | None = None) -> dict[SettingKey, SettingValue]:
-        """Every setting as `shift` sees it; with no shift, as the clock's shift sees it."""
+        """Every current setting as `shift` sees it; with no shift, as the clock's shift sees it.
+
+        A stored row whose key is no longer a policy key is history, not an option: it stays in
+        `setting_versions` (R-03) and is ignored here, e.g. `daily_card_skip_weekday` after ADR-018.
+        """
         at_shift = self._read_shift(shift).text
         with self._database.read() as connection:
             rows = settings_repo.list_effective(connection, at_shift)
-        values = {SettingKey(row.setting_key): _value(row) for row in rows}
+        known = {key.value for key in SettingKey}
+        values = {SettingKey(row.setting_key): _value(row) for row in rows if row.setting_key in known}
         missing = [key.value for key in SettingKey if key not in values]
         if missing:
             raise SettingError(f"settings missing from the database: {missing}")

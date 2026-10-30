@@ -119,7 +119,7 @@ def test_migration_creates_the_version_tables_and_lookup_indexes(database: Datab
     assert set(INDEXES) <= _names(database, "index")
 
 
-def test_the_migrations_seed_the_seven_policy_defaults(database: Database) -> None:
+def test_the_migrations_seed_the_setting_defaults(database: Database) -> None:
     with database.read() as connection:
         rows = connection.exec_driver_sql(
             "SELECT setting_key, value, version, effective_from_shift, changed_by FROM setting_versions "
@@ -135,6 +135,8 @@ def test_the_migrations_seed_the_seven_policy_defaults(database: Database) -> No
             "changed_by": "migration:m0004",
         },
         {
+            # Retired by ADR-018 (the card's Friday gap is clinic policy, not a setting): the row
+            # stays as history and `SettingsService.snapshot` ignores it.
             "setting_key": "daily_card_skip_weekday",
             "value": "4",
             "version": 1,
@@ -183,7 +185,9 @@ def test_the_migrations_seed_every_known_setting_key(database: Database) -> None
     seeded = {key for key, _ in m0004_settings_and_catalog.DEFAULTS}
     seeded |= {key for key, _ in m0008_schedule_settings.DEFAULTS}
 
-    assert seeded == {key.value for key in SettingKey}
+    assert {key.value for key in SettingKey} <= seeded, "every policy key must have a seeded row"
+    # ADR-018 retired `daily_card_skip_weekday`; its seeded row stays as history (R-03).
+    assert "daily_card_skip_weekday" in seeded
     assert m0004_settings_and_catalog.BASELINE_SHIFT == ShiftKey.baseline().text
     assert m0008_schedule_settings.BASELINE_SHIFT == ShiftKey.baseline().text
 

@@ -21,7 +21,7 @@ def service(database: Database) -> SettingsService:
     return SettingsService(database)
 
 
-def test_the_migration_seeds_the_seven_policy_defaults(service: SettingsService) -> None:
+def test_the_migration_seeds_the_policy_defaults(service: SettingsService) -> None:
     snapshot = service.snapshot()
 
     assert {key: value.value for key, value in snapshot.items()} == {
@@ -29,7 +29,6 @@ def test_the_migration_seeds_the_seven_policy_defaults(service: SettingsService)
         SettingKey.TAKEOVER_WINDOW_MINUTES: "30",
         SettingKey.WITHDRAWAL_CAP_TOMAN: "300000",
         SettingKey.SESSION_TTL_HOURS: "12",
-        SettingKey.DAILY_CARD_SKIP_WEEKDAY: "4",
         SettingKey.WEEKLY_COUNT_TIME: "07:30",
         SettingKey.WEEKLY_COUNT_WEEKDAY: "0",
     }

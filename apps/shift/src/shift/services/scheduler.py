@@ -2,9 +2,10 @@
 
 The module decides *when*: the daily manager card and the Monday weekly-count warning. What a job
 actually does is still a stub — the card's seven sections arrive with SHF-6.1 and the warning text
-with SHF-4.x — so each run only reports itself. Every time and weekday comes from the versioned
-settings through `ScheduleSettings`; this file holds no literal hour, and a missed run is caught up
-on the next poll because `due` compares the clock with the schedule rather than waiting for a tick.
+with SHF-4.x — so each run only reports itself. Every time comes from the versioned settings
+through `ScheduleSettings`; this file holds no literal hour, and a missed run is caught up on the
+next poll because `due` compares the clock with the schedule rather than waiting for a tick. The
+one fixed rule is the card's Friday gap (S01 §6): it is clinic policy, not a setting (ADR-018).
 """
 
 import logging
@@ -21,13 +22,15 @@ log = logging.getLogger(__name__)
 
 DAILY_CARD = "daily_card"
 WEEKLY_COUNT_WARNING = "weekly_count_warning"
+# S01 §6: there is no card on Friday, and Saturday's card covers both days. Clinic policy, so it is
+# code rather than a setting the manager could change (ADR-018); `datetime.weekday()` Monday is 0.
+DAILY_CARD_SKIP_WEEKDAY = 4
 
 
 class ScheduleSettings(Protocol):
     """Schedule inputs that live in the versioned settings, so a change needs no deploy (R-09)."""
 
     daily_card_time: time
-    daily_card_skip_weekday: int | None
     weekly_count_time: time
     weekly_count_weekday: int
 
@@ -80,11 +83,6 @@ class PolicySchedule:
         return self.settings.clock_time(SettingKey.CARD_TIME)
 
     @property
-    def daily_card_skip_weekday(self) -> int:
-        """The weekday without a card; a Python weekday number, so Monday is 0."""
-        return self.settings.number(SettingKey.DAILY_CARD_SKIP_WEEKDAY)
-
-    @property
     def weekly_count_time(self) -> time:
         """When the weekly shelf-count warning falls due."""
         return self.settings.clock_time(SettingKey.WEEKLY_COUNT_TIME)
@@ -124,7 +122,7 @@ class Scheduler:
         return to_tehran(self._clock.now_utc() if now is None else now)
 
     def _daily_card(self, moment: datetime) -> ScheduledTask | None:
-        if moment.weekday() == self._settings.daily_card_skip_weekday:
+        if moment.weekday() == DAILY_CARD_SKIP_WEEKDAY:
             return None
         return self._schedule(DAILY_CARD, moment, self._settings.daily_card_time)
 
