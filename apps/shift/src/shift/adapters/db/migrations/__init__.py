@@ -11,6 +11,7 @@ from shift.adapters.db.migrations import (
     m0002_auth_and_devices,
     m0003_accounting_mirror,
     m0004_settings_and_catalog,
+    m0005_audit_log,
     m0006_bridge_corrections,
     m0007_catalog_fixes,
 )
@@ -23,6 +24,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (2, "auth_and_devices", m0002_auth_and_devices.up),
     (3, "accounting_mirror", m0003_accounting_mirror.up),
     (4, "settings_and_catalog", m0004_settings_and_catalog.up),
+    (5, "audit_log", m0005_audit_log.up),
     (6, "bridge_corrections", m0006_bridge_corrections.up),
     (7, "catalog_fixes", m0007_catalog_fixes.up),
 ]
