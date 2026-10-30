@@ -35,21 +35,12 @@ class HandoverStep(StrEnum):
     DUAL_SIGN = "dual_sign"
 
 
+# Both flows finish the same way: the checklists, the parcels in transit, then the dual signature.
+_CLOSING_STEPS = (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN)
+
 FLOW_STEPS: Mapping[HandoverFlow, tuple[HandoverStep, ...]] = {
-    HandoverFlow.RECEPTION: (
-        HandoverStep.CASH,
-        HandoverStep.SHELF,
-        HandoverStep.CHECKLISTS,
-        HandoverStep.PARCELS,
-        HandoverStep.DUAL_SIGN,
-    ),
-    HandoverFlow.NURSING: (
-        HandoverStep.CPR_ROOM,
-        HandoverStep.TROLLEY,
-        HandoverStep.CHECKLISTS,
-        HandoverStep.PARCELS,
-        HandoverStep.DUAL_SIGN,
-    ),
+    HandoverFlow.RECEPTION: (HandoverStep.CASH, HandoverStep.SHELF, *_CLOSING_STEPS),
+    HandoverFlow.NURSING: (HandoverStep.CPR_ROOM, HandoverStep.TROLLEY, *_CLOSING_STEPS),
 }
 
 
@@ -90,6 +81,8 @@ class Handover:
             raise HandoverError("the handover cannot start while invoices are open (H-03)")
         if not outgoing_id.strip() or not incoming_id.strip():
             raise HandoverError("a handover starts with both people named")
+        if outgoing_id.strip() == incoming_id.strip():
+            raise HandoverError("one person never hands over to themselves (H-09)")
         return cls(flow, ShiftCutoff(shift_id, work_date, started_at), outgoing_id, incoming_id)
 
     @property
@@ -124,12 +117,20 @@ class Handover:
         return replace(self, early_left=True)
 
     def confirm_emergency_start(self, manager_id: str) -> Self:
-        """Record the manager's phone confirmation that lets the incoming person finish alone (H-08)."""
+        """Record the manager's phone confirmation that lets the incoming person finish alone (H-08).
+
+        The incoming person may already have signed at the dual-sign step; that one signature is
+        then all an emergency handover needs, so confirming closes it instead of leaving it stuck.
+        """
+        if self.closed or self.emergency_by:
+            raise HandoverError("the handover is past an emergency-start confirmation")
         if not self.early_left:
             raise HandoverError("no early leave was reported")
         if not manager_id.strip():
             raise HandoverError("the confirming manager is required")
-        return replace(self, emergency_by=manager_id)
+        end = len(FLOW_STEPS[self.flow])
+        signed_alone = self.step is HandoverStep.DUAL_SIGN and Signer.INCOMING in self.signatures
+        return replace(self, emergency_by=manager_id, position=end if signed_alone else self.position)
 
     def sign(self, signer: Signer) -> Self:
         """Add one signature at the dual-sign step; the last required one closes the handover."""

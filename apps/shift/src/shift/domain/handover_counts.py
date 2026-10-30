@@ -46,6 +46,12 @@ class _BlindChain:
         status = CountStatus.SETTLED if discrepancy else CountStatus.MATCHED
         return replace(self, status=status, agreed=counted, discrepancy=discrepancy), status
 
+    @staticmethod
+    def _refuse_negative(counted: int) -> None:
+        """A count is what the shelf or box actually holds, so it is never below zero."""
+        if counted < 0:
+            raise HandoverError("a count cannot be negative")
+
     def _count_alone(self, counted: int) -> tuple[Self, CountStatus]:
         """Alone: one count, then one self-recount before an unnamed settlement (H-08; provisional 2026-10-31)."""
         if counted == self.reference:
@@ -61,6 +67,7 @@ class ItemCount(_BlindChain):
 
     def count(self, counted: int) -> tuple[Self, CountStatus]:
         """Take the count the chain asks for and say what the operator does next."""
+        self._refuse_negative(counted)
         if self.settled:
             raise HandoverError("this item is already settled")
         if self.culprit_id is None:
@@ -84,6 +91,7 @@ class CashCount(_BlindChain):
 
     def count(self, counted: int) -> tuple[Self, CountStatus]:
         """Take the count the chain asks for and say what the operator does next."""
+        self._refuse_negative(counted)
         if self.settled:
             raise HandoverError("the cash box is already settled")
         if self.culprit_id is None:

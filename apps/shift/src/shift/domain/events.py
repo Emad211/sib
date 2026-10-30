@@ -88,6 +88,8 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
     EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),
     EventType.HANDOVER_RECOUNT_REQUESTED: EventSpec(RecountRequested, no_effects, requires_shift=True),
+    # Setting the stock here is sound only because a matched outgoing count equals the reference
+    # (Q-09); a mismatched one is provisional and belongs to the joint count. See `OutgoingCounted`.
     EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, stock_set, requires_shift=True),
     EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, joint_count, requires_shift=True),
     EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),

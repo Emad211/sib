@@ -1,7 +1,8 @@
 """Machine invariants for both handover flows and both blind chains (H-04, H-05, H-13, R-02).
 
 Steps never skip or reorder, a closed handover and a settled chain are terminal, and every
-client-facing count answer is a number-free status: the reference never appears in it.
+client-facing count answer is a number-free status: the reference never appears in it. A named
+item gap settles only after the joint count, so no count settles an item before `JOINT` (H-05).
 """
 
 from datetime import UTC, date, datetime
@@ -27,9 +28,9 @@ COUNTS = st.lists(NUMBERS, max_size=6)
 
 ALLOWED = {
     ("item", False): {
-        CountStatus.FIRST: {CountStatus.RECOUNT, CountStatus.MATCHED, CountStatus.SETTLED},
-        CountStatus.RECOUNT: {CountStatus.OUTGOING, CountStatus.MATCHED, CountStatus.SETTLED},
-        CountStatus.OUTGOING: {CountStatus.JOINT, CountStatus.MATCHED, CountStatus.SETTLED},
+        CountStatus.FIRST: {CountStatus.RECOUNT, CountStatus.MATCHED},
+        CountStatus.RECOUNT: {CountStatus.OUTGOING, CountStatus.MATCHED},
+        CountStatus.OUTGOING: {CountStatus.JOINT, CountStatus.MATCHED},
         CountStatus.JOINT: {CountStatus.MATCHED, CountStatus.SETTLED},
     },
     ("item", True): {

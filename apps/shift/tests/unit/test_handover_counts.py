@@ -1,5 +1,7 @@
 """Every transition of the item (H-05, Q-09) and cash (H-13) blind chains, with both people and alone."""
 
+from collections.abc import Callable
+
 import pytest
 
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
@@ -170,3 +172,33 @@ def test_alone_a_cash_self_recount_that_reads_the_reference_matches() -> None:
 
     assert status is CountStatus.MATCHED
     assert settled.discrepancy is None
+
+
+@pytest.mark.parametrize("new_chain", [_item, _cash])
+@pytest.mark.parametrize("counted", [-1, -500_000])
+def test_a_count_is_never_negative(new_chain: Callable[[], ItemCount | CashCount], counted: int) -> None:
+    with pytest.raises(HandoverError):
+        new_chain().count(counted)
+
+
+@pytest.mark.parametrize("new_chain", [_item, _cash])
+def test_a_negative_count_is_refused_once_the_chain_is_underway(
+    new_chain: Callable[[], ItemCount | CashCount],
+) -> None:
+    started = new_chain()
+    underway, _ = started.count(started.reference - 1)
+
+    with pytest.raises(HandoverError):
+        underway.count(-1)
+
+
+@pytest.mark.parametrize(
+    "alone",
+    [ItemCount(reference=10, culprit_id=None), CashCount(reference=1_000, culprit_id=None)],
+    ids=["item", "cash"],
+)
+def test_a_lone_counter_is_never_asked_for_a_negative_figure(
+    alone: ItemCount | CashCount,
+) -> None:
+    with pytest.raises(HandoverError):
+        alone.count(-1)

@@ -98,6 +98,12 @@ def test_a_handover_starts_with_both_people_named(outgoing_id: str, incoming_id:
         _start(outgoing_id=outgoing_id, incoming_id=incoming_id)
 
 
+@pytest.mark.parametrize("person", ["staff-a", " staff-a "])
+def test_one_person_never_hands_over_to_themselves(person: str) -> None:
+    with pytest.raises(HandoverError):
+        _start(outgoing_id=person, incoming_id="staff-a")
+
+
 @pytest.mark.parametrize("flow", list(HandoverFlow))
 def test_advance_walks_the_flow_in_order_and_never_closes(flow: HandoverFlow) -> None:
     handover = _start(flow)
@@ -169,6 +175,24 @@ def test_an_early_leave_cannot_be_reported_twice_or_after_an_emergency_start() -
         _start().report_early_leave().confirm_emergency_start("manager-1").report_early_leave()
 
 
+def test_an_emergency_start_is_confirmed_once() -> None:
+    confirmed = _start().report_early_leave().confirm_emergency_start("manager-1")
+
+    with pytest.raises(HandoverError):
+        confirmed.confirm_emergency_start("manager-2")
+
+
+def test_a_closed_handover_cannot_be_confirmed_after_the_fact() -> None:
+    emergency = _start().report_early_leave().confirm_emergency_start("manager-1")
+    while emergency.step is not HandoverStep.DUAL_SIGN:
+        emergency = emergency.advance()
+    closed = emergency.sign(Signer.INCOMING)
+    assert closed.closed
+
+    with pytest.raises(HandoverError):
+        closed.confirm_emergency_start("manager-2")
+
+
 def test_a_confirmed_emergency_start_is_unnamed_and_needs_only_the_incoming_signature() -> None:
     handover = _start().report_early_leave().confirm_emergency_start("manager-1")
     assert handover.culprit_id is None
@@ -181,3 +205,17 @@ def test_a_confirmed_emergency_start_is_unnamed_and_needs_only_the_incoming_sign
 
     handover = handover.sign(Signer.INCOMING)
     assert handover.closed
+
+
+def test_confirming_the_emergency_start_closes_a_handover_the_incoming_person_already_signed() -> None:
+    """H-08: the incoming person signed first, the outgoing one then left without signing."""
+    waiting = _to_dual_sign().sign(Signer.INCOMING).report_early_leave()
+    assert not waiting.closed
+
+    closed = waiting.confirm_emergency_start("manager-1")
+
+    assert closed.closed
+    assert closed.step is None
+    assert closed.culprit_id is None
+    with pytest.raises(HandoverError):
+        closed.sign(Signer.OUTGOING)

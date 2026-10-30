@@ -32,7 +32,13 @@ class RecountRequested(CountTarget):
 
 
 class OutgoingCounted(ItemCounted):
-    """The outgoing person's blind third count of one item (H-05, Q-09)."""
+    """The outgoing person's blind third count of one item (H-05, Q-09).
+
+    Emit it only when that blind count reads the reference: the item then matches without a
+    joint count and the figure may replace the shelf quantity (S03 §5). On any other answer the
+    figure is provisional — emit `RecountRequested` for the joint count and let `JointCounted`
+    move the stock, so an unconfirmed figure never becomes the reference.
+    """
 
 
 class JointCounted(CountTarget):
