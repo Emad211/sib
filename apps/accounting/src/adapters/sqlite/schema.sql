@@ -426,3 +426,9 @@ CREATE TABLE IF NOT EXISTS invoice_voids (
     voided_at TIMESTAMP DEFAULT (datetime('now', '+3 hours', '+30 minutes')),
     FOREIGN KEY (invoice_id) REFERENCES invoices (id)
 );
+
+-- Shift app reads these two tables by watermark ("everything since"), so the timestamp is indexed
+-- (migration 0007).
+CREATE INDEX IF NOT EXISTS idx_patients_created_at ON patients (created_at);
+CREATE INDEX IF NOT EXISTS idx_invoice_voids_voided_at ON invoice_voids (voided_at);
+-- The v_shift_voids_v1 view, and the closed-invoice-only money views, are created by migration 0007 only.
