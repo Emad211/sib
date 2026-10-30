@@ -1,5 +1,6 @@
 """Audit trail: durable rows in `audit_log` plus the dedicated audit sink (S02 §3.2)."""
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -97,3 +98,30 @@ class AuditService:
         secrets = _secret_paths(entry.detail)
         if secrets:
             raise AuditError(f"audit detail must not carry credentials: {sorted(secrets)}")
+
+
+def record_action(
+    auditor: "AuditService | None",
+    sink: logging.Logger,
+    *,
+    action: str,
+    actor: str,
+    outcome: AuditOutcome = AuditOutcome.OK,
+    subject: str | None = None,
+    detail: Mapping[str, Any] | None = None,
+    message: str,
+    message_args: tuple[object, ...] = (),
+) -> None:
+    """Record one audited action through `auditor`, or fall back to the sink alone.
+
+    A service receives its `AuditService` from the application lifespan, so an audited action
+    reaches both destinations. A unit test that builds the service on its own keeps the
+    sink-only behaviour instead of failing for want of a database.
+
+    The caller must be outside every write transaction: `AuditService.record` takes the single
+    writer, and SQLite would deadlock on the connection the caller already holds.
+    """
+    if auditor is None:
+        sink.info(message, *message_args)
+        return
+    auditor.record(AuditEntry(actor_id=actor, action=action, outcome=outcome, subject_id=subject, detail=detail or {}))

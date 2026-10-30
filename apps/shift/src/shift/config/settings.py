@@ -8,6 +8,16 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PORT = 8443
+# ADR-008 caps retention at 17 snapshots (7 daily, 4 weekly, 6 monthly); `BackupService` keeps a
+# flat count until the tiered rotation of O01 §2 is implemented.
+DEFAULT_BACKUP_KEEP = 17
+
+
+def _as_count(value: str, *, minimum: int = 1) -> int:
+    count = int(value)
+    if count < minimum:
+        raise ValueError(f"count must be at least {minimum}: {count}")
+    return count
 
 
 def _as_bool(value: str) -> bool:
@@ -38,6 +48,14 @@ class Settings:
     port: int = DEFAULT_PORT
     hash_chain: bool = True
     environment: str = "development"
+    # The accounting copy the read bridge polls; not configured means the bridge never runs.
+    accounting_db_path: Path | None = None
+    backup_dir: Path | None = None
+    backup_mirror_dir: Path | None = None
+    backup_keep: int = DEFAULT_BACKUP_KEEP
+    # Off by default so a test or a one-off script never starts a timer by accident; the
+    # production entry point turns them on through `SHIFT_BACKGROUND_JOBS` (see `from_env`).
+    background_jobs: bool = False
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -45,6 +63,8 @@ class Settings:
         env = os.environ if environ is None else environ
         root = Path(env.get("SHIFT_HOME", APP_ROOT)).resolve()
         log_dir = Path(env.get("SHIFT_LOG_DIR", root / "logs")).resolve()
+        accounting = env.get("SHIFT_ACCOUNTING_DB", "").strip()
+        mirror = env.get("SHIFT_BACKUP_MIRROR", "").strip()
         return cls(
             database_path=Path(env.get("SHIFT_DB_PATH", root / "shift.db")).resolve(),
             log_dir=log_dir,
@@ -54,7 +74,17 @@ class Settings:
             port=_as_port(env.get("SHIFT_PORT", str(DEFAULT_PORT))),
             hash_chain=_as_bool(env.get("SHIFT_HASH_CHAIN", "1")),
             environment=env.get("SHIFT_ENV", "development"),
+            accounting_db_path=Path(accounting).resolve() if accounting else None,
+            backup_dir=Path(env.get("SHIFT_BACKUP_DIR", root / "backups")).resolve(),
+            backup_mirror_dir=Path(mirror).resolve() if mirror else None,
+            backup_keep=_as_count(env.get("SHIFT_BACKUP_KEEP", str(DEFAULT_BACKUP_KEEP))),
+            background_jobs=_as_bool(env.get("SHIFT_BACKGROUND_JOBS", "1")),
         )
+
+    @property
+    def resolved_backup_dir(self) -> Path:
+        """Where snapshots land: next to the database unless `SHIFT_BACKUP_DIR` says otherwise."""
+        return self.backup_dir if self.backup_dir is not None else self.database_path.parent / "backups"
 
     def read_or_create_secret(self) -> str:
         """Return the signing secret, creating it atomically on first use."""

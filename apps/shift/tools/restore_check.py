@@ -7,10 +7,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sqlalchemy import create_engine  # noqa: E402
-from sqlalchemy.engine import URL  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 
+from shift.adapters.accounting.readonly import create_readonly_engine  # noqa: E402
 from shift.adapters.db import migrations  # noqa: E402
 from shift.adapters.db.events_repo import iter_events  # noqa: E402
 from shift.services.backup import BackupRejected, Snapshot, inspect_snapshot  # noqa: E402
@@ -42,8 +41,9 @@ def check_backup(path: str | Path, *, require_links: bool = True) -> RestoreChec
             problem=f"schema v{snapshot.schema_version} is newer than this code v{migrations.LATEST}",
         )
 
-    uri = snapshot.path.resolve().as_uri() + "?mode=ro"
-    engine = create_engine(URL.create("sqlite+pysqlite", database=uri, query={"uri": "true"}))
+    # The same read-only engine the accounting bridge uses: one place builds a `mode=ro` URI,
+    # so a snapshot with a space or a `#` in its name is opened as a file, not as a fragment.
+    engine = create_readonly_engine(snapshot.path)
     try:
         with engine.connect() as connection:
             chain = verify_chain(iter_events(connection), require_links=require_links)

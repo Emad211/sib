@@ -1,4 +1,4 @@
-"""Migration 0004 creates the version tables, seeds the policy defaults and never reseeds."""
+"""Migration 0004 creates the version tables, 0008 seeds the schedule, and neither reseeds."""
 
 from pathlib import Path
 from typing import Any
@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from shift.adapters.db import migrations
 from shift.adapters.db.core import Database
-from shift.adapters.db.migrations import m0004_settings_and_catalog, m0007_catalog_fixes
+from shift.adapters.db.migrations import m0004_settings_and_catalog, m0007_catalog_fixes, m0008_schedule_settings
 from shift.domain.policy import Role, SettingKey, ShiftKey
 from shift.services.catalog import ItemKind
 
@@ -119,7 +119,7 @@ def test_migration_creates_the_version_tables_and_lookup_indexes(database: Datab
     assert set(INDEXES) <= _names(database, "index")
 
 
-def test_the_migration_seeds_the_four_policy_defaults(database: Database) -> None:
+def test_the_migrations_seed_the_seven_policy_defaults(database: Database) -> None:
     with database.read() as connection:
         rows = connection.exec_driver_sql(
             "SELECT setting_key, value, version, effective_from_shift, changed_by FROM setting_versions "
@@ -133,6 +133,13 @@ def test_the_migration_seeds_the_four_policy_defaults(database: Database) -> Non
             "version": 1,
             "effective_from_shift": "0001-01-01#1",
             "changed_by": "migration:m0004",
+        },
+        {
+            "setting_key": "daily_card_skip_weekday",
+            "value": "4",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0008",
         },
         {
             "setting_key": "session_ttl_hours",
@@ -149,6 +156,20 @@ def test_the_migration_seeds_the_four_policy_defaults(database: Database) -> Non
             "changed_by": "migration:m0004",
         },
         {
+            "setting_key": "weekly_count_time",
+            "value": "07:30",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0008",
+        },
+        {
+            "setting_key": "weekly_count_weekday",
+            "value": "0",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0008",
+        },
+        {
             "setting_key": "withdrawal_cap_toman",
             "value": "300000",
             "version": 1,
@@ -158,16 +179,20 @@ def test_the_migration_seeds_the_four_policy_defaults(database: Database) -> Non
     ]
 
 
-def test_the_migration_seeds_every_known_setting_key(database: Database) -> None:
-    assert {key for key, _ in m0004_settings_and_catalog.DEFAULTS} == {key.value for key in SettingKey}
+def test_the_migrations_seed_every_known_setting_key(database: Database) -> None:
+    seeded = {key for key, _ in m0004_settings_and_catalog.DEFAULTS}
+    seeded |= {key for key, _ in m0008_schedule_settings.DEFAULTS}
+
+    assert seeded == {key.value for key in SettingKey}
     assert m0004_settings_and_catalog.BASELINE_SHIFT == ShiftKey.baseline().text
+    assert m0008_schedule_settings.BASELINE_SHIFT == ShiftKey.baseline().text
 
 
 def test_migrating_again_does_not_reseed(database: Database) -> None:
     database.migrate()
 
     with database.read() as connection:
-        assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 4
+        assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 7
 
 
 def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_path: Path) -> None:
@@ -190,7 +215,7 @@ def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_
             assert (
                 connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name = 'kept'").scalar_one() == 7
             )
-            assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 4
+            assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 7
     finally:
         upgraded.close()
 

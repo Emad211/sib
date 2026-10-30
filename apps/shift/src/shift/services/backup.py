@@ -14,6 +14,7 @@ from contextlib import closing
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from shift.adapters.db.sqlite_copy import CopyRejected, copy_database
 from shift.common.clock import Clock, SystemClock
 from shift.services.snapshot import (
     SNAPSHOT_PREFIX,
@@ -113,19 +114,15 @@ class BackupService:
             log.warning("wal_checkpoint is busy; the backup API still copies a consistent snapshot")
 
     def _copy(self, partial: Path) -> None:
-        """Copy through the online backup API, which reads one consistent snapshot of a live WAL.
+        """Copy through the online backup API into one file that carries no write-ahead log.
 
-        The copy inherits the source's WAL header, so it is checkpointed and switched to a
-        rollback journal: a snapshot must be one self-contained file with no `-wal` beside it.
+        `copy_database` is the single implementation of "a copy that restores on its own"; the
+        pre-migration backup in `adapters.db.core` uses the same one.
         """
         try:
-            with closing(sqlite3.connect(self._database_path, timeout=_TIMEOUT_SECONDS)) as source:
-                with closing(sqlite3.connect(partial)) as destination:
-                    source.backup(destination)
-                    destination.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                    destination.execute("PRAGMA journal_mode = DELETE")
-        except sqlite3.Error as exc:
-            raise BackupRejected(f"cannot copy {self._database_path.name}: {exc}") from exc
+            copy_database(self._database_path, partial)
+        except CopyRejected as exc:
+            raise BackupRejected(str(exc)) from exc
 
     def _write_mirror(self, snapshot: Snapshot) -> Path | None:
         """Copy the verified snapshot to the second location and verify it again there."""

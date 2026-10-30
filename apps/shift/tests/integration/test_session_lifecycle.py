@@ -176,7 +176,7 @@ def test_inactive_staff_cannot_log_in(seeded: TestClient, settings: Settings) ->
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_credentials", "deactivation must not be an existence oracle"
     audit = (settings.log_dir / "audit.log").read_text(encoding="utf-8")
-    assert "auth.login result=inactive" in audit, "only the audit log may name the reason"
+    assert '"result":"inactive"' in audit, "only the audit log may name the reason"
 
 
 def test_five_wrong_pins_lock_the_account_until_the_manager_unlocks_it(seeded: TestClient) -> None:
@@ -402,7 +402,7 @@ def test_the_audit_trail_records_lock_unlock_and_reset(seeded: TestClient, setti
 
     audit = (settings.log_dir / "audit.log").read_text(encoding="utf-8")
 
-    for marker in ("auth.lock", "auth.unlock", "auth.pin_reset", "auth.login result=bad_pin"):
+    for marker in ("auth.lock", "auth.unlock", "auth.pin_reset", '"result":"bad_pin"'):
         assert marker in audit, marker
 
 

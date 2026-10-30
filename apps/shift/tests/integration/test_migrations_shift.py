@@ -76,6 +76,39 @@ def test_existing_database_is_backed_up_before_migrating(tmp_path: Path) -> None
         database.close()
 
 
+def test_the_pre_migration_snapshot_restores_on_its_own(tmp_path: Path) -> None:
+    """A live WAL source must not leave a WAL flag in the copy: the snapshot is one file (F6)."""
+    path = tmp_path / "legacy.db"
+    legacy = sqlite3.connect(path)
+    legacy.execute("PRAGMA journal_mode = WAL")
+    legacy.execute("CREATE TABLE legacy (id INTEGER PRIMARY KEY, note TEXT)")
+    legacy.execute("INSERT INTO legacy (note) VALUES ('keep me')")
+    legacy.commit()
+    legacy.close()
+
+    database = Database(path)
+    try:
+        report = database.migrate(backup_dir=tmp_path / "backups")
+    finally:
+        database.close()
+
+    assert report.backup is not None
+    saved = Path(report.backup)
+    assert not Path(f"{saved}-wal").exists()
+    assert not Path(f"{saved}-shm").exists()
+    restored = tmp_path / "restored"
+    restored.mkdir()
+    restored_file = restored / saved.name
+    restored_file.write_bytes(saved.read_bytes())
+    alone = sqlite3.connect(f"{restored_file.as_uri()}?mode=ro", uri=True)
+    try:
+        assert alone.execute("PRAGMA journal_mode").fetchone()[0].lower() == "delete"
+        assert alone.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert alone.execute("SELECT note FROM legacy").fetchone()[0] == "keep me"
+    finally:
+        alone.close()
+
+
 def test_failed_migration_rolls_back_and_raises(database: Database, monkeypatch: pytest.MonkeyPatch) -> None:
     def broken(connection: Connection) -> None:
         connection.exec_driver_sql("ALTER TABLE proj_stock ADD COLUMN half_done INTEGER")

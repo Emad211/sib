@@ -19,7 +19,10 @@ NUMBER_VALUES = {
     SettingKey.TAKEOVER_WINDOW_MINUTES: st.integers(0, 180),
     SettingKey.WITHDRAWAL_CAP_TOMAN: st.integers(0, 1_000_000),
     SettingKey.SESSION_TTL_HOURS: st.integers(1, 24),
+    SettingKey.DAILY_CARD_SKIP_WEEKDAY: st.integers(0, 6),
+    SettingKey.WEEKLY_COUNT_WEEKDAY: st.integers(0, 6),
 }
+CLOCK_KEYS = frozenset({SettingKey.CARD_TIME, SettingKey.WEEKLY_COUNT_TIME})
 CLOCK_VALUES = st.times().map(lambda moment: f"{moment.hour:02d}:{moment.minute:02d}")
 
 shift_keys = st.builds(
@@ -34,7 +37,7 @@ def planned_changes(draw: st.DrawFn) -> tuple[ShiftKey, SettingKey, str]:
     """A change a manager makes while `shift` runs, with a value that setting accepts."""
     running = draw(shift_keys)
     key = draw(st.sampled_from(list(SettingKey)))
-    raw = draw(CLOCK_VALUES) if key is SettingKey.CARD_TIME else str(draw(NUMBER_VALUES[key]))
+    raw = draw(CLOCK_VALUES) if key in CLOCK_KEYS else str(draw(NUMBER_VALUES[key]))
     return running, key, raw
 
 

@@ -148,7 +148,7 @@ def uncompensated_voids(connection: Connection) -> list[dict[str, Any]]:
         "ON c.invoice_id = v.invoice_id AND c.superseded_at IS NULL "
         "WHERE v.compensated_at IS NULL ORDER BY v.void_id"
     )
-    return [dict(row._mapping) for row in result]
+    return [dict(row) for row in result.mappings()]
 
 
 def mark_void_compensated(connection: Connection, void_id: int, compensated_at: str) -> None:
@@ -174,7 +174,7 @@ def rows(connection: Connection, table: str) -> list[dict[str, Any]]:
     """Read one mirror wholesale, in primary-key order; tests and diagnostics only."""
     table = _table(table)
     result = connection.exec_driver_sql(f"SELECT * FROM {table} ORDER BY {_PRIMARY_KEY[table]}")
-    return [dict(row._mapping) for row in result]
+    return [dict(row) for row in result.mappings()]
 
 
 def count(connection: Connection, table: str) -> int:

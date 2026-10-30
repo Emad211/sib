@@ -11,15 +11,20 @@ from shift.__version__ import __version__
 from shift.adapters.db.core import Database
 from shift.api import deps, routes_auth, routes_catalog, routes_devices, routes_events, routes_settings, routes_web
 from shift.api.errors import install_error_handlers
-from shift.common.clock import SystemClock
+from shift.common.clock import Clock, SystemClock
 from shift.config.logging import configure_logging
 from shift.config.settings import Settings
 from shift.domain.permissions import Permission
+from shift.runtime import BackgroundJobs
+from shift.services.accounting_bridge import AccountingBridge
+from shift.services.audit import AuditService
 from shift.services.auth import AuthService
+from shift.services.backup import BackupService
 from shift.services.catalog import CatalogService
 from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
 from shift.services.projections import ProjectionEngine
+from shift.services.scheduler import PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
 
 
@@ -31,6 +36,37 @@ def _catalog_service(request: Request) -> CatalogService:
 def _settings_service(request: Request) -> SettingsService:
     """The settings service created in the lifespan (manager routes only)."""
     return request.app.state.settings_service
+
+
+def _background_jobs(
+    settings: Settings, database: Database, *, clock: Clock, services: SettingsService, audit: AuditService
+) -> BackgroundJobs | None:
+    """The jobs a serving process runs, or `None` when this process only answers requests.
+
+    Backups follow ADR-008: one snapshot at startup and one a day at 04:00 Tehran. The accounting
+    bridge is only built when an accounting copy is configured, and it reads that copy read-only.
+    """
+    if not settings.background_jobs:
+        return None
+    bridge = None
+    if settings.accounting_db_path is not None:
+        bridge = AccountingBridge(
+            database, EventStore(database, clock=clock, hash_chain=settings.hash_chain), clock=clock
+        )
+    return BackgroundJobs(
+        clock=clock,
+        scheduler=Scheduler(PolicySchedule(services), clock=clock),
+        backup=BackupService(
+            settings.database_path,
+            backup_dir=settings.resolved_backup_dir,
+            keep_snapshots=settings.backup_keep,
+            mirror_dir=settings.backup_mirror_dir,
+            clock=clock,
+        ),
+        audit=audit,
+        bridge=bridge,
+        accounting_path=settings.accounting_db_path,
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -48,13 +84,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.events = EventStore(database, clock=clock, hash_chain=resolved.hash_chain)
         application.state.projections = ProjectionEngine(database, clock=clock)
         application.state.secret_key = resolved.read_or_create_secret()
-        application.state.auth = AuthService(database, clock=clock, pepper=application.state.secret_key)
-        application.state.devices = DeviceService(database, clock=clock)
+        # Every audited action of the services below lands in `audit_log` and in `audit.log`.
+        audit = AuditService(database, clock=clock)
+        application.state.audit = audit
+        application.state.auth = AuthService(database, clock=clock, pepper=application.state.secret_key, audit=audit)
+        application.state.devices = DeviceService(database, clock=clock, audit=audit)
         application.state.catalog = CatalogService(database, clock=clock)
         application.state.settings_service = SettingsService(database, clock=clock)
+        jobs = _background_jobs(
+            resolved, database, clock=clock, services=application.state.settings_service, audit=audit
+        )
+        application.state.jobs = jobs
+        if jobs is not None:
+            await jobs.start()
         try:
             yield
         finally:
+            if jobs is not None:
+                await jobs.stop()
             database.close()
 
     app = FastAPI(
