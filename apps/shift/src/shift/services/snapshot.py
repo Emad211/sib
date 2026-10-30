@@ -1,5 +1,7 @@
-"""One verified snapshot file: intact, self-contained and provably a shift database (gap S6, ADR-008)."""
+"""Snapshot files: how they are named, how one is verified and how retention keeps them (gap S6, ADR-008)."""
 
+import logging
+import re
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
@@ -8,8 +10,13 @@ from pathlib import Path
 
 from shift.common.clock import require_aware
 
+log = logging.getLogger(__name__)
+
 SNAPSHOT_PREFIX = "shift_"
 SNAPSHOT_SUFFIX = ".db"
+PARTIAL_SUFFIX = ".partial"  # a copy is written under it and renamed only after it has verified
+
+_SNAPSHOT_NAME = re.compile(rf"^{SNAPSHOT_PREFIX}\d{{8}}T\d{{6}}\d{{6}}Z{re.escape(SNAPSHOT_SUFFIX)}$")
 
 
 class BackupRejected(RuntimeError):
@@ -49,3 +56,20 @@ def inspect_snapshot(path: str | Path) -> Snapshot:
     except sqlite3.Error as exc:
         raise BackupRejected(f"{file.name} cannot be read as SQLite: {exc}") from exc
     return Snapshot(file, file.stat().st_size, schema_version, events)
+
+
+def prune_snapshots(directory: str | Path, *, keep: int) -> list[Path]:
+    """Delete the oldest snapshots beyond `keep`; return what was deleted.
+
+    Only names this service writes are candidates, so pre-migration snapshots and anything an
+    operator put there by hand stay untouched.
+    """
+    folder = Path(directory)
+    if not folder.is_dir():
+        return []
+    snapshots = sorted((path for path in folder.iterdir() if _SNAPSHOT_NAME.match(path.name)), key=lambda p: p.name)
+    excess = snapshots[: max(len(snapshots) - keep, 0)]
+    for path in excess:
+        path.unlink()
+        log.info("pruned old snapshot %s", path.name)
+    return excess

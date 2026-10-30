@@ -19,6 +19,7 @@ from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.config.settings import Settings
 from shift.runtime import BackgroundJobs
+from shift.services import mirror as mirror_module
 from shift.services.audit import AuditService
 from shift.services.backup import BackupService
 from shift.services.scheduler import PolicySchedule, Scheduler
@@ -46,8 +47,19 @@ class BrokenBridge:
         raise RuntimeError("the accounting copy disappeared")
 
 
-def _backup(database: Database, clock: MovableClock) -> BackupService:
-    return BackupService(database.path, backup_dir=database.path.parent / "snapshots", keep_snapshots=2, clock=clock)
+def _unavailable(_source: Path, _destination: Path) -> None:
+    """Stand in for a second disk that is no longer connected."""
+    raise OSError("the second disk is not connected")
+
+
+def _backup(database: Database, clock: MovableClock, *, mirror: Path | None = None) -> BackupService:
+    return BackupService(
+        database.path,
+        backup_dir=database.path.parent / "snapshots",
+        keep_snapshots=2,
+        mirror_dir=mirror,
+        clock=clock,
+    )
 
 
 def _jobs(
@@ -56,11 +68,12 @@ def _jobs(
     *,
     bridge: object | None = None,
     accounting_path: Path | None = None,
+    mirror: Path | None = None,
 ) -> BackgroundJobs:
     return BackgroundJobs(
         clock=clock,
         scheduler=Scheduler(PolicySchedule(SettingsService(database)), clock=clock),
-        backup=_backup(database, clock),
+        backup=_backup(database, clock, mirror=mirror),
         audit=AuditService(database, clock=clock),
         bridge=bridge,
         accounting_path=accounting_path,
@@ -109,6 +122,34 @@ def test_the_daily_snapshot_is_taken_once_per_tehran_day(database: Database) -> 
     assert [action for action, _ in _actions(database)] == ["backup.created", "backup.created"]
 
 
+def test_a_startup_snapshot_before_four_leaves_the_daily_due(database: Database) -> None:
+    """A restart at 03:30 must not swallow that day's 04:00 checkpoint (review F2)."""
+    clock = MovableClock(BEFORE_FOUR_TEHRAN)
+    jobs = _jobs(database, clock)
+
+    startup = jobs.create_snapshot("startup")
+    clock.moment = AFTER_FOUR_TEHRAN
+    daily = jobs.backup_if_due()
+
+    assert startup is not None and daily is not None
+    assert [action for action, _ in _actions(database)] == ["backup.created", "backup.created"]
+
+
+def test_a_startup_snapshot_after_four_covers_the_daily(database: Database) -> None:
+    """A restart at 04:30 already holds the day's checkpoint, so it is not taken twice (review F2)."""
+    clock = MovableClock(AFTER_FOUR_TEHRAN)
+    jobs = _jobs(database, clock)
+
+    startup = jobs.create_snapshot("startup")
+    doubled = jobs.backup_if_due()
+    clock.moment += timedelta(days=1)
+    tomorrow = jobs.backup_if_due()
+
+    assert startup is not None and tomorrow is not None
+    assert doubled is None
+    assert [action for action, _ in _actions(database)] == ["backup.created", "backup.created"]
+
+
 def test_a_rejected_snapshot_is_audited_and_never_raised(database: Database, tmp_path: Path) -> None:
     clock = MovableClock(AFTER_FOUR_TEHRAN)
     jobs = BackgroundJobs(
@@ -120,6 +161,32 @@ def test_a_rejected_snapshot_is_audited_and_never_raised(database: Database, tmp
 
     assert jobs.backup_if_due() is None
     assert _actions(database) == [("backup.failed", "failed")]
+
+
+def test_a_failing_mirror_is_retried_instead_of_snapshotting_every_tick(
+    database: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken second disk must not turn the 30 s tick into a snapshot loop (review F1)."""
+    clock = MovableClock(AFTER_FOUR_TEHRAN)
+    mirror = tmp_path / "mirror"
+    jobs = _jobs(database, clock, mirror=mirror)
+    monkeypatch.setattr(mirror_module.shutil, "copyfile", _unavailable)
+
+    jobs.tick()
+    clock.moment += timedelta(seconds=30)
+    jobs.tick()
+
+    snapshots = sorted((database.path.parent / "snapshots").glob("shift_*.db"))
+    assert len(snapshots) == 1
+    assert _actions(database) == [("backup.created", "ok")]
+    assert list(mirror.glob("shift_*.db")) == []
+
+    monkeypatch.undo()
+    clock.moment += timedelta(seconds=30)
+    jobs.tick()
+
+    assert [path.name for path in (database.path.parent / "snapshots").glob("shift_*.db")] == [snapshots[0].name]
+    assert [path.name for path in mirror.glob("shift_*.db")] == [snapshots[0].name]
 
 
 def test_one_failing_job_does_not_stop_the_others(

@@ -2,13 +2,13 @@
 
 Only driver-level primitives are used here: `PRAGMA wal_checkpoint` before copying, the `sqlite3`
 online backup API (a plain file copy of a WAL database can be corrupt) and `inspect_snapshot` on
-the copy before it is accepted. What a snapshot is and how it is verified lives in
-`shift.services.snapshot`; this module orchestrates staging, mirroring and retention.
+the copy before it is accepted. What a snapshot is lives in `shift.services.snapshot`, the second
+location in `shift.services.mirror`; this module owns the order: verify, place, prune the primary,
+then copy to the second location. The primary directory is what a backup means, so it is pruned on
+every run and a mirror that refuses the copy never undoes or spools a snapshot (review F1).
 """
 
 import logging
-import re
-import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, replace
@@ -16,49 +16,37 @@ from pathlib import Path
 
 from shift.adapters.db.sqlite_copy import CopyRejected, copy_database
 from shift.common.clock import Clock, SystemClock
+from shift.services.mirror import SnapshotMirror
 from shift.services.snapshot import (
-    SNAPSHOT_PREFIX,
-    SNAPSHOT_SUFFIX,
+    PARTIAL_SUFFIX,
     BackupRejected,
     Snapshot,
     inspect_snapshot,
+    prune_snapshots,
     snapshot_name,
 )
 
 log = logging.getLogger(__name__)
 
-_PARTIAL_SUFFIX = ".partial"
-_NAME = re.compile(rf"^{SNAPSHOT_PREFIX}\d{{8}}T\d{{6}}\d{{6}}Z{re.escape(SNAPSHOT_SUFFIX)}$")
 _TIMEOUT_SECONDS = 5.0
 
 
 @dataclass(frozen=True, slots=True)
 class BackupReport:
-    """What one run produced: the accepted snapshot, its second copy and the pruned files."""
+    """What one run produced: the accepted snapshot, its second copy and the pruned files.
+
+    `mirror_error` says why a configured second location holds no copy of this snapshot; the
+    snapshot itself is verified in the primary directory, so the backup still counts (review F1).
+    """
 
     snapshot: Snapshot
     mirror: Path | None
     pruned: tuple[Path, ...]
-
-
-def prune_snapshots(directory: str | Path, *, keep: int) -> list[Path]:
-    """Delete the oldest snapshots beyond `keep`; return what was deleted.
-
-    Only names this service writes are candidates, so pre-migration snapshots stay untouched.
-    """
-    folder = Path(directory)
-    if not folder.is_dir():
-        return []
-    snapshots = sorted((path for path in folder.iterdir() if _NAME.match(path.name)), key=lambda path: path.name)
-    excess = snapshots[: max(len(snapshots) - keep, 0)]
-    for path in excess:
-        path.unlink()
-        log.info("pruned old snapshot %s", path.name)
-    return excess
+    mirror_error: str | None = None
 
 
 class BackupService:
-    """Snapshots a live WAL database, verifies the copy, mirrors it and applies retention."""
+    """Snapshots a live WAL database, verifies the copy and applies retention in both locations."""
 
     def __init__(
         self,
@@ -73,17 +61,17 @@ class BackupService:
             raise ValueError("keep_snapshots must be at least 1")
         self._database_path = Path(database_path)
         self._backup_dir = Path(backup_dir)
-        self._mirror_dir = None if mirror_dir is None else Path(mirror_dir)
+        self._mirror = None if mirror_dir is None else SnapshotMirror(mirror_dir, keep=keep_snapshots)
         self._keep = keep_snapshots
         self._clock = clock or SystemClock()
 
     def create(self) -> BackupReport:
-        """Take one snapshot; nothing is accepted before `inspect_snapshot` returns clean."""
+        """Take one snapshot; the primary is kept and pruned whatever the second location does."""
         if not self._database_path.is_file():
             raise BackupRejected(f"database not found: {self._database_path}")
         self._backup_dir.mkdir(parents=True, exist_ok=True)
         target = self._backup_dir / snapshot_name(self._clock.now_utc())
-        partial = target.with_name(target.name + _PARTIAL_SUFFIX)
+        partial = target.with_name(target.name + PARTIAL_SUFFIX)
         self._checkpoint()
         try:
             self._copy(partial)
@@ -93,14 +81,29 @@ class BackupService:
             raise
         partial.replace(target)
         snapshot = replace(verified, path=target)
-        mirror = self._write_mirror(snapshot)
-        pruned = list(prune_snapshots(self._backup_dir, keep=self._keep))
-        if self._mirror_dir is not None:
-            pruned += prune_snapshots(self._mirror_dir, keep=self._keep)
+        # Retention runs before the second copy: an unreachable mirror must not spool the primary.
+        pruned = prune_snapshots(self._backup_dir, keep=self._keep)
+        mirror = None
+        if self._mirror is not None:
+            mirror = self._mirror.copy(snapshot)
+            pruned += self._mirror.prune()
         log.info(
-            "snapshot %s: %s events, %s bytes, mirror=%s", target.name, snapshot.events, snapshot.size_bytes, mirror
+            "snapshot %s: %s events, %s bytes, mirror=%s",
+            target.name,
+            snapshot.events,
+            snapshot.size_bytes,
+            mirror,
         )
-        return BackupReport(snapshot, mirror, tuple(pruned))
+        return BackupReport(
+            snapshot=snapshot,
+            mirror=mirror,
+            pruned=tuple(pruned),
+            mirror_error=None if self._mirror is None else self._mirror.error,
+        )
+
+    def retry_mirror(self) -> Path | None:
+        """Deliver the snapshot a second location refused earlier; nothing new is snapshotted."""
+        return None if self._mirror is None else self._mirror.retry()
 
     def _checkpoint(self) -> None:
         """Fold the write-ahead log into the main file; a busy or missing WAL is not a failure."""
@@ -123,21 +126,3 @@ class BackupService:
             copy_database(self._database_path, partial)
         except CopyRejected as exc:
             raise BackupRejected(str(exc)) from exc
-
-    def _write_mirror(self, snapshot: Snapshot) -> Path | None:
-        """Copy the verified snapshot to the second location and verify it again there."""
-        if self._mirror_dir is None:
-            return None
-        self._mirror_dir.mkdir(parents=True, exist_ok=True)
-        target = self._mirror_dir / snapshot.path.name
-        partial = target.with_name(target.name + _PARTIAL_SUFFIX)
-        try:
-            shutil.copyfile(snapshot.path, partial)
-            inspect_snapshot(partial)
-        except (BackupRejected, OSError) as exc:
-            partial.unlink(missing_ok=True)
-            raise BackupRejected(
-                f"second location rejected the copy ({exc}); {snapshot.path.name} stays intact"
-            ) from exc
-        partial.replace(target)
-        return target

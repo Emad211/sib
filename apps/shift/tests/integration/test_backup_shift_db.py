@@ -16,6 +16,7 @@ from event_fixtures import build_event
 from shift.adapters.db import migrations
 from shift.adapters.db.core import Database
 from shift.services import backup as backup_module
+from shift.services import mirror as mirror_module
 from shift.services.backup import BackupRejected, BackupService, inspect_snapshot, prune_snapshots, snapshot_name
 from shift.services.event_store import EventStore
 
@@ -37,6 +38,11 @@ def _service(database: Database, directory: Path, *, keep: int = 3, mirror: Path
         mirror_dir=mirror,
         clock=FrozenClock(),
     )
+
+
+def _unavailable(_source: Path, _destination: Path) -> None:
+    """Stand in for a second disk that is no longer connected."""
+    raise OSError("the second disk is not connected")
 
 
 def test_snapshot_of_a_live_wal_database_is_consistent(database: Database, store: EventStore, tmp_path: Path) -> None:
@@ -199,20 +205,79 @@ def test_snapshot_is_copied_to_the_second_location(database: Database, store: Ev
     assert inspect_snapshot(report.mirror).events == 1
 
 
-def test_unverifiable_second_copy_is_rejected_and_the_primary_stays(
+def test_an_unverifiable_second_copy_degrades_the_backup_and_the_primary_stays(
     database: Database, store: EventStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A second location that refuses the copy never rejects the snapshot it already holds (review F1)."""
     store.append(build_event("handover.started"))
     monkeypatch.setattr(
-        backup_module.shutil, "copyfile", lambda _source, destination: Path(destination).write_bytes(b"truncated")
+        mirror_module.shutil, "copyfile", lambda _source, destination: Path(destination).write_bytes(b"truncated")
     )
 
-    with pytest.raises(BackupRejected, match="second location rejected"):
-        _service(database, tmp_path, mirror=tmp_path / "mirror").create()
+    report = _service(database, tmp_path, mirror=tmp_path / "mirror").create()
 
+    assert report.mirror is None
+    assert report.mirror_error is not None and "second location rejected" in report.mirror_error
     primary = next((tmp_path / "backups").glob("*.db"))
     assert inspect_snapshot(primary).events == 1
     assert list((tmp_path / "mirror").glob("*.db")) == []
+
+
+def test_a_second_location_that_cannot_be_reached_leaves_the_primary_snapshot(
+    database: Database, store: EventStore, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An unplugged mirror is a degraded backup, logged once, not a failed backup (review F1)."""
+    store.append(build_event("handover.started"))
+    blocked = tmp_path / "blocked"
+    blocked.write_bytes(b"a file where the mount point used to be")
+
+    with caplog.at_level(logging.WARNING, logger="shift.services.mirror"):
+        report = _service(database, tmp_path, keep=2, mirror=blocked / "mirror").create()
+
+    assert report.mirror is None
+    assert report.mirror_error is not None
+    assert inspect_snapshot(report.snapshot.path).events == 1
+    assert [path.name for path in report.snapshot.path.parent.glob("shift_*.db")] == [report.snapshot.path.name]
+    assert "second location unavailable" in caplog.text
+
+
+def test_a_failing_second_location_still_prunes_the_primary(
+    database: Database, store: EventStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retention runs on the primary whatever the mirror does; otherwise the disk fills (review F1)."""
+    store.append(build_event("handover.started"))
+    backups, mirror = tmp_path / "backups", tmp_path / "mirror"
+    backups.mkdir()
+    mirror.mkdir()
+    for day in range(1, 6):
+        (backups / f"shift_2026100{day}T000000000000Z.db").write_bytes(b"older snapshot")
+    monkeypatch.setattr(mirror_module.shutil, "copyfile", _unavailable)
+
+    report = _service(database, tmp_path, keep=3, mirror=mirror).create()
+
+    kept = sorted(path.name for path in backups.iterdir())
+    assert len(kept) == 3
+    assert kept[-1] == report.snapshot.path.name
+    assert len(report.pruned) == 3
+
+
+def test_a_failed_second_copy_is_retried_without_a_new_snapshot(
+    database: Database, store: EventStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The snapshot the mirror refused waits and is copied once the disk is back (review F1)."""
+    store.append(build_event("handover.started"))
+    monkeypatch.setattr(mirror_module.shutil, "copyfile", _unavailable)
+    service = _service(database, tmp_path, keep=2, mirror=tmp_path / "mirror")
+
+    report = service.create()
+    monkeypatch.undo()
+    mirrored = service.retry_mirror()
+
+    assert report.mirror is None and report.mirror_error is not None
+    assert mirrored == tmp_path / "mirror" / report.snapshot.path.name
+    assert inspect_snapshot(mirrored).events == 1
+    assert [path.name for path in (tmp_path / "backups").glob("shift_*.db")] == [report.snapshot.path.name]
+    assert service.retry_mirror() is None
 
 
 def test_retention_keeps_the_newest_snapshots_in_both_locations(
@@ -299,3 +364,28 @@ def test_backup_now_cli_exits_one_when_the_database_is_missing(
 
     assert code == 1
     assert "backup rejected" in capsys.readouterr().out
+
+
+def test_backup_now_cli_reports_an_asked_for_second_location_it_could_not_reach(
+    database: Database, store: EventStore, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The CLI's contract is an intact copy in both locations; a degraded one exits 1 (review F1)."""
+    store.append(build_event("handover.started"))
+    blocked = tmp_path / "blocked"
+    blocked.write_bytes(b"a file where the mount point used to be")
+
+    code = backup_now_main(
+        [
+            "--db",
+            str(database.path),
+            "--to",
+            str(tmp_path / "backups"),
+            "--keep",
+            "2",
+            "--mirror",
+            str(blocked / "mirror"),
+        ]
+    )
+
+    assert code == 1
+    assert "mirror unavailable" in capsys.readouterr().out
