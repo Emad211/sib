@@ -12,19 +12,21 @@ AmountRaw = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 ReversalReason = Literal["reclosed", "voided", "refunded"]
 
 
-class _Payload(BaseModel):
+class Payload(BaseModel):
+    """Base of every event payload: frozen and closed to unknown fields."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ShiftOpened(_Payload):
+class ShiftOpened(Payload):
     opening_cash: Toman
 
 
-class CashCounted(_Payload):
+class CashCounted(Payload):
     counted: Toman
 
 
-class CashAmount(_Payload):
+class CashAmount(Payload):
     amount: Toman
 
 
@@ -49,7 +51,7 @@ class CashReversal(CashAmount):
     amount_raw: AmountRaw | None = None
 
 
-class ItemCounted(_Payload):
+class ItemCounted(Payload):
     item_id: Identifier
     location_id: Identifier
     counted: Quantity
@@ -59,7 +61,7 @@ class WeeklyCount(ItemCounted):
     pass
 
 
-class StockDelta(_Payload):
+class StockDelta(Payload):
     item_id: Identifier
     location_id: Identifier
     quantity: Quantity

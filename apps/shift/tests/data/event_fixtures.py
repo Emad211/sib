@@ -17,6 +17,24 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"opening_cash": 1_000_000}
     if event_type == "handover.cash_counted":
         return {"counted": 1_000_000}
+    if event_type == "handover.recount_requested":
+        return {"scope": "item", "item_id": "item-1", "location_id": "location-1"}
+    if event_type == "handover.outgoing_counted":
+        return {"item_id": "item-1", "location_id": "location-1", "counted": 10}
+    if event_type == "handover.joint_counted":
+        return {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 10}
+    if event_type == "handover.checklist_answered":
+        return {"item_id": "item-1", "ok": True}
+    if event_type == "handover.parcel_handed":
+        return {"parcel_id": "parcel-1", "packages": 2}
+    if event_type == "handover.signed":
+        return {"signer": "incoming"}
+    if event_type == "handover.early_leave_reported":
+        return {"staff_id": "staff-out"}
+    if event_type == "handover.emergency_start_confirmed":
+        return {"manager_id": "manager-1"}
+    if event_type == "discrepancy.recorded":
+        return {"scope": "item", "item_id": "item-1", "location_id": "location-1", "difference": 1}
     if event_type in {"cash.withdrawn", "cash.deposited", "acc.cash_receipt"}:
         return {"amount": 100_000}
     if event_type == "acc.cash_reversal":

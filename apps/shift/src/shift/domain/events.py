@@ -15,8 +15,21 @@ from shift.domain.effects import (
     cash_count,
     cash_delta,
     cash_open,
+    joint_count,
+    no_effects,
     stock_delta,
     stock_set,
+)
+from shift.domain.handover_payloads import (
+    ChecklistAnswered,
+    DiscrepancyRecorded,
+    EarlyLeaveReported,
+    EmergencyStartConfirmed,
+    HandoverSigned,
+    JointCounted,
+    OutgoingCounted,
+    ParcelHanded,
+    RecountRequested,
 )
 from shift.domain.payloads import (
     CashCounted,
@@ -38,6 +51,15 @@ class EventType(StrEnum):
     HANDOVER_STARTED = "handover.started"
     HANDOVER_CASH_COUNTED = "handover.cash_counted"
     HANDOVER_ITEM_COUNTED = "handover.item_counted"
+    HANDOVER_RECOUNT_REQUESTED = "handover.recount_requested"
+    HANDOVER_OUTGOING_COUNTED = "handover.outgoing_counted"
+    HANDOVER_JOINT_COUNTED = "handover.joint_counted"
+    HANDOVER_CHECKLIST_ANSWERED = "handover.checklist_answered"
+    HANDOVER_PARCEL_HANDED = "handover.parcel_handed"
+    HANDOVER_SIGNED = "handover.signed"
+    HANDOVER_EARLY_LEAVE_REPORTED = "handover.early_leave_reported"
+    HANDOVER_EMERGENCY_START_CONFIRMED = "handover.emergency_start_confirmed"
+    DISCREPANCY_RECORDED = "discrepancy.recorded"
     CASH_WITHDRAWN = "cash.withdrawn"
     CASH_DEPOSITED = "cash.deposited"
     STOCK_WEEKLY_COUNT = "stock.weekly_count"
@@ -65,6 +87,15 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.HANDOVER_STARTED: EventSpec(ShiftOpened, cash_open, requires_shift=True),
     EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
     EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),
+    EventType.HANDOVER_RECOUNT_REQUESTED: EventSpec(RecountRequested, no_effects, requires_shift=True),
+    EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, stock_set, requires_shift=True),
+    EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, joint_count, requires_shift=True),
+    EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),
+    EventType.HANDOVER_PARCEL_HANDED: EventSpec(ParcelHanded, no_effects, requires_shift=True),
+    EventType.HANDOVER_SIGNED: EventSpec(HandoverSigned, no_effects, requires_shift=True),
+    EventType.HANDOVER_EARLY_LEAVE_REPORTED: EventSpec(EarlyLeaveReported, no_effects, requires_shift=True),
+    EventType.HANDOVER_EMERGENCY_START_CONFIRMED: EventSpec(EmergencyStartConfirmed, no_effects, requires_shift=True),
+    EventType.DISCREPANCY_RECORDED: EventSpec(DiscrepancyRecorded, no_effects, requires_shift=True),
     EventType.CASH_WITHDRAWN: EventSpec(CashWithdrawn, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.CASH_DEPOSITED: EventSpec(CashDeposited, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.STOCK_WEEKLY_COUNT: EventSpec(WeeklyCount, stock_set),

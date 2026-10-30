@@ -73,3 +73,15 @@ def cash_delta(operation: CashOperation) -> EffectBuilder:
         return Effects(cash=CashEffect(operation, payload.amount))
 
     return build
+
+
+def no_effects(_payload: Any) -> Effects:
+    """A note, a checklist answer or a signature changes no stock and no cash by itself."""
+    return Effects()
+
+
+def joint_count(payload: Any) -> Effects:
+    """The figure both people agreed on becomes the next reference for the cash box or the item."""
+    if payload.scope == "cash":
+        return Effects(cash=CashEffect(CashOperation.COUNT, payload.counted))
+    return Effects(stock=StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted))

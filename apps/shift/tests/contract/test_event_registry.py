@@ -11,6 +11,15 @@ EXPECTED_EFFECTS = {
     EventType.HANDOVER_STARTED: ("cash", CashOperation.OPEN),
     EventType.HANDOVER_CASH_COUNTED: ("cash", CashOperation.COUNT),
     EventType.HANDOVER_ITEM_COUNTED: ("stock", StockOperation.SET),
+    EventType.HANDOVER_RECOUNT_REQUESTED: None,
+    EventType.HANDOVER_OUTGOING_COUNTED: ("stock", StockOperation.SET),
+    EventType.HANDOVER_JOINT_COUNTED: ("stock", StockOperation.SET),
+    EventType.HANDOVER_CHECKLIST_ANSWERED: None,
+    EventType.HANDOVER_PARCEL_HANDED: None,
+    EventType.HANDOVER_SIGNED: None,
+    EventType.HANDOVER_EARLY_LEAVE_REPORTED: None,
+    EventType.HANDOVER_EMERGENCY_START_CONFIRMED: None,
+    EventType.DISCREPANCY_RECORDED: None,
     EventType.CASH_WITHDRAWN: ("cash", CashOperation.SUBTRACT),
     EventType.CASH_DEPOSITED: ("cash", CashOperation.SUBTRACT),
     EventType.STOCK_WEEKLY_COUNT: ("stock", StockOperation.SET),
@@ -35,10 +44,24 @@ def test_payload_and_effect_contract(event_type: EventType) -> None:
     effects = effects_for(event_type.value, payload, "shift-1" if spec.requires_shift else None)
 
     assert spec.schema_v == 1
-    kind, operation = EXPECTED_EFFECTS[event_type]
+    expected = EXPECTED_EFFECTS[event_type]
+    if expected is None:
+        assert effects.stock is None
+        assert effects.cash is None
+        return
+    kind, operation = expected
     effect = effects.cash if kind == "cash" else effects.stock
     assert effect is not None
     assert effect.operation == operation
+
+
+def test_a_joint_cash_count_updates_the_counted_cash() -> None:
+    payload = validate_payload("handover.joint_counted", {"scope": "cash", "counted": 1_200_000})
+    effects = effects_for("handover.joint_counted", payload, "shift-1")
+
+    assert effects.stock is None
+    assert effects.cash is not None
+    assert (effects.cash.operation, effects.cash.amount) == (CashOperation.COUNT, 1_200_000)
 
 
 def test_unknown_type_has_no_spec() -> None:
@@ -104,8 +127,45 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.HANDOVER_STARTED,
         EventType.HANDOVER_CASH_COUNTED,
         EventType.HANDOVER_ITEM_COUNTED,
+        EventType.HANDOVER_RECOUNT_REQUESTED,
+        EventType.HANDOVER_OUTGOING_COUNTED,
+        EventType.HANDOVER_JOINT_COUNTED,
+        EventType.HANDOVER_CHECKLIST_ANSWERED,
+        EventType.HANDOVER_PARCEL_HANDED,
+        EventType.HANDOVER_SIGNED,
+        EventType.HANDOVER_EARLY_LEAVE_REPORTED,
+        EventType.HANDOVER_EMERGENCY_START_CONFIRMED,
+        EventType.DISCREPANCY_RECORDED,
         EventType.CASH_WITHDRAWN,
         EventType.CASH_DEPOSITED,
         EventType.ACC_CASH_RECEIPT,
         EventType.ACC_CASH_REVERSAL,
     }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"scope": "cash", "item_id": "item-1", "location_id": "location-1", "counted": 1},
+        {"scope": "item", "counted": 1},
+        {"scope": "item", "item_id": "item-1", "counted": 1},
+        {"scope": "cash", "counted": -1},
+    ],
+)
+def test_a_joint_count_names_its_target(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("handover.joint_counted", payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "difference": 0},
+        {"scope": "item", "difference": 5},
+        {"scope": "cash", "item_id": "item-1", "difference": 5},
+        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "difference": 2.5},
+    ],
+)
+def test_a_discrepancy_names_a_real_gap(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("discrepancy.recorded", payload)
