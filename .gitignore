@@ -7,6 +7,8 @@ _data/
 *.sqlite
 *.sqlite3
 backups/
+# پوشهٔ موقت pytest ممکن است کپی دیتابیس واقعی داشته باشد
+pytest-of-*/
 
 # --- محیط و ساخت ---
 .venv/
@@ -14,6 +16,8 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
+.hypothesis/
 .coverage
 htmlcov/
 build/
@@ -35,6 +39,8 @@ graphify-out/
 
 # --- محلی ---
 .claude/
+.master/
+apps/accounting/tmp*/
 *.zip
 voice-cache/
 .hesabdari_secret_key
