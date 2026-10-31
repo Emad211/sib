@@ -14,7 +14,7 @@ from auth_fixtures import PIN, ROLES, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import status
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.api.deps import running_shift

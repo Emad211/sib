@@ -19,7 +19,7 @@ import pytest
 from auth_fixtures import PIN, create_device, create_staff, login
 from clocks import FixedClock
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
 from shift.adapters.db import card_repo, handover_repo

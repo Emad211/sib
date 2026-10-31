@@ -35,7 +35,7 @@ import httpx
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, Seeded, seed_roster
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 from synthetic_accounting import empty_accounting
 
 from shift.adapters.db import events_repo

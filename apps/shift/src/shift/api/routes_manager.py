@@ -15,18 +15,22 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
 
+from shift.adapters.db import handover_repo, staff_repo
 from shift.api import deps
 from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
 from shift.api.templating import templates
 from shift.common.clock import TEHRAN, parse_iso, to_tehran
 from shift.common.jalali import format_jalali
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.permissions import Permission
 from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
 from shift.domain.shift_events import FieldKind, KindSpec, kind_for
 from shift.services.auth import Principal
+from shift.services.catalog import CatalogService, ItemKind
 from shift.services.daily_card import (
     SHORTAGE,
     STATUS_APPROVED,
@@ -42,16 +46,68 @@ from shift.services.daily_card import (
     Person,
     ShiftEventLine,
 )
+from shift.services.handover import HandoverError, HandoverService
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
 HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
+BASELINE_PATH = "/manager/baseline"
+ITEMS_PATH = "/manager/items"
+BASELINE_API_PATH = "/api/v1/manager/baseline"
 NO_STORE = "no-store"
 FRIDAY = 4
 SATURDAY = 5
+# SHF-7.1: which shelves each handover flow counts (H-12 splits them by custodian, not by shelf).
+FLOW_LOCATIONS: dict[HandoverFlow, tuple[str, ...]] = {
+    HandoverFlow.RECEPTION: ("shelf_reception",),
+    HandoverFlow.NURSING: ("cpr_room",),
+}
+FLOW_IDS = {HandoverFlow.RECEPTION: "reception", HandoverFlow.NURSING: "nursing"}
+ITEM_KIND_LABELS = {
+    ItemKind.COUNTED: "شمارشی",
+    ItemKind.YES_NO: "بله/خیر",
+    ItemKind.READING: "عدد خواندنی",
+    ItemKind.PHOTO: "عکس",
+}
+BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
+BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "
+BASELINE_CUSTODIAN = "نگه‌دارنده باید از کارکنان فعال درمانگاه باشد."
+BASELINE_ITEMS = "اقلام شمارش اولیه باید همان اقلام شمارشی همان جریان باشند."
 
 CARD_NOT_FOUND = "کارتی برای این روز پیدا نشد."
+
+
+class BaselineItemIn(BaseModel):
+    """One shelf of the manager's opening count: what the shelf holds right now, zero included."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(min_length=1, max_length=128)
+    location_id: str = Field(min_length=1, max_length=128)
+    quantity: int = Field(ge=0)
+
+
+class BaselineIn(BaseModel):
+    """The whole opening count of one flow, sent once by the manager's phone (SHF-7.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flow: HandoverFlow
+    custodian_id: str = Field(min_length=1, max_length=64)
+    opening_cash: int | None = Field(default=None, ge=0)
+    items: list[BaselineItemIn] = Field(min_length=1)
+
+
+class BaselineOut(BaseModel):
+    """What the baseline fixed: the flow, who holds it, the box and how many shelves it set."""
+
+    flow: str
+    custodian_id: str
+    opening_cash: int | None
+    shelves: int
+    recorded_at_tehran: str
+
 
 FLOW_LABELS = {"reception": "پذیرش", "nursing": "پرستاری"}
 # Which way a gap went, so the manager reads a shortage from a surplus and never a bare figure.
@@ -93,9 +149,21 @@ SETTING_LABELS = {
 # A page guard each: a signed-out browser is sent to the login screen, a non-manager gets a 403.
 CardViewer = Annotated[Principal, Depends(deps.require_page(Permission.DAILY_CARD_VIEW))]
 SettingsEditor = Annotated[Principal, Depends(deps.require_page(Permission.SETTINGS_CHANGE))]
+BaselineEditor = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE))]
+ItemsEditor = Annotated[Principal, Depends(deps.require_page(Permission.CATALOG_MANAGE))]
 
 CardsService = Callable[[Request], DailyCardService]
 SettingsServiceSource = Callable[[Request], SettingsService]
+
+
+def _handover_service(request: Request) -> HandoverService:
+    """The handover service created in the lifespan (the manager's opening count writes through it)."""
+    return request.app.state.handover
+
+
+def _catalog_service(request: Request) -> CatalogService:
+    """The catalog service created in the lifespan (the item pages read it)."""
+    return request.app.state.catalog
 
 
 def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource) -> APIRouter:
@@ -103,6 +171,8 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
     pages = APIRouter(tags=["manager"])
     CardsDep = Annotated[DailyCardService, Depends(cards)]
     SettingsDep = Annotated[SettingsService, Depends(settings)]
+    HandoverDep = Annotated[HandoverService, Depends(_handover_service)]
+    CatalogDep = Annotated[CatalogService, Depends(_catalog_service)]
 
     @pages.get(CARD_PATH, response_class=HTMLResponse, summary="The newest daily card")
     def get_manager_card(request: Request, _viewer: CardViewer, service: CardsDep, policy: SettingsDep) -> HTMLResponse:
@@ -145,6 +215,117 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         snapshot = service.snapshot(deps.running_shift(request))
         rows = [_setting_row(key, snapshot[key], service.history(key)[0]) for key in SettingKey]
         return _shell_page(request, "manager_settings.html", {"settings": rows}, cache_control=NO_STORE)
+
+    @pages.get(BASELINE_PATH, response_class=HTMLResponse, summary="The manager's initial count")
+    def get_manager_baseline(
+        request: Request,
+        _editor: BaselineEditor,
+        handover: HandoverDep,
+        catalog: CatalogDep,
+    ) -> HTMLResponse:
+        """One flow at a time: the box (reception only), its shelves and who holds them now (SHF-7.1).
+
+        A flow that already has its baseline shows a one-line note instead of the form: the first
+        count is what every later blind count compares against, so it is recorded once and never
+        rewritten (the service refuses a second one).
+        """
+        shift = deps.running_shift(request)
+        places = {place.location_id: place.name for place in catalog.locations(shift)}
+        with request.app.state.database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+            recorded = {flow: handover_repo.has_baseline(connection, flow) for flow in FLOW_LOCATIONS}
+        flows = []
+        for flow, location_ids in FLOW_LOCATIONS.items():
+            groups = [
+                {
+                    "location_id": location_id,
+                    "name": places.get(location_id, location_id),
+                    "rows": [
+                        {"item_id": item.item_id, "name": item.name, "unit": item.unit}
+                        for item in catalog.items(shift, location_id=location_id)
+                        if item.kind is ItemKind.COUNTED
+                    ],
+                }
+                for location_id in location_ids
+            ]
+            flows.append(
+                {
+                    "id": FLOW_IDS[flow],
+                    "label": FLOW_LABELS.get(FLOW_IDS[flow], FLOW_IDS[flow]),
+                    "cash": flow is HandoverFlow.RECEPTION,
+                    "recorded": recorded[flow],
+                    "locations": groups,
+                }
+            )
+        staff = [
+            {"id": person.staff.staff_id, "name": person.staff.full_name} for person in people if person.staff.active
+        ]
+        return _shell_page(request, "manager_baseline.html", {"flows": flows, "staff": staff}, cache_control=NO_STORE)
+
+    @pages.post(BASELINE_API_PATH, response_model=BaselineOut, status_code=status.HTTP_201_CREATED)
+    def post_manager_baseline(
+        body: BaselineIn,
+        request: Request,
+        manager: Annotated[Principal, Depends(deps.require(Permission.HANDOVER_BASELINE))],
+        handover: HandoverDep,
+        catalog: CatalogDep,
+    ) -> BaselineOut:
+        """Record the opening count through the service that owns it; the CLI stays the fallback."""
+        if body.flow is HandoverFlow.RECEPTION and body.opening_cash is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "شمارش اولیهٔ پذیرش باید موجودی صندوق را هم داشته باشد.")
+        if body.flow is HandoverFlow.NURSING and body.opening_cash is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "جریان پرستاری صندوق نقدی ندارد.")
+        shift = deps.running_shift(request)
+        allowed = {
+            (item.item_id, item.location_id)
+            for location_id in FLOW_LOCATIONS[body.flow]
+            for item in catalog.items(shift, location_id=location_id)
+            if item.kind is ItemKind.COUNTED
+        }
+        if any((entry.item_id, entry.location_id) not in allowed for entry in body.items):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_ITEMS)
+        with request.app.state.database.read() as connection:
+            custodian = staff_repo.find(connection, body.custodian_id)
+        if custodian is None or not custodian.active:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_CUSTODIAN)
+        try:
+            record = handover.record_baseline(
+                flow=body.flow,
+                custodian_id=body.custodian_id,
+                manager_id=manager.staff_id,
+                opening_cash=body.opening_cash,
+                items=[entry.model_dump() for entry in body.items],
+            )
+        except HandoverError as error:
+            message = BASELINE_ALREADY if "already recorded" in str(error) else BASELINE_REFUSED + str(error)
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, message) from error
+        return BaselineOut(
+            flow=record.flow.value,
+            custodian_id=record.custodian_id,
+            opening_cash=record.opening_cash,
+            shelves=record.shelves,
+            recorded_at_tehran=to_tehran(record.recorded_at).isoformat(),
+        )
+
+    @pages.get(ITEMS_PATH, response_class=HTMLResponse, summary="The clinic's items and their codes")
+    def get_manager_items(
+        request: Request,
+        _editor: ItemsEditor,
+        catalog: CatalogDep,
+    ) -> HTMLResponse:
+        """Every item, the ones without an accounting code first (SHF-7.1, Q-17)."""
+        shift = deps.running_shift(request)
+        places = {place.location_id: place.name for place in catalog.locations(shift)}
+        items = catalog.items(shift)
+        counted = [item for item in items if item.kind is ItemKind.COUNTED]
+        rows = [_item_row(item, places) for item in sorted(items, key=_item_order)]
+        missing = sum(1 for item in counted if not item.acc_code)
+        return _shell_page(
+            request,
+            "manager_items.html",
+            {"items": rows, "counted": len(counted), "missing": missing},
+            cache_control=NO_STORE,
+        )
 
     return pages
 
@@ -317,7 +498,8 @@ def _open_event_rows(card: Card) -> list[dict[str, Any]]:
 
 def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
     """One shift-event row: the kind's label and code, its actor, its instant and its own fields."""
-    return {
+    photo = entry.summary.get("photo_sha256")
+    row: dict[str, Any] = {
         "code": entry.code,
         "label": entry.label_fa,
         "actor": _person(entry.actor),
@@ -325,6 +507,11 @@ def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
         "status": SHIFT_EVENT_STATUS_LABELS.get(entry.status, entry.status),
         "fields": _event_fields(kind_for(entry.event_type), entry.summary),
     }
+    # SHF-7: the receipt's hash becomes a link, never a figure. The route that serves the bytes is
+    # guarded to the manager and the approvers, exactly the people who read this card.
+    if isinstance(photo, str) and photo:
+        row["photo"] = f"/api/v1/photos/{photo}"
+    return row
 
 
 def _event_fields(kind: KindSpec | None, summary: dict[str, Any]) -> list[dict[str, str]]:
@@ -335,6 +522,9 @@ def _event_fields(kind: KindSpec | None, summary: dict[str, Any]) -> list[dict[s
     fields: list[dict[str, str]] = []
     for key in order:
         value = summary[key]
+        # The receipt photo is a link (`photo` on the row), never a 64-character figure on the card.
+        if key.endswith("_sha256"):
+            continue
         if value is None:
             continue
         spec = specs.get(key)
@@ -475,3 +665,28 @@ def _held_rows(card: Card) -> list[dict[str, str]]:
         }
         for entry in card.held_events
     ]
+
+
+def _item_order(item: Any) -> tuple[int, str, str]:
+    """Counted items with no code first, then counted, then the checklist; each by shelf and name."""
+    rank = 2
+    if item.kind is ItemKind.COUNTED:
+        rank = 0 if not item.acc_code else 1
+    return (rank, item.location_id, item.name)
+
+
+def _item_row(item: Any, places: dict[str, str]) -> dict[str, Any]:
+    """One editable row: the item as the shift sees it, and the Persian words for its kind and shelf."""
+    return {
+        "item_id": item.item_id,
+        "name": item.name,
+        "kind": item.kind.value,
+        "kind_label": ITEM_KIND_LABELS.get(item.kind, item.kind.value),
+        "location_id": item.location_id,
+        "location_name": places.get(item.location_id, item.location_id),
+        "unit": item.unit,
+        "minimum": item.minimum,
+        "acc_code": item.acc_code or "",
+        "stock_factor": item.stock_factor,
+        "needs_code": item.kind is ItemKind.COUNTED and not item.acc_code,
+    }

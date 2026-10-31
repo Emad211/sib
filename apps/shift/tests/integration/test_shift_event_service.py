@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from auth_fixtures import ROLES, SPARE, seed_roster
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database

@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 from auth_fixtures import ROLES, seed_roster
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database

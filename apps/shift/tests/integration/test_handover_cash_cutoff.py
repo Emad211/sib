@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 from clocks import FixedClock
-from seed_reference_data import seed
+from synthetic_catalog import seed
 from synthetic_accounting import empty_accounting
 
 from event_fixtures import build_event

@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime
 import pytest
 from auth_fixtures import ROLES, Seeded, seed_roster
 from clocks import FixedClock, inside_shift
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database

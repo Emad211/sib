@@ -14,7 +14,7 @@ from auth_fixtures import login as login_request
 from clocks import FixedClock
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import events_repo, migrations, projections_repo

@@ -19,7 +19,7 @@ from collections.abc import Iterator
 import pytest
 from auth_fixtures import PIN, ROLES, login, seed_roster
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.app import create_app
 from shift.config.settings import Settings
