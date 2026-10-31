@@ -109,12 +109,13 @@ def test_the_manager_card_shows_the_presence_and_the_kept_record(tmp_path: Path)
     """ADR-021 on the manager's card: who said «حضور در شیفت», and the off-shift record it kept."""
     with _app(tmp_path / "card", on_shift=False) as client:
         headers = _headers(client, "multi_role")
-        declared = client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
-        assert declared.status_code == 201, declared.text
         # A reception kind: a record outside the person's own grants is refused, not held.
         card = {"type": "card.transfer_reported", "payload": {"amount": 150_000, "admission_no": "A-1001"}}
         kept = _post(client, headers, client_at=NOW - timedelta(minutes=5), body=card)
         assert kept.json()["held"] is True
+        # She says «حضور در شیفت» afterwards: the earlier record was made while she was off shift.
+        declared = client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
+        assert declared.status_code == 201, declared.text
 
         # The card that covers today is built tomorrow (it reports the day that just ended).
         today = to_tehran(NOW).date()
