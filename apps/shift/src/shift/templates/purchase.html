@@ -72,6 +72,18 @@
       <div class="pu-body" data-body></div>
     </section>
   </div>
+
+  {# F1: the invoice and receipt photos open big. One tap on a photo in a form fills the screen. #}
+  <dialog id="purchase-photo-viewer" class="pu-viewer" aria-labelledby="purchase-photo-caption">
+    <div class="pu-viewer-head">
+      <p id="purchase-photo-caption" class="pu-viewer-caption"></p>
+      <button id="purchase-photo-close" class="btn btn-secondary" type="button">بستن</button>
+    </div>
+    <p class="pu-viewer-hint">برای بزرگ‌نمایی روی عکس بزنید.</p>
+    <div class="pu-viewer-stage">
+      <img id="purchase-photo-image" class="pu-viewer-image" alt="">
+    </div>
+  </dialog>
 </div>
 {% endblock %}
 

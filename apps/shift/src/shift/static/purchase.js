@@ -105,6 +105,9 @@
   // F1: the invoice photo is mandatory at the door, the payment receipt's is optional (decision 6).
   var NO_INVOICE_PHOTO = "عکس فاکتور را بگیرید.";
   var PHOTO_FAILED = "عکس ثبت نشد؛ دوباره بگیرید.";
+  var PHOTO_UNREADABLE = "عکس خوانده نشد؛ صفحه را تازه کنید.";
+  var INVOICE_PHOTO_CAPTION = "عکس فاکتور";
+  var RECEIPT_PHOTO_CAPTION = "عکس رسید پرداخت";
 
   var clinic = null;
   var busy = false;
@@ -211,6 +214,63 @@
       });
     });
   }
+  /**
+   * F1: the photo taken at the door, read back by the person who decides the record.
+   *
+   * The server serves a photo by its content hash and only to an approver, so the accountant sees the
+   * invoice she types and the receipt she pays against; the hash name is already in the state answer.
+   */
+  function photoUrl(sha256) {
+    return "/api/v1/photos/" + encodeURIComponent(sha256);
+  }
+
+  function closePhoto() {
+    var viewer = byId("purchase-photo-viewer");
+    var image = byId("purchase-photo-image");
+    if (image) {
+      image.classList.remove("is-zoomed");
+      image.removeAttribute("src");
+    }
+    if (viewer && typeof viewer.close === "function" && viewer.open) viewer.close();
+  }
+
+  /** The whole phone screen for one photo; a tap on the image switches between fit and 2.5×. */
+  function openPhoto(sha256, caption) {
+    var viewer = byId("purchase-photo-viewer");
+    var image = byId("purchase-photo-image");
+    if (!viewer || !image || typeof viewer.showModal !== "function") return;
+    var label = byId("purchase-photo-caption");
+    if (label) label.textContent = caption;
+    image.alt = caption;
+    image.classList.remove("is-zoomed");
+    image.src = photoUrl(sha256);
+    viewer.showModal();
+  }
+
+  /** One photo in the form: as wide as the phone, with the caption under it, tap to open it big. */
+  function photoFigure(sha256, caption) {
+    var figure = el("figure", "pu-photo");
+    figure.dataset.photo = sha256;
+    var open = el("button", "pu-photo-open");
+    open.type = "button";
+    var image = el("img", "pu-photo-image");
+    image.src = photoUrl(sha256);
+    image.alt = caption;
+    image.loading = "lazy";
+    image.decoding = "async";
+    open.appendChild(image);
+    open.addEventListener("click", function () {
+      openPhoto(sha256, caption);
+    });
+    figure.appendChild(open);
+    figure.appendChild(el("figcaption", "pu-photo-caption", caption));
+    image.addEventListener("error", function () {
+      figure.textContent = "";
+      figure.appendChild(el("p", "pu-hint", PHOTO_UNREADABLE));
+    });
+    return figure;
+  }
+
   /** Steps run one after another: a plain `{action, data}`, or a function given the last answer. */
   function chain(steps) {
     return steps.reduce(function (previous, step) {
@@ -940,6 +1000,10 @@
         )
       );
     }
+    // A payment already recorded here left a receipt photo; the next payment is checked against it.
+    (invoice.receipt_photos || []).forEach(function (sha256) {
+      cardBox.appendChild(photoFigure(sha256, RECEIPT_PHOTO_CAPTION));
+    });
     if (invoice.returned) {
       cardBox.appendChild(el("p", "pu-meta", "این بار به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."));
       return cardBox;
@@ -972,6 +1036,8 @@
   function digitizeForm(invoice) {
     var box = el("div", "pu-form");
     box.appendChild(el("p", "pu-hint", "خطوط فاکتور را با نرخ واحد ثبت کنید؛ جمع را سرور حساب می‌کند."));
+    // The photo the door stored, right beside the boxes: the accountant types the invoice she sees (F1).
+    if (invoice.invoice_photo) box.appendChild(photoFigure(invoice.invoice_photo, INVOICE_PHOTO_CAPTION));
     var items = knownItems();
     var lines = lineRows({ items: items, located: false, priced: true });
     box.appendChild(lines.box);
@@ -1443,6 +1509,21 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    var viewer = byId("purchase-photo-viewer");
+    var close = byId("purchase-photo-close");
+    var image = byId("purchase-photo-image");
+    if (close) close.addEventListener("click", closePhoto);
+    if (viewer) {
+      // A tap outside the photo closes the viewer, as a phone user expects from a full-screen photo.
+      viewer.addEventListener("click", function (event) {
+        if (event.target === viewer || event.target.classList.contains("pu-viewer-stage")) closePhoto();
+      });
+    }
+    if (image) {
+      image.addEventListener("click", function () {
+        image.classList.toggle("is-zoomed");
+      });
+    }
     reload().catch(function () {
       var loading = byId("purchase-loading");
       if (loading) loading.classList.add("hidden");
