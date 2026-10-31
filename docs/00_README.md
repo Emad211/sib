@@ -25,6 +25,7 @@
 | [A05_WORK_PLAN](accounting/A05_WORK_PLAN.md) | بک‌لاگ مرحله‌به‌مرحله با معیار «انجام شد» |
 | [A06_MANAGER_AREA_SPEC](accounting/A06_MANAGER_AREA_SPEC.md) | بازطراحی بخش مدیر |
 | [A07_RELEASE_AND_DEPLOYMENT](accounting/A07_RELEASE_AND_DEPLOYMENT.md) | ساخت exe، انتشار، بازگشت |
+| [A08_CLIENT_FEEDBACK_R1](accounting/A08_CLIENT_FEEDBACK_R1.md) | بازخورد مالک (دور ۱) و وضعیت هر مورد |
 
 ### اپ شیفت (فاز ۳)
 
@@ -43,9 +44,11 @@
 | [E01_ENGINEERING_STANDARDS](engineering/E01_ENGINEERING_STANDARDS.md) | کدنویسی، گیت، بازبینی، تعریف «انجام شد» |
 | [E02_SECURITY_AND_PRIVACY](engineering/E02_SECURITY_AND_PRIVACY.md) | دادهٔ بیمار، تهدیدها، قواعد |
 | [E03_DEV_ENVIRONMENT](engineering/E03_DEV_ENVIRONMENT.md) | راه‌اندازی محیط و دستورها |
+| [E04_PROJECT_MAP](engineering/E04_PROJECT_MAP.md) | نقشهٔ کد و اسناد: ساختار پوشه‌ها، لایه‌ها، دستورهای تست و لینت |
 | [O01_BACKUP_AND_RECOVERY](ops/O01_BACKUP_AND_RECOVERY.md) | پشتیبان‌گیری و بازیابی |
 | [O02_INCIDENT_RUNBOOK](ops/O02_INCIDENT_RUNBOOK.md) | وقتی چیزی خراب شد |
 | [O03_STAFF_COMMUNICATION_AND_TRAINING](ops/O03_STAFF_COMMUNICATION_AND_TRAINING.md) | اطلاع‌رسانی و آموزش کارکنان |
+| [O04_SHIFT_RUNBOOK](ops/O04_SHIFT_RUNBOOK.md) | راه‌اندازی و بهره‌برداری اپ شیفت روی رایانهٔ درمانگاه |
 
 ## قواعد نگهداری اسناد
 
@@ -62,7 +65,8 @@ sib/
 ├── docs/                    ← همین اسناد (نقشهٔ راه)
 ├── clinic-landing/          ← سایت معرفی (روی Vercel)
 ├── _data/                   ← کپی‌های دیتابیس واقعی — بیرون از گیت، هرگز commit نشود
-└── (پیشنهادی، منتظر تأیید — ADR-001)
-    ├── apps/accounting/     ← حسابداری، منتقل‌شده از ریپوی قدیمی
-    └── apps/shift/          ← اپ شیفت
+├── apps/accounting/         ← حسابداری، منتقل‌شده از ریپوی قدیمی
+└── apps/shift/              ← اپ شیفت
 ```
+
+این ساختار همان چیزی است که در ADR-001 پذیرفته شد و ساخته شده است؛ `_data/` بیرون از گیت می‌ماند و هرگز commit نمی‌شود.

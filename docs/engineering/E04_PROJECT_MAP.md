@@ -3,12 +3,13 @@
 ## 1. Platform Purpose
 Monorepo for Sib 24-Hour Clinic (`درمانگاه شبانه‌روزی سیب`). Key components:
 - **Accounting & Reception Desktop App (`apps/accounting/`)**: Offline Flask/SQLite application (port 8080) for reception, billing, tariffs, visits, procedures, payments, and manager administration. Packaged as a single-file Windows executable (`apps/accounting/HesabdariSib.spec`, `console=False`).
-- **Shift Management App (Planned, `docs/shift/`)**: Independent service reading accounting via read-only bridge (`mode=ro`, `PRAGMA query_only=1`, versioned `v_shift_*` views per S04) with its own database, blind shift handovers, and append-only event log (ADR-004, ADR-010). No code yet: `apps/` contains only `accounting/`.
+- **Shift Management App (`apps/shift/`, specs in `docs/shift/`)**: FastAPI + SQLAlchemy Core service on SQLite (WAL, default port 8443) serving an installable Persian RTL PWA, with its own database and an append-only event log (ADR-004, ADR-010). Accounting is read only through the read-only bridge (`mode=ro`, `PRAGMA query_only=1`, versioned `v_shift_*` views per S04). Code that exists today: app factory `apps/shift/src/shift/app.py`, routes under `apps/shift/src/shift/api/` (auth, campaigns, catalog, devices, events, handover, held, manager, photos, settings, web), migrations `m0001_baseline`–`m0012_campaigns` in `apps/shift/src/shift/adapters/db/migrations/`, the bridge in `apps/shift/src/shift/adapters/accounting/readonly.py`, PWA shell in `apps/shift/src/shift/static/` (`manifest.webmanifest`, `sw.js`), tests under `apps/shift/tests/` (unit, integration, contract, property, security, e2e, plus `data/` fixtures and a `js/` outbox test), and operator CLIs under `apps/shift/tools/`; app version `0.2.0` (`apps/shift/src/shift/__version__.py`).
 - **Clinic Landing (`clinic-landing/`)**: Vite + TypeScript + three.js marketing/3D web app deployed to Vercel (`clinic-landing/vercel.json`).
 - *Parallel Note*: `graphify-out/` was built by a DeepSeek/DSH worker (`.master/graphify-dsh.md`); the folder is gitignored and rebuilt with `graphify-out/rebuild.ps1` from git-tracked files only. Start with `graphify-out/GRAPH_REPORT.md`.
 
 ## 2. Directory Structure
 - `apps/accounting/`: Accounting Flask application codebase, tests, packaging specs, and configs.
+- `apps/shift/`: Shift service codebase (FastAPI + SQLAlchemy Core, Persian RTL PWA), tests, and operator CLIs.
 - `clinic-landing/`: Marketing landing page and 3D visualizer web app.
 - `docs/`: Comprehensive roadmap, architecture decision records, engineering, and ops documentation.
 - `docs/accounting/`: Accounting audit, target architecture, migrations, and test strategy (A01–A08).
@@ -81,7 +82,7 @@ Refactoring follows the Strangler pattern (ADR-003): route -> service -> reposit
 1. `docs/00_README.md`: Master documentation roadmap and reading guide.
 2. `docs/01_PROJECT_CHARTER.md`: Platform vision, success metrics, and stakeholders.
 3. `docs/02_ROADMAP.md`: Implementation phases (Phases 0-4) and gate requirements.
-4. `docs/03_DECISIONS.md`: Architectural Decision Records (ADR-001 through ADR-013).
+4. `docs/03_DECISIONS.md`: Architectural Decision Records (ADR-001 through ADR-020).
 5. `CLAUDE.md` & `apps/accounting/CLAUDE.md`: Repository-wide invariants and accounting development conventions.
 6. Shift App Specs: `docs/shift/S01_PRODUCT_LOGIC.md`, `docs/shift/S02_ARCHITECTURE.md`, `docs/shift/S03_DOMAIN_MODEL.md`, `docs/shift/S04_ACCOUNTING_INTEGRATION_CONTRACT.md`, `docs/shift/S05_DELIVERY_PLAN.md`, and root `اپ شیفت درمانگاه سیب — نسخه نهایی منطق.md`.
 
