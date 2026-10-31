@@ -24,7 +24,7 @@ from shift.domain.effects import no_effects
 from shift.domain.money import Toman
 from shift.domain.payloads import Identifier, Note, Payload
 from shift.domain.permissions import Permission, Role
-from shift.domain.rewards import WORK_TYPE_LABELS, WorkType
+from shift.domain.rewards import CREDIT_WORK_TYPES, WORK_TYPE_LABELS, WorkType
 from shift.domain.shift_events.base import (
     APPROVED,
     FieldKind,
@@ -104,10 +104,10 @@ def _validate_earned(payload: RewardEarned, context: ShiftEventContext) -> None:
 
 
 def _validate_confirmed(payload: RewardConfirmed, context: ShiftEventContext) -> None:
-    """Only an assigned task is credited by the manager, for a real active person and never himself."""
+    """Only an assigned task or the follow-up path is credited by the manager, never himself."""
     if payload.amount_toman <= 0:
         raise ShiftEventError(NOT_POSITIVE)
-    if payload.work_type is not WorkType.MANAGER_TASK:
+    if payload.work_type not in CREDIT_WORK_TYPES:
         raise ShiftEventError(CONFIRMED_IS_A_TASK)
     if context.staff_roles(payload.staff_id) is None:
         raise ShiftEventError(UNKNOWN_PERSON)

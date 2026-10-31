@@ -47,6 +47,7 @@ from shift.services.daily_card import (
     ShiftEventLine,
 )
 from shift.services.handover import HandoverError, HandoverService
+from shift.services.learning_status import learning_status
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService, SettingValue
 
@@ -343,7 +344,16 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
 
 def _card_page(request: Request, card: Card) -> HTMLResponse:
     """One card, formatted once here so the template carries Persian text and no figures logic."""
-    return _shell_page(request, "manager_card.html", {"card": _card_view(card)}, cache_control=NO_STORE)
+    learning = learning_status(request.app.state.database, to_tehran(request.app.state.clock.now_utc()).date())
+    return _shell_page(
+        request,
+        "manager_card.html",
+        {
+            "card": _card_view(card),
+            "learning": {"active": learning.active, "until": learning.until_fa},
+        },
+        cache_control=NO_STORE,
+    )
 
 
 def _not_found() -> HTMLResponse:

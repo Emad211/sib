@@ -30,6 +30,7 @@ class WorkType(StrEnum):
     VITALS = "vitals"  # قند و فشار — automatic, from accounting's own injections
     REGISTRATION = "registration"  # ثبت بیمار — a valid national ID and a valid, unique mobile
     MANAGER_TASK = "manager_task"  # کار ارجاعی مدیر — the manager credits the closed task
+    FOLLOW_UP = "follow_up"  # بازکردن مسیر پیگیری — the manager confirms it by hand, monthly (decision 4)
 
 
 # The labels every screen prints; keyed by `WorkType`, so a stored string finds its label too.
@@ -37,7 +38,11 @@ WORK_TYPE_LABELS: Mapping[WorkType, str] = {
     WorkType.VITALS: "قند و فشار",
     WorkType.REGISTRATION: "ثبت بیمار",
     WorkType.MANAGER_TASK: "کار ارجاعی مدیر",
+    WorkType.FOLLOW_UP: "بازکردن مسیر پیگیری",
 }
+
+# The two works a manager may credit, each with the confirmation the owner's table asks for.
+CREDIT_WORK_TYPES: tuple[WorkType, ...] = (WorkType.MANAGER_TASK, WorkType.FOLLOW_UP)
 
 
 def month_of(instant: datetime) -> str:
@@ -170,6 +175,7 @@ class Standing:
     rank: int
     headcount: int
     team_works: int
+    goal_works: int | None = None
 
 
 def standing_of(
@@ -178,6 +184,7 @@ def standing_of(
     month: str,
     confirmed: Sequence[RewardLine],
     revoked: Sequence[RewardLine],
+    goal_works: int | None = None,
 ) -> Standing:
     """One person's screen: own net, own count, rank by count of confirmed works, and the team total.
 
@@ -197,4 +204,5 @@ def standing_of(
         rank=1 + sum(1 for count in counts.values() if count > own_works),
         headcount=headcount,
         team_works=sum(counts.values()),
+        goal_works=goal_works,
     )

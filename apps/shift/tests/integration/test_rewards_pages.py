@@ -287,3 +287,76 @@ def test_a_month_with_no_reward_reads_as_empty_not_as_an_error(client: TestClien
 
     assert page.status_code == 200
     assert "در این ماه پاداشی تأیید یا ابطال نشده است." in page.text
+
+
+def test_the_manager_sets_the_team_goal_and_a_person_sees_the_progress(client: TestClient) -> None:
+    csrf = _sign_in(client, "manager")
+
+    saved = client.post(
+        "/manager/rewards/goal",
+        data={"month": MONTH, "goal_works": "۱۲۰"},
+        headers={"X-CSRFToken": csrf},
+        follow_redirects=False,
+    )
+    _paid_month(client, csrf)
+    _sign_in(client, "nurse")
+
+    page = client.get(f"/rewards?month={MONTH}")
+
+    assert saved.status_code == 303, saved.text
+    assert client.app.state.rewards.team_goal(MONTH).goal_works == 120
+    assert "پیشرفت تیم" in page.text and "۱۲۰" in page.text and "٪" in page.text
+
+
+def test_the_manager_credits_a_task_and_confirms_the_follow_up_path_once_a_month(client: TestClient) -> None:
+    csrf = _sign_in(client, "manager")
+
+    credit = client.post(
+        "/manager/rewards/credit",
+        data={
+            "month": MONTH,
+            "staff_id": ROLES["nurse"].staff_id,
+            "work_type": "manager_task",
+            "amount_toman": "80000",
+            "note": "تعمیر پیگیری شد",
+        },
+        headers={"X-CSRFToken": csrf},
+        follow_redirects=False,
+    )
+    # The follow-up path is confirmed by hand; a second press for the same person and month is a replay.
+    for _ in range(2):
+        follow_up = client.post(
+            "/manager/rewards/credit",
+            data={
+                "month": MONTH,
+                "staff_id": ROLES["nurse"].staff_id,
+                "work_type": "follow_up",
+                "amount_toman": "30000",
+            },
+            headers={"X-CSRFToken": csrf},
+            follow_redirects=False,
+        )
+
+    records = client.app.state.rewards.records(MONTH)
+    assert (credit.status_code, follow_up.status_code) == (303, 303), follow_up.text
+    assert sorted(record.amount_toman for record in records) == [30_000, 80_000]
+    assert client.app.state.rewards.payroll(MONTH).net_toman == 110_000
+
+
+def test_a_credit_with_another_work_type_is_a_400_and_writes_nothing(client: TestClient) -> None:
+    csrf = _sign_in(client, "manager")
+
+    response = client.post(
+        "/manager/rewards/credit",
+        data={
+            "month": MONTH,
+            "staff_id": ROLES["nurse"].staff_id,
+            "work_type": "vitals",
+            "amount_toman": "50000",
+        },
+        headers={"X-CSRFToken": csrf},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert client.app.state.rewards.records(MONTH) == []

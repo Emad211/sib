@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — تاریخچهٔ قیمت{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های حسابدار">
+    <a class="mg-nav-link" href="/accountant/queue">صف حسابدار</a>
+    <a class="mg-nav-link" href="/accountant/campaigns">گزارش کمپین</a>
+    <a class="mg-nav-link" href="/accountant/prices">تاریخچهٔ قیمت</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">تاریخچهٔ قیمت هر قلم</h1>
+    <p class="mg-meta">هر نرخی که روی فاکتورهای دیجیتال‌شده ثبت شده است، به تفکیک فروشنده؛ برای قیمت‌گذاری و مقایسهٔ فروشنده‌ها.</p>
+  </header>
+
+  {% for row in series %}
+  <section class="mg-section" aria-label="قیمت {{ row.item }}">
+    <h2 class="mg-section-title">{{ row.item }} — {{ row.vendor }}</h2>
+    <p class="mg-line">آخرین نرخ: {{ row.latest }} تومان{% if row.change %} · تغییر نسبت به نرخ قبل: {{ row.change }} تومان{% endif %}</p>
+    {% for point in row.points %}
+    <p class="mg-meta">{{ point.at }} · {{ point.price }} تومان · تعداد {{ point.quantity }} · فاکتور {{ point.invoice }}</p>
+    {% endfor %}
+  </section>
+  {% else %}
+  <section class="mg-section">
+    <p class="mg-empty">هنوز فاکتوری دیجیتال نشده است؛ با ثبت اولین فاکتور، تاریخچهٔ قیمت اینجا ساخته می‌شود.</p>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

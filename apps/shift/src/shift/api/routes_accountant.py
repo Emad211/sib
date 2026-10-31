@@ -28,6 +28,7 @@ from shift.api.routes_web import _shell_page
 from shift.common.clock import parse_iso, to_tehran
 from shift.common.jalali import format_jalali
 from shift.domain.permissions import Permission
+from shift.domain.price_history import PriceSeries
 from shift.services.accountant_queue import (
     PENDING,
     AccountantQueueService,
@@ -38,11 +39,14 @@ from shift.services.accountant_queue import (
 )
 from shift.services.auth import Principal
 from shift.services.campaign_report import CampaignLine, CampaignReport, CampaignReportService
+from shift.services.price_history import PriceHistoryService
 
 QUEUE_PATH = "/accountant/queue"
 CAMPAIGNS_PATH = "/accountant/campaigns"
+PRICES_PATH = "/accountant/prices"
 NO_STORE = "no-store"
 UNKNOWN = "نامشخص"
+NO_VENDOR = "بدون فروشنده"
 RANGE_REFUSED = "بازهٔ تاریخ درست نیست؛ ماه جاری نمایش داده شد."
 # The one state a row of these sections can be in: everything decided has left the queue.
 STATE_LABELS = {PENDING: "در انتظار تصمیم"}
@@ -104,7 +108,43 @@ def build_accountant_router(*, queue: QueueService, report: ReportService) -> AP
             cache_control=NO_STORE,
         )
 
+    @pages.get(PRICES_PATH, response_class=HTMLResponse, summary="The price history per item and vendor")
+    def get_price_history(request: Request, _viewer: QueueViewer) -> HTMLResponse:
+        """F2: every price the clinic paid, per item and vendor, read from the digitized invoices."""
+        service = _price_history_service(request)
+        names = service.item_names()
+        return _shell_page(
+            request,
+            "accountant_prices.html",
+            {"series": [_series_row(series, names) for series in service.series()]},
+            cache_control=NO_STORE,
+        )
+
     return pages
+
+
+def _price_history_service(request: Request) -> PriceHistoryService:
+    """The price screen's reader: the log plus the catalog's item names, both from the lifespan."""
+    return PriceHistoryService(request.app.state.database, request.app.state.catalog)
+
+
+def _series_row(series: PriceSeries, names: dict[str, str]) -> dict[str, Any]:
+    """One item from one vendor: its prices oldest first, newest price and the change it carries."""
+    return {
+        "item": names.get(series.item_id, UNKNOWN),
+        "vendor": series.vendor or NO_VENDOR,
+        "latest": f"{series.latest:,}",
+        "change": f"{series.change_toman:,}" if len(series.points) > 1 else None,
+        "points": [
+            {
+                "at": _stamp_fa(point.at_tehran),
+                "price": f"{point.unit_price_toman:,}",
+                "quantity": f"{point.quantity:,}",
+                "invoice": point.invoice_reference or UNKNOWN,
+            }
+            for point in reversed(series.points)
+        ],
+    }
 
 
 # --- formatting: one layer, the clinic's own helpers -------------------------------------------------

@@ -22,6 +22,10 @@
     <p class="mg-meta">ساخته‌شده: {{ card.generated_at }}</p>
   </header>
 
+  {% if learning and learning.active %}
+  <p class="mg-line mg-meta">حالت یادگیری: مغایرت‌های این روزها فقط برای یادگیری است و بر پاداش کسی اثر ندارد؛ این حالت تا {{ learning.until }} ادامه دارد.</p>
+  {% endif %}
+
   {# H-08 first: an emergency start and the cash recorded inside it must be impossible to miss. #}
   {% if "emergency_starts" in card.sections %}
   {% set starts = card.sections.emergency_starts %}
@@ -76,6 +80,7 @@
   {% if "discrepancies" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-gap-title">
     <h2 id="mg-gap-title" class="mg-section-title">مغایرت‌ها</h2>
+    {% if learning and learning.active %}<p class="mg-meta">این مغایرت‌ها در حالت یادگیری‌اند و بر پاداش اثری ندارند.</p>{% endif %}
     {% for row in card.sections.discrepancies %}
     <article class="mg-row">
       <p class="mg-amount">{{ row.difference }}{% if row.direction %} <span class="mg-unit">{{ row.direction }}</span>{% endif %}</p>

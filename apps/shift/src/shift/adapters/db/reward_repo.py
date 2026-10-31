@@ -67,6 +67,16 @@ class RewardRateRow:
 
 
 @dataclass(frozen=True, slots=True)
+class TeamGoalRow:
+    """One month's team goal: the number the manager set and who set it when."""
+
+    month: str
+    goal_works: int
+    set_by: str
+    set_at: str
+
+
+@dataclass(frozen=True, slots=True)
 class WorkRow:
     """One work read from an accounting mirror, with the staff row its account maps to (if any)."""
 
@@ -142,6 +152,48 @@ def upsert_rate(connection: Connection, values: Mapping[str, Any]) -> RewardRate
         .one()
     )
     return _rate(row)
+
+
+def team_goal(connection: Connection, month: str) -> TeamGoalRow | None:
+    """The team goal of one month, or None while the manager has not set one."""
+    row = (
+        connection.exec_driver_sql(
+            "SELECT month, goal_works, set_by, set_at FROM reward_team_goals WHERE month = ?", (month,)
+        )
+        .mappings()
+        .first()
+    )
+    return (
+        None
+        if row is None
+        else TeamGoalRow(
+            month=str(row["month"]),
+            goal_works=int(row["goal_works"]),
+            set_by=str(row["set_by"]),
+            set_at=str(row["set_at"]),
+        )
+    )
+
+
+def set_team_goal(connection: Connection, values: Mapping[str, Any]) -> TeamGoalRow:
+    """Store one month's team goal, replacing an earlier number for the same month."""
+    row = (
+        connection.exec_driver_sql(
+            "INSERT INTO reward_team_goals (month, goal_works, set_by, set_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (month) DO UPDATE SET goal_works = excluded.goal_works, "
+            "set_by = excluded.set_by, set_at = excluded.set_at "
+            "RETURNING month, goal_works, set_by, set_at",
+            (values["month"], values["goal_works"], values["set_by"], values["set_at"]),
+        )
+        .mappings()
+        .one()
+    )
+    return TeamGoalRow(
+        month=str(row["month"]),
+        goal_works=int(row["goal_works"]),
+        set_by=str(row["set_by"]),
+        set_at=str(row["set_at"]),
+    )
 
 
 def acc_users(connection: Connection) -> dict[str, str | None]:
