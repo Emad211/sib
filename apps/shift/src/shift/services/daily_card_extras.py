@@ -9,9 +9,9 @@ Three small, read-only sections live here so `daily_card.py` does not grow past 
   is before the day the card is built.
 - `call_sample` — «نمونهٔ تماس» (owner decision 5): a few patient registrations of the covered days,
   drawn at random, for the manager's control call. The accounting mirror keeps no phone number and no
-  name (S04), so a row carries only the file number, the day and who registered; the manager reads the
-  phone in the accounting app. The draw is seeded by the card's own date, so rebuilding a card never
-  changes who is on it.
+  name (S04), so the card and its stored document carry only the patient id; the name and mobile are
+  read from accounting when the page is opened, and never stored. The draw is seeded by the card's
+  own date, so rebuilding a card never changes who is on it.
 
 Nothing here reads a reference figure: a count, a deadline and a registration are not the blind-count
 target (ADR-011).
@@ -73,18 +73,24 @@ class OverdueFaultLine:
 
 @dataclass(frozen=True, slots=True)
 class CallSampleLine:
-    """One patient registration picked for a control call: the file number, the day, and who made it."""
+    """One patient registration picked for a control call — the patient's id and nothing else.
 
-    patient_number: str
-    registered_on: str
-    registrar: str
+    A name or a mobile on the card would be patient data stored in the shift database and copied into
+    every card document, so the card keeps the id and the page reads the rest from accounting when it
+    is opened (owner decision 5, S04).
+    """
+
+    patient_id: str
 
     def to_payload(self) -> dict[str, Any]:
-        return {"patient_number": self.patient_number, "registered_on": self.registered_on, "registrar": self.registrar}
+        return {"patient_id": self.patient_id}
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "CallSampleLine":
-        return cls(str(payload["patient_number"]), str(payload["registered_on"]), str(payload["registrar"]))
+        # Cards written before v2 kept `patient_number`, which is the same accounting patient id.
+        if "patient_id" in payload:
+            return cls(str(payload["patient_id"]))
+        return cls(str(payload["patient_number"]))
 
 
 def event_counts(rows: Sequence[Any]) -> tuple[EventCountLine, ...]:
@@ -131,23 +137,21 @@ def call_sample(
     """A seeded random draw of the window's valid registrations, oldest first once drawn.
 
     Only a registration with both checks passed is a candidate: it is the one the clinic rewards, so
-    it is the one a control call is for (owner decision 5).
+    it is the one a control call is for (owner decision 5). The row keeps the id alone; the name and
+    mobile are accounting's answer at the moment the page is opened.
     """
     rows = connection.exec_driver_sql(
-        "SELECT r.patient_id, s.full_name AS registrar, r.created_at "
-        f"FROM {mirror_repo.REGISTRATION} AS r LEFT JOIN staff AS s ON s.acc_user = r.created_by "
-        "WHERE r.has_valid_nid = 1 AND r.has_valid_phone = 1 ORDER BY r.created_at, r.patient_id"
+        "SELECT patient_id, created_at "
+        f"FROM {mirror_repo.REGISTRATION} "
+        "WHERE has_valid_nid = 1 AND has_valid_phone = 1 ORDER BY created_at, patient_id"
     ).mappings()
     inside = []
     for row in rows:
         stamp = _registered_at(str(row["created_at"]))
         if window.covered_from <= stamp.date() <= window.covered_to:
-            inside.append((str(row["patient_id"]), stamp.date(), str(row["registrar"] or UNKNOWN_REGISTRAR)))
+            inside.append(str(row["patient_id"]))
     picked = random.Random(window.card_date.toordinal()).sample(inside, min(size, len(inside)))
-    return tuple(
-        CallSampleLine(patient, day.isoformat(), registrar)
-        for patient, day, registrar in sorted(picked, key=lambda r: (r[1], r[0]))
-    )
+    return tuple(CallSampleLine(patient) for patient in sorted(set(picked)))
 
 
 def flag_event_ids(events: Sequence[Any]) -> dict[str, str]:

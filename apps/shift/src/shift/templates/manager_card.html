@@ -370,11 +370,15 @@
   {% if "call_sample" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-call-title">
     <h2 id="mg-call-title" class="mg-section-title">نمونهٔ تماس</h2>
-    <p class="mg-note">چند ثبت بیمار تصادفی برای تماس کنترلی. شماره تلفن را از پروندهٔ بیمار در نرم‌افزار حسابداری بخوانید.</p>
+    <p class="mg-note">چند ثبت بیمار تصادفی برای تماس کنترلی. نام و تلفن هنگام باز شدن همین صفحه از حسابداری خوانده می‌شود و جایی ذخیره نمی‌شود.</p>
     {% for row in card.sections.call_sample %}
     <article class="mg-row">
-      <p class="mg-line mg-strong">پرونده {{ row.patient_number }}</p>
-      <p class="mg-line">ثبت: {{ row.day }} · ثبت‌کننده: {{ row.registrar }}</p>
+      <p class="mg-line mg-strong">{{ row.name or ("پروندهٔ " ~ row.patient_id) }}</p>
+      {% if row.phone %}
+      <p class="mg-line"><a href="tel:{{ row.phone }}">تماس با {{ row.phone }}</a></p>
+      {% else %}
+      <p class="mg-line mg-muted">پروندهٔ {{ row.patient_id }} — تلفن از حسابداری خوانده نشد.</p>
+      {% endif %}
     </article>
     {% else %}
     <p class="mg-empty">ثبت بیماری برای نمونه نبود.</p>

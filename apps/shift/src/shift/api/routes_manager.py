@@ -18,7 +18,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import SQLAlchemyError
 
+from shift.adapters.accounting import views
+from shift.adapters.accounting.readonly import AccountingUnavailable, open_accounting
 from shift.adapters.db import handover_repo, staff_repo
 from shift.api import deps
 from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
@@ -345,15 +348,42 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
 def _card_page(request: Request, card: Card) -> HTMLResponse:
     """One card, formatted once here so the template carries Persian text and no figures logic."""
     learning = learning_status(request.app.state.database, to_tehran(request.app.state.clock.now_utc()).date())
+    view = _card_view(card)
+    _attach_call_contacts(request, card, view["sections"].get("call_sample", []))
     return _shell_page(
         request,
         "manager_card.html",
         {
-            "card": _card_view(card),
+            "card": view,
             "learning": {"active": learning.active, "until": learning.until_fa},
         },
         cache_control=NO_STORE,
     )
+
+
+def _attach_call_contacts(request: Request, card: Card, rows: list[dict[str, Any]]) -> None:
+    """Fill the drawn rows' name and mobile from accounting now, keeping nothing (owner decision 5).
+
+    The card stores patient ids alone, so this is the only moment a mobile exists in the shift app: it
+    goes into one no-store response and is never written to the database, an event, a log or the card
+    document. Accounting below migration 8, or an install without a copy, leaves the id alone.
+    """
+    if not rows:
+        return
+    ids = [int(row["patient_id"]) for row in rows if str(row["patient_id"]).isdigit()]
+    path = request.app.state.settings.accounting_db_path
+    if path is None or not ids:
+        return
+    try:
+        with open_accounting(path) as accounting, accounting.connect() as connection:
+            contacts = views.call_sample_contacts(connection, ids)
+    except (AccountingUnavailable, SQLAlchemyError):
+        return
+    for row in rows:
+        contact = contacts.get(int(row["patient_id"]))
+        if contact is not None:
+            row["name"] = str(contact["full_name"])
+            row["phone"] = str(contact["phone_number"])
 
 
 def _not_found() -> HTMLResponse:
@@ -556,15 +586,8 @@ def _overdue_fault_rows(card: Card) -> list[dict[str, str]]:
 
 
 def _call_sample_rows(card: Card) -> list[dict[str, str]]:
-    """The registrations drawn for a control call: the file number, the day and who registered (C1)."""
-    return [
-        {
-            "patient_number": entry.patient_number,
-            "day": format_jalali(date.fromisoformat(entry.registered_on)),
-            "registrar": entry.registrar,
-        }
-        for entry in card.call_sample
-    ]
+    """The registrations drawn for a control call: the patient id the card keeps (C1)."""
+    return [{"patient_id": entry.patient_id} for entry in card.call_sample]
 
 
 def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:

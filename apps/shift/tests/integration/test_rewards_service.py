@@ -90,14 +90,19 @@ def _registration(
     acc_user: str,
     created_at: str = "2026-10-27 10:00:00",
     valid: bool = True,
+    first_for_phone: bool = True,
 ) -> None:
-    """One registration; `valid` is the national-ID and mobile check the owner asks for."""
+    """One registration; `valid` is the national-ID and mobile check the owner asks for.
+
+    `first_for_phone` is accounting's answer to "is this patient the first on that mobile" (migration
+    8's `v_shift_patient_registrations_v2`); a mirror built without v2 stores 1 for every row.
+    """
     with database.write() as connection:
         connection.exec_driver_sql(
             "INSERT INTO acc_registration "
-            "(patient_id, created_by, created_at, has_valid_nid, has_valid_phone, is_foreign, ingested_at) "
-            "VALUES (?, ?, ?, ?, ?, 0, ?)",
-            (patient_id, acc_user, created_at, int(valid), int(valid), created_at),
+            "(patient_id, created_by, created_at, has_valid_nid, has_valid_phone, is_foreign, first_for_phone, "
+            "ingested_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+            (patient_id, acc_user, created_at, int(valid), int(valid), int(first_for_phone), created_at),
         )
 
 
@@ -263,6 +268,22 @@ def test_a_registration_without_both_checks_earns_nothing(roster: Database, serv
 
     assert (report.created, report.unrated, report.unmapped) == (0, 0, 0)
     assert service.copied(MONTH).registrations == 0
+
+
+def test_two_patients_on_one_mobile_earn_one_registration_reward(roster: Database, service: RewardsService) -> None:
+    """Owner decision 5: a mobile pays once, so only accounting's `first_for_phone` row is a work."""
+    _rates(service)
+    _registration(roster, patient_id=9501, acc_user=RECEPTION_ACC)
+    _registration(roster, patient_id=9502, acc_user=RECEPTION_ACC, first_for_phone=False)
+
+    report = service.accrue(MONTH)
+
+    assert (report.created, report.unrated, report.unmapped) == (1, 0, 0)
+    assert service.copied(MONTH).registrations == 1
+    assert [record.staff_id for record in service.pending()] == [ROLES["reception"].staff_id]
+    # A second accrual over the same mirror replays that one record instead of paying the second patient.
+    assert service.accrue(MONTH).created == 0
+    assert service.copied(MONTH).registrations == 1
 
 
 def test_the_rate_of_the_month_the_work_happened_in_is_frozen_into_the_record(

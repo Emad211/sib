@@ -40,12 +40,14 @@ _VITAL_WORKS = (
     "ORDER BY v.closed_at, v.injection_id"
 )
 # The registration reward needs both checks the owner asks for; a foreign patient with both counts.
+# One mobile earns once (owner decision 5), so only the first registration for a mobile is a work;
+# accounting answers which one that is, and a mirror built from _v1 marks every row as the first.
 _REGISTRATION_WORKS = (
     "SELECT r.patient_id AS source_ref, r.created_at AS done_at, r.created_by AS acc_user, "
     "s.staff_id AS staff_id, s.full_name AS staff_name "
     f"FROM {mirror_repo.REGISTRATION} AS r "
     "LEFT JOIN staff AS s ON s.acc_user = r.created_by "
-    "WHERE r.has_valid_nid = 1 AND r.has_valid_phone = 1 "
+    "WHERE r.has_valid_nid = 1 AND r.has_valid_phone = 1 AND r.first_for_phone = 1 "
     "ORDER BY r.created_at, r.patient_id"
 )
 _TIMELINE = (
