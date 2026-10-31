@@ -432,3 +432,5 @@ CREATE TABLE IF NOT EXISTS invoice_voids (
 CREATE INDEX IF NOT EXISTS idx_patients_created_at ON patients (created_at);
 CREATE INDEX IF NOT EXISTS idx_invoice_voids_voided_at ON invoice_voids (voided_at);
 -- The v_shift_voids_v1 view, and the closed-invoice-only money views, are created by migration 0007 only.
+-- v_shift_patient_registrations_v2 (v1 columns + first_for_phone) and v_shift_call_sample_v1 are
+-- created by migration 0008 only.
