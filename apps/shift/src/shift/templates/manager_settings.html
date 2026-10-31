@@ -36,7 +36,8 @@
              value="{{ row.value }}" aria-label="{{ row.label }}" dir="ltr" required>
       {% else %}
       <input class="form-control mg-input" id="set-{{ row.key }}" name="value" type="number" step="1"
-             inputmode="numeric" value="{{ row.value }}" aria-label="{{ row.label }}" dir="ltr" required
+             inputmode="numeric" value="{{ row.value }}" aria-label="{{ row.label }}" dir="ltr"
+             {%- if not row.optional %} required{% endif %}
              {%- if row.minimum is not none %} min="{{ row.minimum }}"{% endif %}
              {%- if row.maximum is not none %} max="{{ row.maximum }}"{% endif %}>
       {% endif %}

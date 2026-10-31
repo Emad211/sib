@@ -717,6 +717,7 @@ def _setting_row(key: SettingKey, current: SettingValue, newest: SettingValue) -
         "label": SETTING_LABELS[key],
         "value": current.value,
         "kind": spec.kind.value,
+        "optional": spec.optional,
         "minimum": spec.minimum,
         "maximum": spec.maximum,
         "effective_from": _shift_fa(current.effective_from_shift.text),

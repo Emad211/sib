@@ -331,6 +331,21 @@ def test_the_settings_page_changes_a_setting_through_the_existing_api(manager_cl
     assert "08:15" in reloaded
     assert "تغییر در انتظار" in reloaded
 
+    # Decision 11: a threshold can go back to "no number set", which means no suggestion again.
+    for value, expected in (("180", 200), ("", 200)):
+        cleared = manager_client.put(
+            "/api/v1/settings/sugar_threshold",
+            json={"value": value},
+            headers={"X-CSRFToken": token.group(1)},
+        )
+        assert cleared.status_code == expected, cleared.text
+    empty = manager_client.put(
+        "/api/v1/settings/session_ttl_hours",
+        json={"value": ""},
+        headers={"X-CSRFToken": token.group(1)},
+    )
+    assert empty.status_code >= 400
+
     rejected = manager_client.put(
         "/api/v1/settings/session_ttl_hours",
         json={"value": "99"},
