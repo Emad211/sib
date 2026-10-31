@@ -139,14 +139,15 @@ def roster(database: Database, service: RewardsService) -> Database:
     return database
 
 
-def _decide(
+def _record(
     approvals: ShiftEventService,
     principal: Principal,
     event_type: str,
-    target: str,
     payload: dict[str, Any] | None = None,
+    *,
+    target: str | None = None,
 ) -> Any:
-    """One decision recorded the way a phone records it: through the shift-event service."""
+    """One record written through the shift-event service, decision or not, as the screens write it."""
     event_id = new_ulid(NOW)
     return approvals.record(
         EventSubmission(
@@ -164,6 +165,17 @@ def _decide(
         principal=principal,
         shift=SHIFT,
     )
+
+
+def _decide(
+    approvals: ShiftEventService,
+    principal: Principal,
+    event_type: str,
+    target: str,
+    payload: dict[str, Any] | None = None,
+) -> Any:
+    """One decision recorded the way a phone records it: through the shift-event service."""
+    return _record(approvals, principal, event_type, payload, target=target)
 
 
 def _logged(database: Database, event_type: str) -> int:
@@ -338,6 +350,39 @@ def test_the_accountant_reads_the_payroll_but_cannot_confirm(
     assert service.payroll(MONTH).per_staff() == ()
     _decide(approvals, MANAGER, APPROVED, record.event_id)
     assert service.payroll(MONTH).per_staff() == ((ROLES["nurse"].staff_id, ROLES["nurse"].full_name, VITALS_RATE),)
+
+
+def test_a_manager_never_confirms_the_reward_his_own_work_earns(
+    roster: Database, service: RewardsService, approvals: ShiftEventService
+) -> None:
+    """Two people or no money: a manager who also works a shift cannot close his own record (P-05)."""
+    _rates(service)
+    service.map_staff(ROLES["manager"].staff_id, OTHER_ACC, principal=MANAGER)
+    _vital(roster, injection_id=9901, acc_user=OTHER_ACC)
+    service.accrue(MONTH)
+    own = service.pending()[0]
+
+    assert own.staff_id == ROLES["manager"].staff_id
+
+    with pytest.raises(ShiftEventRuleError):
+        _decide(approvals, MANAGER, APPROVED, own.event_id)
+
+    assert service.payroll(MONTH).net_toman == 0, "his own record stays open for another manager"
+
+
+def test_a_manager_never_credits_an_assigned_task_to_himself(
+    roster: Database, service: RewardsService, approvals: ShiftEventService
+) -> None:
+    """`reward.confirmed` closes by itself, so the same hand that writes it must not be the earner's."""
+    task = {"staff_id": ROLES["manager"].staff_id, "work_type": "manager_task", "amount_toman": 100_000}
+
+    with pytest.raises(ShiftEventRuleError):
+        _record(approvals, MANAGER, "reward.confirmed", task)
+    assert _logged(roster, "reward.confirmed") == 0
+
+    _record(approvals, MANAGER, "reward.confirmed", {**task, "staff_id": ROLES["nurse"].staff_id})
+
+    assert service.payroll(MONTH).per_staff() == ((ROLES["nurse"].staff_id, ROLES["nurse"].full_name, 100_000),)
 
 
 @pytest.mark.parametrize(

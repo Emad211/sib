@@ -114,6 +114,9 @@ class KindSpec:
     «تأییدکننده» of waste, the «گیرنده» of a withdrawal). A kind that declares either waits for a
     decision; one that declares neither is never an open item.
 
+    `beneficiary_field` names the payload key of the person a record pays: that person never decides
+    it, so no role — not even the manager's — can close a figure they are the one to receive (SHF-5).
+
     `phone` says whether the kind is a button at all. A reward is written by the service or by the
     manager's own screen, never typed on a staff phone: a self-service reward button would be a
     self-dealing hole (shf5-DESIGN.md §3), so `kinds_for` leaves such a kind out of the wizard while
@@ -133,6 +136,9 @@ class KindSpec:
     validate: Callable[[BaseModel, ShiftEventContext], None] | None = None
     approvable_by: tuple[Role, ...] = ()
     confirmer_field: str | None = None
+    # The person a record pays is never the one who closes it, whatever role their session carries
+    # (SHF-5: a manager who also works a shift cannot confirm the reward his own work earned).
+    beneficiary_field: str | None = None
     needs_reference: bool = False
     reference_types: tuple[str, ...] = ()
     unique_reference: bool = False

@@ -187,6 +187,9 @@ def standing_of(
     """
     counts = works_by_staff(month, confirmed)
     own_works = counts.get(staff_id, 0)
+    # The caller is part of the month even with nothing confirmed yet: the rank they are shown can
+    # never sit above the headcount it is read against.
+    headcount = len(counts) + (0 if staff_id in counts else 1)
     return Standing(
         staff_id=staff_id,
         staff_name=staff_name,
@@ -194,6 +197,6 @@ def standing_of(
         own_toman=net_by_staff(month, confirmed, revoked).get(staff_id, 0),
         own_works=own_works,
         rank=1 + sum(1 for count in counts.values() if count > own_works),
-        headcount=len(counts),
+        headcount=headcount,
         team_works=sum(counts.values()),
     )

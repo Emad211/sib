@@ -45,7 +45,7 @@
 | نگه‌داشته (F5) | `event.held` (رکورد نامعتبر زمانی، بی‌اثر و منتظر مدیر)، `event.released` (آزادسازی؛ خودِ رویداد اصلی با همان هویت و همان زمان وقوع اثر را یک‌بار اعمال می‌کند)، `event.hold_rejected` (برای همیشه بیرون) |
 | خرید | `order_drafted`، `order_decided`، `order_placed`، `delivery_received`، `delivery_flagged`، `delivery_transferred`، `invoice_digitized`، `payment_recorded`، `vendor_return`، `vendor_credit` |
 | انبار | `restock_confirmed`، `stock.weekly_count`، `expiry_flagged` |
-| پاداش | `reward_earned` (payload: `staff_id`، `work_type`، `amount_toman`، `source` (`vitals` \| `registration`)، `source_ref`، `note`؛ ثبت‌کننده یک نهاد سیستمی است و **گیرندهٔ پاداش** فیلد `staff_id` است؛ اقلام باز آن را مدیر با `event.approved`/`event.rejected` می‌بندد)، `reward_confirmed` (کار ارجاعی مدیر؛ خودِ ثبت، تأیید بستن است و نیازی به تصمیم دوم ندارد)، `reward_revoked` (با `reason`، ارجاع به رکورد تأییدشده، یک ابطال برای هر رکورد، بین‌شیفتی) |
+| پاداش | `reward_earned` (payload: `staff_id`، `work_type`، `amount_toman`، `source` (`vitals` \| `registration`)، `source_ref`، `note`؛ ثبت‌کننده یک نهاد سیستمی است و **گیرندهٔ پاداش** فیلد `staff_id` است؛ اقلام باز آن را مدیر با `event.approved`/`event.rejected` می‌بندد)، `reward_confirmed` (کار ارجاعی مدیر؛ خودِ ثبت، تأیید بستن است و نیازی به تصمیم دوم ندارد، پس گیرنده‌اش هرگز خودِ ثبت‌کننده نیست)، `reward_revoked` (با `reason`، ارجاع به رکورد تأییدشده، یک ابطال برای هر رکورد، بین‌شیفتی) |
 | تنظیمات | `setting_changed`، `item_changed`، `staff_changed` |
 
 **همهٔ رویدادهای شیفت** با `requires_shift` ثبت می‌شوند و در صف آفلاین گوشی (Outbox) تکرارناپذیر همگام می‌شوند؛ فقط تحویل شیفت برخط می‌ماند (ADR-016). فقط چهار نوعِ متحرک اثر projection دارند: `cash.withdrawn` روی صندوق (H-02) و `stock.waste_reported`، `stock.shelf_restocked`، `stock.emergency_withdrawal` روی قفسه (H-01)؛ بقیه فقط ثبت می‌شوند و وضعیتشان با تصمیم عوض می‌شود. `patient.item_held` و `patient.item_delivered` بیرون از شمارش‌اند: هیچ اثری روی موجودی ندارند و تحویل با `ref_event_id` به همان امانت وصل می‌شود.
@@ -103,7 +103,7 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 |---|---|
 | `stock(item, location)` | از رویدادهای شمارش تأییدشده + شارژ + مصرف حسابداری − برداشت − ضایعات |
 | `cash(cash_box)` | N0 + نقد حسابداری − برداشت‌ها − واریزها؛ کلید: صندوق (cash box)، نه شیفت (ADR-017). N0 از آخرین تسویه (`handover.count_settled`) می‌آید و هر تسویهٔ تازه آن را جابه‌جا می‌کند |
-| `open_decisions` | هر رویداد نیازمند تأیید که هنوز `approved/rejected/changed` ندارد؛ داور: نقشِ `approvable_by`، شخصِ `confirmer_field`، یا مدیر — هرگز ثبت‌کننده (F2) |
+| `open_decisions` | هر رویداد نیازمند تأیید که هنوز `approved/rejected/changed` ندارد؛ داور: نقشِ `approvable_by`، شخصِ `confirmer_field`، یا مدیر — هرگز ثبت‌کننده (F2) و هرگز ذینفعِ ردیف (`beneficiary_field`، SHF-5: پاداشی که خود مدیر کار کرده را خودش نمی‌بندد) |
 | `my_queue(user)` | اقلام بازِ همان شخص یا نقش‌هایش، از هر شیفت (شیفت‌های قبل فقط همین اقلام باز، بی‌عدد صندوق — R-01، R-07؛ F2) |
 | `reward_ledger(month)` | پاداش‌های تأییدشده در همان ماه منهای ابطال‌هایی که ماه کسرشان همان ماه است (ابطال = ماه بعد از ابطال). مثل `open_decisions` و `my_queue` **محاسباتی** است، نه جدولی: از لاگ خوانده می‌شود و در `rebuild` نیست، پس بازسازی همیشه با وضعیت جاری یکی است |
 

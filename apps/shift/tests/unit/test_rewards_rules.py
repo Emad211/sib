@@ -179,6 +179,17 @@ def test_a_standing_carries_only_the_caller_own_figures() -> None:
     assert (standing.rank, standing.headcount, standing.team_works) == (2, 2, 3)
 
 
+def test_a_person_with_no_confirmed_work_is_still_one_of_the_month_participants() -> None:
+    """«رتبهٔ شما: ۶ از ۵» is not a standing: the caller may never out-rank the headcount (P-03)."""
+    works = [_line(f"staff-{letter}", 1_000, _jalali_at(1405, 8, day)) for day, letter in enumerate("abcde", start=1)]
+
+    last = standing_of("staff-new", "پرستار تازه", "1405-08", works, [])
+    empty = standing_of("staff-new", "پرستار تازه", "1405-08", [], [])
+
+    assert (last.rank, last.headcount, last.own_works) == (6, 6, 0)
+    assert (empty.rank, empty.headcount) == (1, 1)
+
+
 def test_a_shortage_or_cash_figure_cannot_reach_a_reward() -> None:
     """H-06: a warning only, never a deduction — so the rules module may not even know one exists."""
     tree = ast.parse(RULES.read_text(encoding="utf-8"), filename=str(RULES))

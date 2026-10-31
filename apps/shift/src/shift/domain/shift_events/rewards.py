@@ -57,6 +57,7 @@ CONFIRMED_IS_A_TASK = "این ثبت فقط برای کار ارجاعی مدی�
 SOURCE_MISMATCH = "منبع این پاداش با نوع کارش نمی‌خواند."
 UNKNOWN_PERSON = "این کارمند در فهرست پرسنل فعال درمانگاه نیست."
 SELF_EARNED = "پاداش کار خودتان را نمی‌توانید ثبت کنید؛ این کار مدیر است."
+SELF_CONFIRMED = "پاداش کار ارجاعی را نمی‌توانید برای خودتان ثبت کنید؛ کارمند دیگری را انتخاب کنید."
 REASON_REQUIRED = "دلیل ابطال پاداش را بنویسید."
 NOT_CONFIRMED = "فقط پاداش تأییدشده ابطال می‌شود؛ این ثبت هنوز تأیید نشده است."
 NOT_A_REWARD = "این رویداد پاداش نیست و ابطال نمی‌شود."
@@ -103,13 +104,15 @@ def _validate_earned(payload: RewardEarned, context: ShiftEventContext) -> None:
 
 
 def _validate_confirmed(payload: RewardConfirmed, context: ShiftEventContext) -> None:
-    """Only an assigned task is credited by the manager, and only for a real active person."""
+    """Only an assigned task is credited by the manager, for a real active person and never himself."""
     if payload.amount_toman <= 0:
         raise ShiftEventError(NOT_POSITIVE)
     if payload.work_type is not WorkType.MANAGER_TASK:
         raise ShiftEventError(CONFIRMED_IS_A_TASK)
     if context.staff_roles(payload.staff_id) is None:
         raise ShiftEventError(UNKNOWN_PERSON)
+    if payload.staff_id == context.actor_id:
+        raise ShiftEventError(SELF_CONFIRMED)
 
 
 def _validate_revoked(payload: RewardRevoked, context: ShiftEventContext) -> None:
@@ -170,6 +173,7 @@ KINDS: tuple[KindSpec, ...] = (
         summarize=_summary,
         validate=_validate_earned,
         approvable_by=(Role.MANAGER,),
+        beneficiary_field="staff_id",
         card_fields=("staff_id", "work_type", "amount_toman", "note"),
         phone=False,
     ),
@@ -190,6 +194,7 @@ KINDS: tuple[KindSpec, ...] = (
         },
         summarize=_summary,
         validate=_validate_confirmed,
+        beneficiary_field="staff_id",
         card_fields=("staff_id", "work_type", "amount_toman", "note"),
         phone=False,
     ),
