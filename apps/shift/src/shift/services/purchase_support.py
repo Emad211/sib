@@ -13,6 +13,7 @@ from shift.services.auth import Principal
 from shift.services.event_store import NewEvent
 from shift.services.purchase_rules import BAD_DATA, PurchaseRuleError
 
+
 def new_event(
     clock: Clock,
     event_type: EventType,

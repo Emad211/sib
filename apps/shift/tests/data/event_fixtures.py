@@ -133,6 +133,22 @@ def default_payload(event_type: str) -> dict[str, Any]:
         }
     if event_type == "expiry_flagged":
         return {"item_id": "item-1", "location_id": "location-1", "note": None}
+    if event_type == "delivery_confirmed":
+        return {"delivery_id": "delivery-1", "lines": [{"item_id": "item-1", "quantity": 3}]}
+    if event_type == "restock_offered":
+        return {
+            "item_id": "item-1",
+            "from_location_id": "location-1",
+            "to_location_id": "location-2",
+            "quantity": 2,
+            "confirmer_id": "staff-2",
+        }
+    if event_type == "stock.store_baselined":
+        return {"lines": [{"item_id": "item-1", "quantity": 7}]}
+    if event_type == "stock.sample_count":
+        return {"item_id": "item-1", "location_id": "location-1", "counted": 7, "month": "2026-10"}
+    if event_type == "manager.reviewed":
+        return {"decision": "approved", "note": None}
     kind = kind_for(event_type)
     if kind is not None:
         return kind.sample()

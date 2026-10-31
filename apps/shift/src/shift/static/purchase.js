@@ -98,6 +98,9 @@
   var NO_AMOUNT = "مبلغ را درست وارد کنید.";
   var NO_METHOD = "روش پرداخت را انتخاب کنید.";
   var NO_QUANTITY = "تعداد را درست وارد کنید.";
+  // F1: the invoice photo is mandatory at the door, the payment receipt's is optional (decision 6).
+  var NO_INVOICE_PHOTO = "عکس فاکتور را بگیرید.";
+  var PHOTO_FAILED = "عکس ثبت نشد؛ دوباره بگیرید.";
 
   var clinic = null;
   var busy = false;
@@ -180,6 +183,30 @@
     });
   }
 
+  /** F1: a photo is stored under its own content hash, so the record names a file the app really holds. */
+  function uploadPhoto(file, required) {
+    if (!file) {
+      return required ? Promise.reject(new Error(NO_INVOICE_PHOTO)) : Promise.resolve(null);
+    }
+    return file.arrayBuffer().then(function (bytes) {
+      return crypto.subtle.digest("SHA-256", bytes).then(function (digest) {
+        var hash = Array.prototype.map
+          .call(new Uint8Array(digest), function (byte) {
+            return ("0" + byte.toString(16)).slice(-2);
+          })
+          .join("");
+        return fetch("/api/v1/photos/" + hash, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "image/jpeg" },
+          body: file,
+        }).then(function (response) {
+          if (!response.ok) throw new Error(PHOTO_FAILED);
+          return hash;
+        });
+      });
+    });
+  }
   /** Steps run one after another: a plain `{action, data}`, or a function given the last answer. */
   function chain(steps) {
     return steps.reduce(function (previous, step) {
@@ -715,6 +742,13 @@
     var reason = selectControl(PROBLEMS, "مشکلی نداشت");
     reason.dataset.reason = "";
     box.appendChild(field("مشکل بار (اختیاری)", reason));
+    // F1: the vendor's invoice is photographed at the door before the receipt is recorded (decision 6).
+    var invoicePhoto = document.createElement("input");
+    invoicePhoto.type = "file";
+    invoicePhoto.accept = "image/jpeg";
+    invoicePhoto.capture = "environment";
+    invoicePhoto.dataset.invoicePhoto = "";
+    box.appendChild(field("عکس فاکتور (الزامی)", invoicePhoto));
     box.appendChild(
       actionButton("ثبت دریافت بار", function () {
         var payload;
@@ -726,7 +760,14 @@
         if (order && order.value) payload.order_id = order.value;
         var count = Number(packages.value);
         if (Number.isInteger(count) && count > 0) payload.packages = count;
-        var steps = [{ action: "delivery.receive", data: payload }];
+        var steps = [
+          function () {
+            return uploadPhoto(invoicePhoto.files[0], true).then(function (hash) {
+              payload.invoice_photo_sha256 = hash;
+              return post("delivery.receive", payload);
+            });
+          },
+        ];
         if (reason.value) {
           // The label names the id the server minted for this receipt, so it follows it (P-06).
           steps.push(function (answer) {

@@ -209,12 +209,27 @@ def test_a_flag_locks_the_payment_until_a_manager_approves_it() -> None:
     assert rejected["delivery-1"].payment_locked is True
 
 
-def test_the_parcel_changes_hands_between_shifts_until_the_store_takes_it() -> None:
+def test_the_parcel_changes_hands_between_shifts_until_the_storekeeper_counts_it() -> None:
+    """G3: naming a receiver moves nothing; the receiver's own count is what takes the parcel (decision 1)."""
     between_shifts = delivery_states([_received(), _transferred(2, "shift")])["delivery-1"]
-    at_store = delivery_states([_received(), _transferred(2, "shift"), _transferred(3, "storekeeper")])
+    awaiting = delivery_states([_received(), _transferred(2, "shift"), _transferred(3, "storekeeper")])["delivery-1"]
+    counted = delivery_states(
+        [
+            _received(),
+            _transferred(2, "shift"),
+            _transferred(3, "storekeeper"),
+            _event(
+                4,
+                "delivery_confirmed",
+                {"delivery_id": "delivery-1", "lines": [{"item_id": "para_500_amp", "quantity": 2}]},
+                actor_id="staff-store",
+            ),
+        ]
+    )["delivery-1"]
 
     assert (between_shifts.status, between_shifts.custody) == (IN_TRANSIT, "shift")
-    assert (at_store["delivery-1"].status, at_store["delivery-1"].custody) == (WITH_STOREKEEPER, "storekeeper")
+    assert (awaiting.status, awaiting.custody, awaiting.awaiting_staff_id) == (IN_TRANSIT, "shift", "staff-store")
+    assert (counted.status, counted.custody, counted.awaiting_staff_id) == (WITH_STOREKEEPER, "storekeeper", None)
 
 
 def test_a_vendor_return_is_the_last_word_on_custody() -> None:

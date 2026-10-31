@@ -70,6 +70,8 @@ ITEM_NAME = next(item.name for item in ITEMS if item.item_id == ITEM)
 SHELF = "shelf_reception"
 STORE = "main_store"
 QUANTITY = 4
+# A synthetic JPEG header: F1 makes the invoice photo mandatory at the door (decision 6).
+INVOICE_PHOTO = b"\xff\xd8\xff\xe0" + b"0" * 64
 UNIT_PRICE = 25_000
 INVOICE_REFERENCE = "فاکتور ۱۲"
 VENDOR = "داروخانهٔ آزمایشی"
@@ -376,6 +378,10 @@ def test_the_chain_from_a_storekeeper_draft_to_a_paid_invoice(live_shift: LiveSh
         reception_page.fill(f"{line}[data-item]", ITEM)
         reception_page.fill(f"{line}[data-location]", SHELF)
         reception_page.fill(f"{line}[data-quantity]", str(QUANTITY))
+        reception_page.set_input_files(
+            "#purchase-receive [data-invoice-photo]",
+            files=[{"name": "invoice.jpg", "mimeType": "image/jpeg", "buffer": INVOICE_PHOTO}],
+        )
         reception_page.fill("#purchase-receive [data-packages]", str(PACKAGES))
         reception_page.select_option("#purchase-receive [data-reason]", PROBLEM)
         reception_page.click("#purchase-receive [data-do='delivery.receive']")
