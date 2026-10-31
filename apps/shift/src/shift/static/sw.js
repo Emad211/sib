@@ -1,8 +1,8 @@
 /**
  * Sib Shift - Service Worker
  * The cache name embeds the app version (injected by routes_web.py), so every
- * deploy busts it. Pre-caches the shell including the manifest start_url,
- * serves navigations network-first with a cache/offline fallback, and keeps
+ * deploy busts it. Pre-caches the static shell, never a page (the signed-in home
+ * is stored when it is first opened, and a guest answer is no-store), serves navigations network-first with a cache/offline fallback, and keeps
  * static assets cache-first.
  *
  * One PRECACHE_URLS list: a new static file is one line here. A missing entry is
@@ -22,8 +22,6 @@ const CACHE_NAME = `shift-cache-v${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
 const PRECACHE_URLS = [
-  "/",
-  "/?src=pwa",
   "/offline.html",
   "/manifest.webmanifest",
   "/static/app.css",

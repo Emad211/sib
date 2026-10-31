@@ -181,6 +181,8 @@ def get_home(request: Request) -> HTMLResponse:
         request,
         "home.html",
         {"tiles": tiles},
+        # The guest page must not become what the installed app shows offline.
+        **({"cache_control": "no-store"} if principal is None else {}),
     )
 
 

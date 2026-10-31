@@ -60,8 +60,25 @@
   }
 
   // Network Status Monitoring & Banners
+  // Wi-Fi being up says nothing about the clinic server, so the badge asks the server itself.
+  let serverReachable = true;
+  async function probeServer() {
+    let reachable = navigator.onLine;
+    if (reachable) {
+      try {
+        await fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" });
+      } catch {
+        reachable = false;
+      }
+    }
+    if (reachable !== serverReachable) {
+      serverReachable = reachable;
+      updateNetworkStatus(reachable ? { type: "online" } : undefined);
+    }
+  }
+
   function updateNetworkStatus(event) {
-    const isOnline = navigator.onLine;
+    const isOnline = navigator.onLine && serverReachable;
     const banner = document.getElementById("network-banner");
     const statusBadge = document.getElementById("connection-status-badge");
 
@@ -351,5 +368,7 @@
     requestPersistentStorage();
     updateNetworkStatus();
     refreshOutboxUi();
+    probeServer();
+    setInterval(probeServer, 20000);
   });
 })();
