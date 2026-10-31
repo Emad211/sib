@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from auth_fixtures import PIN, ROLES, login, seed_roster
+from auth_fixtures import PIN, ROLES, login, put_on_shift, seed_roster
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
 from synthetic_accounting import empty_accounting
@@ -56,9 +56,13 @@ def _settings(root: Path, accounting: Path | None) -> Settings:
 
 @contextmanager
 def _client(root: Path, *, accounting: Path | None) -> Iterator[TestClient]:
-    """A running app on a fresh database, the seeded roster and the reference catalog."""
+    """A running app on a fresh database, the seeded roster and the reference catalog.
+
+    The roster starts off shift: these tests record the manager's baseline, which is what puts the
+    flow's custodian on shift through the real path (ADR-021).
+    """
     with TestClient(create_app(_settings(root, accounting))) as client:
-        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key, on_shift=False)
         seed_catalog(client.app.state.database)
         yield client
 
@@ -609,6 +613,8 @@ def test_the_manager_list_names_the_manager_who_confirms_by_phone(client: TestCl
 
 
 def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> None:
+    # ADR-021: the person is on shift, so the refusal under test is the flow rule, not access.
+    put_on_shift(client.app.state.database)
     """ADR-016: a blind count runs against the live server, so the outbox refuses its vocabulary."""
     phone = _phone(client)
     submission = {

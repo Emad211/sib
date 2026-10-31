@@ -25,7 +25,6 @@ ALWAYS_ALLOWED: frozenset[Permission] = frozenset(
         Permission.HANDOVER_COUNT_OUTGOING,
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
-        Permission.HANDOVER_BASELINE,
         Permission.SHIFT_PRESENCE_DECLARE,
         Permission.REWARD_VIEW,
     }
@@ -43,15 +42,21 @@ def held_roles(roles: Iterable[Role | str]) -> frozenset[Role]:
 def effective_permissions(roles: Iterable[Role | str], on_shift: Iterable[Role | str] = ()) -> frozenset[Permission]:
     """The union of the free roles' grants, the bound roles' grants only on shift, plus the always set.
 
-    A role with no grant in `ALWAYS_ALLOWED` contributes nothing while off shift, so a receptionist
-    who has signed over sees the handover screen and their rewards and nothing else (ADR-021).
+    Off shift a bound role keeps the part of the always set its own grant covers, so the handover
+    screen still opens for the person who can walk it and holding it never hands somebody a step
+    their role never had: a nurse still never counts the cash box (H-10). A role with no grant in
+    `ALWAYS_ALLOWED` contributes nothing while off shift.
     """
     held = held_roles(roles)
     working = held_roles(on_shift)
-    granted: set[Permission] = set(ALWAYS_ALLOWED)
+    granted: set[Permission] = set()
     for role in held:
         if role not in BOUND_ROLES or role in working:
             granted |= ROLE_PERMISSIONS[role]
+    kept = held & BOUND_ROLES - working
+    if kept:
+        bound_grants = set().union(*(ROLE_PERMISSIONS[role] for role in kept))
+        granted |= bound_grants & ALWAYS_ALLOWED
     return frozenset(granted)
 
 

@@ -59,6 +59,11 @@ def _login(client: TestClient, role: str = "nurse") -> dict[str, Any]:
     return response.json()
 
 
+# ADR-021: presence=True puts the second receptionist and the shift doctor on shift, which adds
+# these two records to the log before any test event; the counts below account for them.
+SEEDED_PRESENCE = 2
+
+
 def _headers(session: dict[str, Any]) -> dict[str, str]:
     """The session-bound CSRF header every unsafe route demands."""
     return {"X-CSRFToken": session["csrf_token"]}
@@ -67,7 +72,7 @@ def _headers(session: dict[str, Any]) -> dict[str, str]:
 @pytest.fixture
 def seeded(client: TestClient) -> TestClient:
     """The real app with one staff member and one phone per role, on a fixed shift."""
-    seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+    seed_roster(client.app.state.database, pepper=client.app.state.secret_key, presence=True)
     seed_catalog(client.app.state.database)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
     return client
@@ -93,7 +98,7 @@ def test_anonymous_request_is_rejected_and_records_nothing(seeded: TestClient) -
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     database: Database = seeded.app.state.database
     with database.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert events_repo.count_events(connection) == SEEDED_PRESENCE
 
 
 def test_the_session_identity_is_what_gets_recorded(seeded: TestClient) -> None:
@@ -138,7 +143,7 @@ def test_a_missing_or_mismatched_csrf_token_is_rejected(seeded: TestClient) -> N
     assert missing.json()["error"]["code"] == "csrf_failed"
     database: Database = seeded.app.state.database
     with database.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert events_repo.count_events(connection) == SEEDED_PRESENCE
 
 
 def test_a_staff_member_without_the_events_permission_gets_403(seeded: TestClient) -> None:
@@ -162,7 +167,7 @@ def test_a_staff_member_without_the_events_permission_gets_403(seeded: TestClien
 
     assert denied.status_code == status.HTTP_403_FORBIDDEN
     with database.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert events_repo.count_events(connection) == SEEDED_PRESENCE
 
 
 @pytest.mark.parametrize("role", ["reception", "nurse", "storekeeper", "shift_doctor", "manager", "multi_role"])
@@ -208,7 +213,7 @@ def test_idempotency_key_wins_over_a_new_client_event_id(seeded: TestClient) -> 
     assert second.json()["seq"] == first.json()["seq"]
     database: Database = seeded.app.state.database
     with database.read() as connection:
-        assert events_repo.count_events(connection) == 1
+        assert events_repo.count_events(connection) == SEEDED_PRESENCE + 1
 
 
 @pytest.mark.parametrize(
@@ -233,7 +238,7 @@ def test_invalid_submissions_are_rejected(seeded: TestClient, overrides: dict[st
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     database: Database = seeded.app.state.database
     with database.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert events_repo.count_events(connection) == SEEDED_PRESENCE
 
 
 def test_a_wrong_work_date_hint_never_loses_the_record(seeded: TestClient) -> None:

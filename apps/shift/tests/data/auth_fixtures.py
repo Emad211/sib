@@ -104,11 +104,15 @@ def create_device(database: Database, *, device_id: str, staff_id: str, label: s
         )
 
 
-def seed_roster(database: Database, *, pepper: str = "", on_shift: bool = True) -> None:
+def seed_roster(
+    database: Database, *, pepper: str = "", on_shift: bool = True, presence: bool = False
+) -> None:
     """Every role from the route matrix plus one spare target for the manager routes.
 
     `on_shift` puts the bound roles on shift the way the clinic does (ADR-021), so the tests prove
     the access rule instead of weakening it: a test that needs somebody off shift passes False.
+    `presence` also records «حضور در شیفت» for the second receptionist and the shift doctor, which
+    adds two records to the log — only the matrix asks for it, because other tests count records.
     """
     for person in (*ROLES.values(), SPARE):
         create_staff(
@@ -121,15 +125,15 @@ def seed_roster(database: Database, *, pepper: str = "", on_shift: bool = True) 
         )
         create_device(database, device_id=person.device_id, staff_id=person.staff_id)
     if on_shift:
-        put_on_shift(database)
+        put_on_shift(database, presence=presence)
 
 
-def put_on_shift(database: Database) -> None:
+def put_on_shift(database: Database, *, presence: bool = False) -> None:
     """Put the roster on shift through the two doors the clinic has (ADR-021).
 
     The receptionist and the nurse hold their own flow's custody — the manager's baseline seeds it and
-    a close hands it to the incoming person — and the second receptionist and the shift doctor
-    declared «حضور در شیفت» for the running shift.
+    a close hands it to the incoming person — and with `presence` the second receptionist and the
+    shift doctor also declared «حضور در شیفت» for the running shift.
     """
     with database.write() as connection:
         for flow, custodian in (
@@ -143,6 +147,8 @@ def put_on_shift(database: Database) -> None:
                 updated_at=FIXED_NOW,
                 updated_by=ROLES["manager"].staff_id,
             )
+    if not presence:
+        return
     store = EventStore(database)
     stamp = store_clock.now_utc()
     shift = covering(to_tehran(stamp))

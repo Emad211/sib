@@ -799,7 +799,7 @@
  "POST /api/v1/handover/{handover_id}/sign [sign_handover]": {
   "guard": "permission:handover.sign",
   "roles": {
-   "accountant": 404,
+   "accountant": 403,
    "anon": 401,
    "manager": 404,
    "multi_role": 404,
@@ -808,7 +808,8 @@
    "reception": 404,
    "shift_doctor": 403,
    "storekeeper": 403
-  }
+  },
+  "note": " (ADR-022 تصمیم ۱۰: حسابدار امضای تحویل ندارد)"
  },
  "POST /api/v1/manager/held-events/{held_event_id}/release [release_held]": {
   "guard": "permission:daily_card.view",

@@ -95,6 +95,8 @@ BODIES = {
         "starts_on": "2026-10-01",
         "ends_on": "2026-12-31",
     },
+    # ADR-021: the presence button's own body; only the role the person holds may be declared.
+    "POST /api/v1/shift/presence": {"role": "reception"},
     # A body the flow vocabulary cannot accept, so probing the start cell never opens a real flow
     # (a second reception flow of the same shift would answer 409 instead of the recorded status).
     "POST /api/v1/handover/start": {"flow": "not-a-flow"},
@@ -201,7 +203,7 @@ def matrix_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClie
         secret_file=root / ".secret",
     )
     with TestClient(create_app(settings)) as client:
-        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key, presence=True)
         seed_catalog(client.app.state.database)
         yield client
 

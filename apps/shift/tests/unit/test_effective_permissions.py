@@ -22,22 +22,22 @@ BOUND = (Role.RECEPTION, Role.NURSE, Role.SHIFT_DOCTOR)
 
 @pytest.mark.parametrize("role", FREE_ROLES)
 def test_a_free_role_never_waits_for_a_shift(role: Role) -> None:
-    assert effective_permissions([role]) == permissions_for([role]) | ALWAYS_ALLOWED
+    assert effective_permissions([role]) == permissions_for([role])
     assert is_on_shift([role], []) is True
 
 
 @pytest.mark.parametrize("role", BOUND)
-def test_a_bound_role_off_shift_keeps_only_the_always_allowed_set(role: Role) -> None:
+def test_a_bound_role_off_shift_keeps_only_what_the_always_set_covers(role: Role) -> None:
     off = effective_permissions([role])
 
-    assert off == ALWAYS_ALLOWED
-    assert not off - ALWAYS_ALLOWED
+    assert off == ALWAYS_ALLOWED & permissions_for([role])
+    assert not off & (permissions_for([role]) - ALWAYS_ALLOWED)
     assert is_on_shift([role], []) is False
 
 
 @pytest.mark.parametrize("role", BOUND)
 def test_a_bound_role_on_shift_gets_its_whole_grant(role: Role) -> None:
-    assert effective_permissions([role], [role]) == permissions_for([role]) | ALWAYS_ALLOWED
+    assert effective_permissions([role], [role]) == permissions_for([role])
 
 
 def test_the_bound_set_is_the_three_owner_named_roles() -> None:
@@ -51,7 +51,6 @@ def test_the_always_set_is_handover_rewards_and_the_presence_button() -> None:
         Permission.HANDOVER_COUNT_OUTGOING,
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
-        Permission.HANDOVER_BASELINE,
         Permission.SHIFT_PRESENCE_DECLARE,
         Permission.REWARD_VIEW,
     }, "off shift a person may take over, hand over, say they are here and read their own rewards"
@@ -61,6 +60,7 @@ def test_a_multi_role_person_keeps_the_free_half_off_shift() -> None:
     """ADR-021: storekeeper and nurse keeps the store always and the nursing only on shift."""
     off = effective_permissions(["storekeeper", "nurse"])
 
+    assert off == ROLE_PERMISSIONS[Role.STOREKEEPER] | (ROLE_PERMISSIONS[Role.NURSE] & ALWAYS_ALLOWED)
     assert Permission.STOCK_COUNT_SUBMIT in off, "the free role's powers never wait"
     assert Permission.VITALS_RECORD not in off, "the bound role's powers wait"
     assert Permission.VITALS_RECORD in effective_permissions(["storekeeper", "nurse"], ["nurse"])
