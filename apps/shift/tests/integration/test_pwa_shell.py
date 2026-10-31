@@ -160,15 +160,36 @@ def test_production_home_is_a_shell_not_a_demo_form(settings: Settings) -> None:
         assert forbidden not in text
 
 
-def test_development_home_form_collects_no_identity_and_only_offline_types(client: TestClient) -> None:
-    """The dev form cannot forge actor/device/shift and offers no handover events."""
-    text = client.get("/").text
+def test_the_home_page_never_carries_a_dev_form_or_dev_text(settings: Settings) -> None:
+    """No environment, not even development, renders a developer form or names the dev switch."""
+    for environment in ("production", "development"):
+        with TestClient(create_app(replace(settings, environment=environment))) as client:
+            text = client.get("/").text
+            script_names = re.findall(r'<script[^>]+src="([^"]+)"', text)
 
-    assert 'id="quick-event-form"' in text
-    assert "stock.waste_reported" in text
-    assert "stock.emergency_withdrawal" in text
-    for forbidden in ("staff_user_1", "device_web_client", "shift_demo_1", 'id="event-actor"', "handover."):
-        assert forbidden not in text
+        for forbidden in (
+            "quick-event-form",
+            "dev-tools",
+            "ابزار توسعه",
+            "SHIFT_ENV",
+            "development",
+            "stock.waste_reported",
+            "event-item",
+            "/static/home.js",
+        ):
+            assert forbidden not in text, (environment, forbidden)
+        assert "/static/home.js" not in script_names
+
+
+def test_the_install_defaults_to_production() -> None:
+    """An install with no SHIFT_ENV must get Secure cookies and no development help."""
+    assert Settings.from_env({}).environment == "production"
+
+
+def test_the_api_docs_and_schema_are_not_served_in_production(settings: Settings) -> None:
+    with TestClient(create_app(replace(settings, environment="production"))) as client:
+        for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert client.get(path).status_code == 404, path
 
 
 def test_manifest_is_served_as_json_with_install_metadata(client: TestClient) -> None:

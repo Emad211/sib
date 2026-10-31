@@ -176,8 +176,9 @@ def _wait_for_attempts(page: Page, attempts: dict[str, int], minimum: int) -> No
     )
 
 
-def _wait_for_shell(page: Page) -> None:
-    page.wait_for_selector("#shift-overview-title", timeout=15000)
+def _wait_for_shell(page: Page, *, signed_in: bool = False) -> None:
+    """A visitor sees the sign-in card; a signed-in phone sees its tiles. Both carry the offline banner."""
+    page.wait_for_selector(".home-tiles" if signed_in else "#shift-overview-title", timeout=15000)
 
 
 def _wait_for_service_worker(page: Page) -> None:
@@ -198,15 +199,15 @@ def _login(page: Page, base_url: str) -> None:
     page.click("#submit")
     page.wait_for_function("location.pathname === '/'", timeout=15000)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _wait_for_shell(page)
+    _wait_for_shell(page, signed_in=True)
 
 
 @pytest.mark.e2e
-def test_offline_form_submit_then_replay_records_one_principal_owned_event(
+def test_offline_submit_then_replay_records_one_principal_owned_event(
     live_server: tuple[str, Database],
     browser: Browser,
 ) -> None:
-    """The real form queues offline, then replay records exactly one principal-owned event."""
+    """The real outbox queues offline (the wizard of /events feeds the same one), then replay records exactly one principal-owned event."""
     base_url, db = live_server
     context, page = _open_page(browser)
     try:

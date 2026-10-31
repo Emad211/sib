@@ -208,6 +208,7 @@ def _call(client: TestClient, scanner: Scanner, method: str, url: str, **kwargs)
 
 def _settings(root: Path) -> Settings:
     return Settings(
+        environment="development",  # plain-HTTP test client: no Secure cookies
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",

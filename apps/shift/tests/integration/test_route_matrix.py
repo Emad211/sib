@@ -194,6 +194,7 @@ def matrix_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClie
     """One app for the whole matrix: building and probing it per test would be wasteful."""
     root = tmp_path_factory.mktemp("matrix")
     settings = Settings(
+        environment="development",  # plain-HTTP test client: no Secure cookies
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",

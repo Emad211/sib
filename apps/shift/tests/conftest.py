@@ -23,6 +23,7 @@ def settings(tmp_path: Path) -> Settings:
     """Production-shaped settings pointing every file at pytest's temp directory."""
     root = tmp_path / "app"
     return Settings(
+        environment="development",  # plain-HTTP test client: no Secure cookies
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",

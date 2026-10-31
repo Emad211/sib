@@ -175,7 +175,6 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
 @router.get("/", response_class=HTMLResponse, summary="Serve PWA home shell")
 def get_home(request: Request) -> HTMLResponse:
     """Render the main PWA shell and issue the double-submit CSRF cookie."""
-    settings = request.app.state.settings
     principal = deps.principal_or_none(request)
     # A visitor with no session keeps no tile; the sections inside each screen are cut down by the API.
     granted = principal.permissions if principal is not None else frozenset()
@@ -183,7 +182,7 @@ def get_home(request: Request) -> HTMLResponse:
     return _shell_page(
         request,
         "home.html",
-        {"show_dev_events": settings.environment == "development", "tiles": tiles},
+        {"tiles": tiles},
     )
 
 

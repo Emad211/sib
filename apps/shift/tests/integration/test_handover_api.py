@@ -45,6 +45,7 @@ NO_CSRF = {"X-CSRFToken": "not-the-token"}
 
 def _settings(root: Path, accounting: Path | None) -> Settings:
     return Settings(
+        environment="development",  # plain-HTTP test client: no Secure cookies
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",

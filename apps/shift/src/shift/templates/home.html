@@ -36,42 +36,4 @@
   </ul>
 </section>
 
-{% if show_dev_events %}
-<details class="card dev-tools" open>
-  <summary>ابزار توسعه</summary>
-  <form id="quick-event-form">
-    <div class="form-group">
-      <label for="event-type" class="form-label">نوع رویداد (آفلاین مجاز):</label>
-      <select id="event-type" class="form-control" required>
-        <option value="stock.waste_reported">گزارش ضایعات</option>
-        <option value="stock.emergency_withdrawal">خروج اضطراری از قفسه</option>
-        <option value="stock.shelf_restocked">شارژ قفسه</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="event-item" class="form-label">شناسه کالا:</label>
-      <input type="text" id="event-item" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
-    </div>
-
-    <div class="form-group">
-      <label for="event-location" class="form-label">شناسه قفسه / محل:</label>
-      <input type="text" id="event-location" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
-    </div>
-
-    <div class="form-group">
-      <label for="event-quantity" class="form-label">مقدار:</label>
-      <input type="number" id="event-quantity" class="form-control" min="0" step="1" value="1" required>
-    </div>
-
-    <button type="submit" id="submit-event-btn" class="btn btn-primary btn-block">
-      ثبت در صف ارسال
-    </button>
-  </form>
-</details>
-{% endif %}
-{% endblock %}
-
-{% block extra_scripts %}
-<script src="/static/home.js"></script>
 {% endblock %}

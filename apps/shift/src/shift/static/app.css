@@ -455,4 +455,3 @@ body {
   cursor: pointer;
 }
 .back-home { display: inline-block; margin-bottom: 0.75rem; color: var(--color-primary); font-weight: 500; text-decoration: none; }
-.dev-tools summary { cursor: pointer; color: var(--color-text-muted); }
