@@ -127,7 +127,11 @@ def roles_for(connection: Connection, staff_id: str, shift_key: str | None = Non
 
 
 def list_with_roles(connection: Connection, shift_key: str | None = None) -> list[StaffWithRoles]:
-    """All staff with their roles (as `shift_key` sees them) in two queries, not one per person."""
+    """All staff with their roles (as `shift_key` sees them); one query for the roster, one per person.
+
+    A staff screen holds tens of rows, so the per-person read of the catalog decisions is fine and
+    keeps `roles_for` the only place that decides a role.
+    """
     rows = connection.exec_driver_sql(
         "SELECT s.staff_id, s.full_name, s.mobile, s.pin_hash, s.pin_updated_at, s.active, "
         "s.failed_attempts, s.locked_until, s.created_at, r.role "

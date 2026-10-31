@@ -104,9 +104,7 @@ def create_device(database: Database, *, device_id: str, staff_id: str, label: s
         )
 
 
-def seed_roster(
-    database: Database, *, pepper: str = "", on_shift: bool = True, presence: bool = False
-) -> None:
+def seed_roster(database: Database, *, pepper: str = "", on_shift: bool = True, presence: bool = False) -> None:
     """Every role from the route matrix plus one spare target for the manager routes.
 
     `on_shift` puts the bound roles on shift the way the clinic does (ADR-021), so the tests prove
