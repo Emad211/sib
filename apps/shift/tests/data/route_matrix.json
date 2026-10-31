@@ -267,6 +267,66 @@
    "storekeeper": 200
   }
  },
+ "GET /manager/card [get_manager_card]": {
+  "guard": "permission:daily_card.view",
+  "note": "the manager's newest daily card; an install with no card yet gets the empty state",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/card/{card_date} [get_manager_card_day]": {
+  "guard": "permission:daily_card.view",
+  "note": "one stored card by its ISO date; a day without a stored card is the 404 page",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/cards [get_manager_cards]": {
+  "guard": "permission:daily_card.view",
+  "note": "the stored cards, newest first",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/settings [get_manager_settings]": {
+  "guard": "permission:settings.change",
+  "note": "the settings screen the existing settings API already drives (R-09)",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /manifest.webmanifest [get_manifest]": {
   "guard": "public",
   "roles": {

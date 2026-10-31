@@ -17,6 +17,7 @@ from shift.adapters.db.migrations import (
     m0008_schedule_settings,
     m0009_handover_sessions,
     m0010_handover_custody,
+    m0011_daily_cards,
 )
 
 log = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (8, "schedule_settings", m0008_schedule_settings.up),
     (9, "handover_sessions", m0009_handover_sessions.up),
     (10, "handover_custody", m0010_handover_custody.up),
+    (11, "daily_cards", m0011_daily_cards.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 

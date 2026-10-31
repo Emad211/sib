@@ -46,11 +46,18 @@ _SW_BODY = (_STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__SHIFT_
 HandoverCounter = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_COUNT_SUBMIT))]
 
 
-def _shell_page(request: Request, name: str, context: dict[str, Any] | None = None) -> HTMLResponse:
+def _shell_page(
+    request: Request,
+    name: str,
+    context: dict[str, Any] | None = None,
+    *,
+    cache_control: str = "no-cache",
+) -> HTMLResponse:
     """Render one authenticated page with the CSRF cookie, the CSP headers and no HTTP cache.
 
     The response stays out of the HTTP cache but not out of the worker's shell cache: a handover
-    screen opened offline is the gate that says the flow needs the clinic server (ADR-016).
+    screen opened offline is the gate that says the flow needs the clinic server (ADR-016). A page
+    that carries the manager's figures asks for `no-store` instead, so nothing shared keeps it.
     """
     token, is_new = csrf_cookie_token(request)
     response = templates.TemplateResponse(
@@ -69,7 +76,7 @@ def _shell_page(request: Request, name: str, context: dict[str, Any] | None = No
             secure=request.url.scheme == "https",
         )
     response.headers.update(_SECURITY_HEADERS)
-    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Cache-Control"] = cache_control
     response.headers["Vary"] = "Cookie"
     return response
 
@@ -78,7 +85,14 @@ def _shell_page(request: Request, name: str, context: dict[str, Any] | None = No
 def get_home(request: Request) -> HTMLResponse:
     """Render the main PWA shell and issue the double-submit CSRF cookie."""
     settings = request.app.state.settings
-    return _shell_page(request, "home.html", {"show_dev_events": settings.environment == "development"})
+    principal = deps.principal_or_none(request)
+    # The permission decides who sees the card link, never a role name (R-07, SHF-6.1).
+    show_manager_link = principal is not None and Permission.DAILY_CARD_VIEW in principal.permissions
+    return _shell_page(
+        request,
+        "home.html",
+        {"show_dev_events": settings.environment == "development", "show_manager_link": show_manager_link},
+    )
 
 
 @router.get("/handover", response_class=HTMLResponse, summary="Serve the phone handover screen")

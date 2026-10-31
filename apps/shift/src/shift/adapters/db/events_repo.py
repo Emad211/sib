@@ -121,6 +121,21 @@ def iter_handover_events(connection: Connection, handover_id: str) -> Iterator[E
         yield _record(row)
 
 
+def iter_between(connection: Connection, *, after: str, until: str) -> Iterator[EventRecord]:
+    """Yield the events whose server stamp falls in the half-open range `[after, until)`, in order.
+
+    The manager's daily card reports one covered day of the clinic's work, and `server_at` is the
+    instant the server recorded the event (UTC ISO text, so text order is chronological). Both bounds
+    are ISO text on purpose: the caller formats them once through `common.clock.utc_iso`, exactly as
+    they are stored, and the range reads the way it is written.
+    """
+    result = connection.exec_driver_sql(
+        f"{_SELECT} WHERE server_at >= ? AND server_at < ? ORDER BY seq", (after, until)
+    )
+    for row in result.mappings():
+        yield _record(row)
+
+
 def count_events(connection: Connection) -> int:
     """Number of stored events; used by tests and health diagnostics."""
     return int(connection.exec_driver_sql("SELECT COUNT(*) FROM events").scalar_one())

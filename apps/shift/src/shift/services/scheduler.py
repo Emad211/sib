@@ -1,20 +1,22 @@
-"""When the periodic jobs of the shift service run (skeleton for design step 14, S01 §6).
+"""When the periodic jobs of the shift service run (S01 §6).
 
 The module decides *when*: the daily manager card and the Monday weekly-count warning. What a job
-actually does is still a stub — the card's seven sections arrive with SHF-6.1 and the warning text
-with SHF-4.x — so each run only reports itself. Every time comes from the versioned settings
-through `ScheduleSettings`; this file holds no literal hour, and a missed run is caught up on the
-next poll because `due` compares the clock with the schedule rather than waiting for a tick. The
-one fixed rule is the card's Friday gap (S01 §6): it is clinic policy, not a setting (ADR-018).
+does is injected: the app hands the card its builder (`DailyCardService`, SHF-6.1), so a run stores
+the card and reports what it stored, and the weekly-count warning still only reports itself until
+SHF-4.x writes its text. Every time comes from the versioned settings through `ScheduleSettings`;
+this file holds no literal hour, and a missed run is caught up on the next poll because `due` compares
+the clock with the schedule rather than waiting for a tick. The one fixed rule is the card's Friday
+gap (S01 §6): it is clinic policy, not a setting (ADR-018).
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from typing import Protocol
 
 from shift.common.clock import TEHRAN, Clock, SystemClock, to_tehran
+from shift.domain.daily_card import FRIDAY
 from shift.domain.policy import SettingKey
 from shift.services.settings import SettingsService
 
@@ -24,7 +26,7 @@ DAILY_CARD = "daily_card"
 WEEKLY_COUNT_WARNING = "weekly_count_warning"
 # S01 §6: there is no card on Friday, and Saturday's card covers both days. Clinic policy, so it is
 # code rather than a setting the manager could change (ADR-018); `datetime.weekday()` Monday is 0.
-DAILY_CARD_SKIP_WEEKDAY = 4
+DAILY_CARD_SKIP_WEEKDAY = FRIDAY
 
 
 class ScheduleSettings(Protocol):
@@ -56,7 +58,11 @@ class TaskRun:
 
 
 def _daily_card_stub(_moment: datetime) -> str:
-    """Stand-in for the SHF-6.1 card: Saturday's card covers Friday and Saturday."""
+    """The card when nothing was injected: the app hands the real builder in (SHF-6.1).
+
+    A bare `Scheduler` — a unit test, or a process without the card service — must still be able to
+    say the card fell due, and Saturday's card still covers Friday and Saturday.
+    """
     return "daily card requested (stub)"
 
 
@@ -65,7 +71,7 @@ def _weekly_count_stub(_moment: datetime) -> str:
     return "weekly count warning raised (stub)"
 
 
-_ACTIONS: dict[str, Callable[[datetime], str]] = {
+_DEFAULT_ACTIONS: Mapping[str, Callable[[datetime], str]] = {
     DAILY_CARD: _daily_card_stub,
     WEEKLY_COUNT_WARNING: _weekly_count_stub,
 }
@@ -94,11 +100,22 @@ class PolicySchedule:
 
 
 class Scheduler:
-    """Decides which periodic jobs are due and runs each one at most once per period."""
+    """Decides which periodic jobs are due and runs each one at most once per period.
 
-    def __init__(self, settings: ScheduleSettings, *, clock: Clock | None = None) -> None:
+    `actions` replaces the default stub for every job name it holds, so the app injects the real
+    card builder and a test injects a spy; a job it does not name keeps its default.
+    """
+
+    def __init__(
+        self,
+        settings: ScheduleSettings,
+        *,
+        clock: Clock | None = None,
+        actions: Mapping[str, Callable[[datetime], str]] | None = None,
+    ) -> None:
         self._settings = settings
         self._clock = clock or SystemClock()
+        self._actions: Mapping[str, Callable[[datetime], str]] = {**_DEFAULT_ACTIONS, **(actions or {})}
         self._last_period: dict[str, str] = {}
 
     def due(self, now: datetime | None = None) -> tuple[ScheduledTask, ...]:
@@ -108,11 +125,15 @@ class Scheduler:
         return tuple(task for task in tasks if task is not None)
 
     def run_due(self, now: datetime | None = None) -> tuple[TaskRun, ...]:
-        """Run every due job's stub and remember its period; a restart forgets, a later step persists."""
+        """Run every due job's action with the Tehran moment and remember its period.
+
+        A restart forgets the period keys, but the card's own storage does not: `generate_due` fills
+        in a missed day, so catching up after a restart never duplicates a card.
+        """
         moment = self._moment(now)
         runs: list[TaskRun] = []
         for task in self.due(moment):
-            message = _ACTIONS[task.name](moment)
+            message = self._actions[task.name](moment)
             self._last_period[task.name] = task.period
             runs.append(TaskRun(task.name, task.period, task.due_at, moment, message))
             log.info("scheduled job %s ran for %s: %s", task.name, task.period, message)

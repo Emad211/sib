@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — کارت روزانهٔ مدیر{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
+    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
+    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+  </nav>
+
+  {% if card %}
+  <header class="mg-head">
+    <h1 class="mg-title">کارت روزانهٔ مدیر</h1>
+    <p class="mg-meta">کارت {{ card.date }} — پوشش: {{ card.coverage }}</p>
+    <p class="mg-meta">ساخته‌شده: {{ card.generated_at }}</p>
+  </header>
+
+  {# H-08 first: an emergency start and the cash recorded inside it must be impossible to miss. #}
+  {% if "emergency_starts" in card.sections %}
+  {% set starts = card.sections.emergency_starts %}
+  <section class="mg-section mg-emergency{% if not starts %} mg-clear{% endif %}" aria-labelledby="mg-emergency-title">
+    <h2 id="mg-emergency-title" class="mg-section-title">شروع اضطراری تحویل</h2>
+    {% for row in starts %}
+    <article class="mg-alert-row">
+      <p class="mg-alert-who">ثبت‌کننده: {{ row.recorded_by }}</p>
+      <p class="mg-line">مدیر تأییدکننده: {{ row.manager }}</p>
+      <p class="mg-line">زمان: {{ row.at }}</p>
+      <p class="mg-line mg-muted">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "cash_exceptions" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-cash-title">
+    <h2 id="mg-cash-title" class="mg-section-title">نقد ثبت‌شده در تحویل</h2>
+    <p class="mg-note">این نقد داخل تحویل ثبت شده و مال شیفت بعد است.</p>
+    {% for row in card.sections.cash_exceptions %}
+    <article class="mg-row">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+      <p class="mg-line mg-muted">{{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "discrepancies" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-gap-title">
+    <h2 id="mg-gap-title" class="mg-section-title">مغایرت‌ها</h2>
+    {% for row in card.sections.discrepancies %}
+    <article class="mg-row">
+      <p class="mg-amount">{{ row.difference }}{% if row.direction %} <span class="mg-unit">{{ row.direction }}</span>{% endif %}</p>
+      <p class="mg-line">{{ row.flow }} · {{ row.at }}</p>
+      <p class="mg-line mg-culprit">{% if row.culprit %}به نام {{ row.culprit }}{% else %}بدون مقصر{% endif %}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "flows" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-flows-title">
+    <h2 id="mg-flows-title" class="mg-section-title">شیفت‌ها و تحویل‌های روز</h2>
+    {% for row in card.sections.flows %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.flow }} — {{ row.state }}</p>
+      <p class="mg-line">{{ row.shift }}</p>
+      <p class="mg-line">خروجی: {{ row.outgoing }} · ورودی: {{ row.incoming }}</p>
+      <p class="mg-line mg-muted">{{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "open_flows" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-open-title">
+    <h2 id="mg-open-title" class="mg-section-title">تحویل‌های باز</h2>
+    {% for row in card.sections.open_flows %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.flow }} — {{ row.age_hours }} ساعت باز</p>
+      <p class="mg-line">{{ row.shift }}</p>
+      <p class="mg-line">خروجی: {{ row.outgoing }} · ورودی: {{ row.incoming }}</p>
+      <p class="mg-line mg-muted">شروع: {{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% else %}
+  <section class="mg-section" aria-labelledby="mg-empty-title">
+    <h1 id="mg-empty-title" class="mg-title">کارت روزانهٔ مدیر</h1>
+    <p class="mg-empty">هنوز کارتی ساخته نشده است.</p>
+    <p class="mg-line">کارت بعدی {{ next_card.at }} آماده می‌شود.</p>
+    {% if next_card.note %}<p class="mg-hint">{{ next_card.note }}</p>{% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

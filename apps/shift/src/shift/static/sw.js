@@ -85,6 +85,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // The manager's card is manager-only (S01 §6): it is never stored on the phone and never answered
+  // from a cache, so a second person holding the same handset cannot read yesterday's card offline.
+  if (url.pathname === "/manager" || url.pathname.startsWith("/manager/")) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
   // Same-origin navigations: Network-first with cache fallback. ignoreSearch
   // makes "/" serve the installed start_url "/?src=pwa" (and vice versa).
   if (req.mode === "navigate") {

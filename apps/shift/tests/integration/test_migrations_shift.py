@@ -231,8 +231,8 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 10
-        assert {"handover", "handover_custody"} <= _tables(database)
+        assert _version(database) == migrations.LATEST == 11
+        assert {"handover", "handover_custody", "daily_cards"} <= _tables(database)
         assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
         assert _columns(database, "handover_custody") == ("flow", "custodian_id", "updated_at", "updated_by")
         assert "handover_id" in _columns(database, "events")
@@ -298,7 +298,7 @@ def test_a_v9_database_gains_the_custody_table_and_keeps_its_flows(tmp_path: Pat
     database = Database(path)
     try:
         report = database.migrate(backup_dir=tmp_path / "backups")
-        assert (report.from_version, report.to_version) == (9, 10)
+        assert (report.from_version, report.to_version) == (9, migrations.LATEST)
         with database.read() as connection:
             flows = handover_repo.open_flows(connection)
             events = list(events_repo.iter_events(connection))

@@ -69,6 +69,22 @@ def recent(connection: Connection, *, limit: int = 50, action: str | None = None
     return [_row(row) for row in rows]
 
 
+def within(connection: Connection, *, after: str, until: str, action: str | None = None) -> list[AuditRow]:
+    """Audit records stamped in the half-open range `[after, until)`, newest first (SHF-6.1).
+
+    The daily card reports the audited exceptions of one covered day. `at_utc` is UTC ISO text, so
+    text order is chronological and the range scan uses idx_audit_log_at_utc; passing `action` narrows
+    it to the one action the card is after, e.g. the manager-only `handover.cash_exception` rows.
+    """
+    sql = f"{_SELECT} WHERE at_utc >= ? AND at_utc < ?"
+    parameters: tuple[object, ...] = (after, until)
+    if action is not None:
+        sql += " AND action = ?"
+        parameters += (action,)
+    rows = connection.exec_driver_sql(f"{sql} ORDER BY id DESC", parameters).mappings()
+    return [_row(row) for row in rows]
+
+
 def count_entries(connection: Connection, *, action: str | None = None) -> int:
     """Number of audit records, in total or for one action."""
     if action is None:

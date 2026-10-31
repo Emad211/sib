@@ -147,6 +147,20 @@ def open_flows(connection: Connection) -> list[FlowRow]:
     return [_row(row) for row in rows]
 
 
+def flows_opened_between(connection: Connection, *, after: datetime, until: datetime) -> list[FlowRow]:
+    """The flows that started in the half-open window `[after, until)`, oldest first (SHF-6.1).
+
+    The manager's daily card reports the flows of the covered day, and a flow belongs to the day its
+    own cutoff falls on. `opened_at` is UTC ISO text, so the comparison is a range scan and text order
+    is chronological order; `after` is inclusive and `until` exclusive, as the card window says.
+    """
+    rows = connection.exec_driver_sql(
+        f"{_SELECT} WHERE opened_at >= ? AND opened_at < ? ORDER BY opened_at, handover_id",
+        (utc_iso(after), utc_iso(until)),
+    ).mappings()
+    return [_row(row) for row in rows]
+
+
 def latest_flow_at_or_before(
     connection: Connection, instant: datetime, flow: HandoverFlow | None = None
 ) -> FlowRow | None:

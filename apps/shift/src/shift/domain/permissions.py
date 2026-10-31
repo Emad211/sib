@@ -36,6 +36,8 @@ class Permission(StrEnum):
     PURCHASE_PAYMENT_RECORD = "purchase.payment.record"
     PARCEL_HANDLE = "parcel.handle"
     CATALOG_MANAGE = "catalog.manage"
+    # The manager's own pages: the daily card and its history (S01 §6, SHF-6.1).
+    DAILY_CARD_VIEW = "daily_card.view"
     SETTINGS_CHANGE = "settings.change"
     STAFF_MANAGE = "staff.manage"
     STAFF_PIN_RESET = "staff.pin.reset"

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — تاریخچهٔ کارت‌ها{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
+    <a class="mg-nav-link" href="/manager/card">کارت امروز</a>
+    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">تاریخچهٔ کارت‌های روزانه</h1>
+    <p class="mg-meta">جدیدترین کارت اول می‌آید. جمعه کارت ندارد و کارت شنبه دو روز را پوشش می‌دهد.</p>
+  </header>
+
+  <section class="mg-section" aria-label="کارت‌های ذخیره‌شده">
+    <ul class="mg-list" role="list">
+      {% for card in cards %}
+      <li>
+        <a class="mg-list-link" href="{{ card.href }}">
+          <span class="mg-list-date">{{ card.date }}</span>
+          <span class="mg-list-meta">پوشش: {{ card.coverage }}</span>
+          <span class="mg-list-meta">ساخته‌شده: {{ card.generated_at }}</span>
+        </a>
+      </li>
+      {% else %}
+      <li class="mg-empty">هنوز کارتی ساخته نشده است.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}
