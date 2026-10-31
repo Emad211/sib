@@ -509,7 +509,7 @@ def _emergency_flow(client: TestClient, scanner: Scanner, incoming: Session) -> 
 
 def _scan_the_shell(client: TestClient, scanner: Scanner, headers: dict[str, str]) -> None:
     """The rendered page, every static file, the PWA shell and `/me` — none of them may carry a figure."""
-    for url in ("/", "/manifest.webmanifest", "/sw.js", "/offline.html", "/api/v1/auth/me"):
+    for url in ("/", "/handover", "/manifest.webmanifest", "/sw.js", "/offline.html", "/api/v1/auth/me"):
         response = _call(client, scanner, "GET", url, headers=headers)
         assert response.status_code == 200, url
     static = Path(shift_package.__file__).resolve().parent / "static"

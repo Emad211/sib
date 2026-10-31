@@ -235,9 +235,10 @@ def start_handover(
 
 
 @router.get("/managers")
-def list_managers(request: Request, _principal: CountGuard) -> list[dict[str, str]]:
+def list_managers(request: Request, response: Response, _principal: CountGuard) -> list[dict[str, str]]:
     """The people a phone confirmation may name (H-08); the manager themselves needs no device."""
     entries = deps.auth_service(request).directory()
+    _no_store(response)
     return [
         {"id": entry.staff_id, "name": entry.full_name}
         for entry in entries
