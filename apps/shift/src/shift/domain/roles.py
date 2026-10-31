@@ -45,6 +45,13 @@ class Permission(StrEnum):
     VITALS_RECORD = "vitals.record"
     CLEANING_CONFIRM = "cleaning.confirm"
     SHIFT_EVENT_APPROVE = "shift_event.approve"
+    # The accountant's queue and rewards (S01 §5, SHF-5). A person reads only their own reward rows;
+    # the manager alone credits an assigned task and confirms a reward; the queue and the campaign
+    # report belong to the accountant and the manager (the owner's logic document, «کار حسابدار»).
+    REWARD_VIEW = "reward.view"
+    REWARD_GRANT = "reward.grant"
+    ACCOUNTANT_QUEUE_VIEW = "accountant.queue.view"
+    CAMPAIGN_REPORT_VIEW = "campaign.report.view"
     # The manager's own pages: the daily card and its history (S01 §6, SHF-6.1).
     DAILY_CARD_VIEW = "daily_card.view"
     SETTINGS_CHANGE = "settings.change"
