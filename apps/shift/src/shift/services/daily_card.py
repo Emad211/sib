@@ -99,6 +99,8 @@ _LATE_CASH = EventType.HANDOVER_LATE_CASH_RECORDED.value
 _HELD = EventType.EVENT_HELD.value
 _RELEASED = EventType.EVENT_RELEASED.value
 _HOLD_REJECTED = EventType.EVENT_HOLD_REJECTED.value
+# B3: the checklist answers the manager has to read — a «no» or a number off the phone (S01 §5).
+_CHECKLIST = EventType.HANDOVER_CHECKLIST_ANSWERED.value
 # SHF-5: the reward records the day paid or took back, and the «ت» discounts of its campaigns.
 _EARNED_TYPES = (reward_repo.REWARD_EARNED, reward_repo.REWARD_CONFIRMED)
 _DISCOUNT = EventType.CAMPAIGN_DISCOUNT_APPLIED.value
@@ -120,6 +122,7 @@ SECTION_NAMES = (
     "emergency_starts",
     "over_cap_withdrawals",
     "cash_exceptions",
+    "checklist_answers",
     "discrepancies",
     "flows",
     "open_flows",
@@ -136,7 +139,7 @@ SECTION_NAMES = (
     "weekly_count",
     "below_minimum",
 )
-LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4, 5})
+LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4, 5, 6})
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,6 +473,47 @@ class LateCashLine:
 
 
 @dataclass(frozen=True, slots=True)
+class ChecklistAnswerLine:
+    """A checklist answer that says something: a «no», or a number someone read off a device (B3).
+
+    A ticked line with no number is the quiet answer; it stays out so the manager's eye lands on the
+    failures and the readings. The line carries no reference figure (ADR-011).
+    """
+
+    event_id: str
+    item_id: str
+    name: str
+    ok: bool
+    reading: float | None
+    answered_at_tehran: str
+    actor: Person
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "item_id": self.item_id,
+            "name": self.name,
+            "ok": self.ok,
+            "reading": self.reading,
+            "answered_at_tehran": self.answered_at_tehran,
+            "actor": self.actor.to_payload(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "ChecklistAnswerLine":
+        reading = payload.get("reading")
+        return cls(
+            event_id=str(payload["event_id"]),
+            item_id=str(payload["item_id"]),
+            name=str(payload["name"]),
+            ok=bool(payload["ok"]),
+            reading=None if reading is None else float(reading),
+            answered_at_tehran=str(payload["answered_at_tehran"]),
+            actor=Person.from_payload(payload["actor"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class HeldLine:
     """A record the server kept instead of applying: the manager releases it or keeps it out (F5)."""
 
@@ -791,6 +835,8 @@ class Card:
     parcels_in_transit: tuple[ParcelLine, ...] = ()
     weekly_count: tuple[WeeklyCountLine, ...] = ()
     below_minimum: tuple[BelowMinimumLine, ...] = ()
+    checklist_answers: tuple[ChecklistAnswerLine, ...] = ()
+    cash_float: int | None = None
     present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
@@ -806,9 +852,11 @@ class Card:
             "covered_from": self.covered_from.isoformat(),
             "covered_to": self.covered_to.isoformat(),
             "generated_at": to_utc(self.generated_at).isoformat(),
+            "cash_float": self.cash_float,
             "sections": {
                 "emergency_starts": [entry.to_payload() for entry in self.emergency_starts],
                 "cash_exceptions": [entry.to_payload() for entry in self.cash_exceptions],
+                "checklist_answers": [entry.to_payload() for entry in self.checklist_answers],
                 "discrepancies": [entry.to_payload() for entry in self.discrepancies],
                 "flows": [entry.to_payload() for entry in self.flows],
                 "open_flows": [entry.to_payload() for entry in self.open_flows],
@@ -839,8 +887,12 @@ class Card:
             covered_from=date.fromisoformat(str(payload["covered_from"])),
             covered_to=date.fromisoformat(str(payload["covered_to"])),
             generated_at=parse_iso(str(payload["generated_at"])),
+            cash_float=None if payload.get("cash_float") is None else int(payload["cash_float"]),
             emergency_starts=tuple(EmergencyStart.from_payload(entry) for entry in sections["emergency_starts"]),
             cash_exceptions=tuple(CashException.from_payload(entry) for entry in sections["cash_exceptions"]),
+            checklist_answers=tuple(
+                ChecklistAnswerLine.from_payload(entry) for entry in sections.get("checklist_answers", ())
+            ),
             discrepancies=tuple(DiscrepancyLine.from_payload(entry) for entry in sections["discrepancies"]),
             flows=tuple(FlowLine.from_payload(entry) for entry in sections["flows"]),
             open_flows=tuple(OpenFlow.from_payload(entry) for entry in sections["open_flows"]),
@@ -928,6 +980,8 @@ class DailyCardService:
                 parcels_in_transit=_parcels_in_transit(connection, moment, names),
                 weekly_count=(_weekly_count(connection, moment, self._settings()),),
                 below_minimum=_below_minimum(connection, moment, catalog),
+                checklist_answers=_checklist_answers(connection, window, names, catalog),
+                cash_float=self._settings().optional_number(SettingKey.CASH_FLOAT_TOMAN),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -1312,6 +1366,35 @@ def _late_cash(connection: Connection, window: CardWindow, names: _Names) -> tup
                 explains_discrepancy=(
                     False if handover_id is None else _flow_has_cash_discrepancy(connection, str(handover_id))
                 ),
+            )
+        )
+    return tuple(rows)
+
+
+def _checklist_answers(
+    connection: Connection, window: CardWindow, names: _Names, catalog: _CatalogNames
+) -> tuple[ChecklistAnswerLine, ...]:
+    """Every «no» and every reading of the covered day, oldest first (B3).
+
+    A «yes» with no number is the quiet answer and is left out: the manager's card is read in the
+    morning and must lead with what failed or with a number someone wrote down (owner decision 11).
+    """
+    rows: list[ChecklistAnswerLine] = []
+    for event in _window_events(connection, window, _CHECKLIST):
+        reading = event.payload.get("reading")
+        ok = bool(event.payload.get("ok"))
+        if ok and reading is None:
+            continue
+        item_id = str(event.payload["item_id"])
+        rows.append(
+            ChecklistAnswerLine(
+                event_id=event.event_id,
+                item_id=item_id,
+                name=catalog.item(item_id),
+                ok=ok,
+                reading=None if reading is None else float(reading),
+                answered_at_tehran=event.at_tehran,
+                actor=names.person(event.actor_id),
             )
         )
     return tuple(rows)

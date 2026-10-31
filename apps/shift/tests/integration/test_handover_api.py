@@ -584,8 +584,9 @@ def test_the_targets_list_the_items_and_the_checklists_without_quantities(client
     assert response.status_code == 200
     body = response.json()
     assert {item["item_id"] for item in body["items"]} == {PARA, DICLO}
-    assert all(set(item) == {"item_id", "name", "unit", "location_id"} for item in body["items"])
+    assert all(set(item) == {"item_id", "name", "unit", "location_id", "icon"} for item in body["items"])
     assert {entry["item_id"] for entry in body["checklists"]} == {"store_lock_ok", "fridge_temperature"}
+    assert all(entry["icon"] for entry in body["checklists"]), "G2: every checklist line carries a picture"
     assert _numbers(body) == []
 
 
@@ -628,3 +629,20 @@ def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> 
     assert handover_event.status_code == 422
     assert discrepancy.status_code == 422
     assert "سرور" in handover_event.json()["error"]["message"], "the refusal is for a person, in Persian"
+
+def test_the_nursing_flow_asks_only_its_own_checklist(client: TestClient) -> None:
+    """A3: the trolley belongs to nursing; reception's store lines never appear on its step."""
+    phone = _phone(client, "nurse")
+    _baseline(
+        client,
+        flow=HandoverFlow.NURSING,
+        custodian=OUTGOING,
+        opening_cash=None,
+        items=[{"item_id": "saline_500_bag", "location_id": "cpr_room", "quantity": 0}],
+    )
+    handover_id = _start(client, phone, "nursing")["handover_id"]
+
+    body = client.get(f"/api/v1/handover/{handover_id}/targets", headers=_as(client, phone)).json()
+
+    assert {entry["item_id"] for entry in body["checklists"]} == {"trolley_seal_ok", "oxygen_pressure_trolley"}
+    assert all(entry["icon"] for entry in body["checklists"])

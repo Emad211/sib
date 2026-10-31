@@ -25,9 +25,10 @@ from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
 from shift.api.templating import templates
 from shift.common.clock import TEHRAN, parse_iso, to_tehran
 from shift.common.jalali import format_jalali
+from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.permissions import Permission
-from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
+from shift.domain.policy import SETTING_SPECS, PolicyError, Role, SettingKey, SettingKind, ShiftKey
 from shift.domain.shift_events import FieldKind, KindSpec, kind_for
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
@@ -71,6 +72,23 @@ ITEM_KIND_LABELS = {
     ItemKind.READING: "عدد خواندنی",
     ItemKind.PHOTO: "عکس",
 }
+# A4: the words the manager picks in, never a raw enum value or an English label.
+ROLE_LABELS = {
+    Role.RECEPTION: "پذیرش",
+    Role.NURSE: "پرستار",
+    Role.STOREKEEPER: "انباردار",
+    Role.PURCHASER: "خریدار",
+    Role.ACCOUNTANT: "حسابدار",
+    Role.SHIFT_DOCTOR: "پزشک شیفت",
+    Role.MANAGER: "مدیر",
+}
+FREQUENCY_LABELS = {
+    Frequency.EVERY_SHIFT: "هر شیفت",
+    Frequency.DAILY: "روزانه",
+    Frequency.WEEKLY: "هفتگی",
+}
+# Only these three roles answer a checklist; the storekeeper's lines never come up in a handover.
+LIST_ROLE_CHOICES = (Role.RECEPTION, Role.NURSE, Role.STOREKEEPER)
 BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
 BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "
 BASELINE_CUSTODIAN = "نگه‌دارنده باید از کارکنان فعال درمانگاه باشد."
@@ -149,6 +167,12 @@ SETTING_LABELS = {
     SettingKey.SESSION_TTL_HOURS: "اعتبار نشست (ساعت)",
     SettingKey.WEEKLY_COUNT_TIME: "ساعت هشدار شمارش هفتگی",
     SettingKey.WEEKLY_COUNT_WEEKDAY: "روز شمارش هفتگی",
+    # E1 (owner decision 11): the manager's own numbers; an empty value means «not set», not zero.
+    SettingKey.SUGAR_THRESHOLD: "آستانهٔ قند خون",
+    SettingKey.SYSTOLIC_THRESHOLD: "آستانهٔ فشار سیستول",
+    SettingKey.DIASTOLIC_THRESHOLD: "آستانهٔ فشار دیاستول",
+    SettingKey.OXYGEN_PRESSURE_THRESHOLD: "آستانهٔ فشار کپسول اکسیژن",
+    SettingKey.CASH_FLOAT_TOMAN: "تنخواه صندوق (تومان)",
 }
 
 # A page guard each: a signed-out browser is sent to the login screen, a non-manager gets a 403.
@@ -334,7 +358,17 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         return _shell_page(
             request,
             "manager_items.html",
-            {"items": rows, "counted": len(counted), "missing": missing},
+            {
+                "items": rows,
+                "counted": len(counted),
+                "missing": missing,
+                # A4: the manager builds the lists here, so the page carries every place and the words
+                # for the kind, the responsible role and how often the line is asked.
+                "places": [{"id": place_id, "name": name} for place_id, name in sorted(places.items())],
+                "kinds": [{"id": kind.value, "label": label} for kind, label in ITEM_KIND_LABELS.items()],
+                "roles": [{"id": role.value, "label": ROLE_LABELS[role]} for role in LIST_ROLE_CHOICES],
+                "frequencies": [{"id": frequency.value, "label": label} for frequency, label in FREQUENCY_LABELS.items()],
+            },
             cache_control=NO_STORE,
         )
 
@@ -404,6 +438,8 @@ def _card_view(card: Card) -> dict[str, Any]:
         "date": format_jalali(card.card_date),
         "coverage": _coverage(card),
         "generated_at": _moment_fa(card.generated_at),
+        # E1: a reminder beside the cash count, never an input to any calculation (owner decision 11).
+        "cash_float": None if card.cash_float is None else f"{card.cash_float:,}",
         "sections": _sections(card),
     }
 
@@ -416,6 +452,7 @@ def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
         "late_cash": _late_cash_rows,
         "held_events": _held_rows,
         "cash_exceptions": _cash_rows,
+        "checklist_answers": _checklist_answer_rows,
         "discrepancies": _discrepancy_rows,
         "flows": _flow_rows,
         "open_flows": _open_flow_rows,
@@ -459,6 +496,26 @@ def _cash_rows(card: Card) -> list[dict[str, str]]:
         }
         for entry in card.cash_exceptions
     ]
+
+
+def _checklist_answer_rows(card: Card) -> list[dict[str, Any]]:
+    """B3: a «no» and every number read off a device, with who answered and when."""
+    return [
+        {
+            "name": entry.name,
+            "ok": entry.ok,
+            "answer": "خیر" if not entry.ok else "بله",
+            "reading": None if entry.reading is None else _reading_fa(entry.reading),
+            "person": _person(entry.actor),
+            "at": _stamp_fa(entry.answered_at_tehran),
+        }
+        for entry in card.checklist_answers
+    ]
+
+
+def _reading_fa(reading: float) -> str:
+    """A reading as the person wrote it: no trailing `0.0` on a whole number."""
+    return f"{reading:,.0f}" if reading == int(reading) else f"{reading:,}"
 
 
 def _discrepancy_rows(card: Card) -> list[dict[str, str]]:
@@ -707,6 +764,12 @@ def _item_row(item: Any, places: dict[str, str]) -> dict[str, Any]:
         "minimum": item.minimum,
         "acc_code": item.acc_code or "",
         "stock_factor": item.stock_factor,
+        "responsible_role": item.responsible_role.value,
+        "role_label": ROLE_LABELS.get(item.responsible_role, item.responsible_role.value),
+        "frequency": item.frequency.value,
+        "frequency_label": FREQUENCY_LABELS.get(item.frequency, item.frequency.value),
+        "sort_order": item.sort_order,
+        "retired": item.retired,
         "needs_code": item.kind is ItemKind.COUNTED and not item.acc_code,
     }
 

@@ -19,6 +19,7 @@ import pytest
 from auth_fixtures import PIN, ROLES, login, seed_roster
 from clocks import FixedClock
 from fastapi.testclient import TestClient
+from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
 from shift.adapters.db import handover_repo
@@ -349,3 +350,56 @@ def test_a_fresh_install_shows_when_the_next_card_arrives(settings: Settings) ->
     assert "هنوز کارتی ساخته نشده است." in response.text
     assert "کارت بعدی" in response.text
     assert "07:30" in response.text, "the empty state says when the next card arrives"
+
+def test_a_manager_builds_a_space_checklist_on_the_items_page(manager_client: TestClient) -> None:
+    """A4: the page names every attribute in the manager's words, and a space checklist is made there."""
+    _signed_in(manager_client)
+    seed_catalog(_signed_in(manager_client).app.state.database)
+    page = manager_client.get("/manager/items")
+
+    assert page.status_code == 200
+    for word in ("نقش مسئول", "تناوب", "هر شیفت", "روزانه", "هفتگی", "ترتیب قفسه", "افزودن قلم تازه"):
+        assert word in page.text
+
+    token = META_TOKEN.search(page.text)
+    assert token is not None
+    created = manager_client.put(
+        "/api/v1/catalog/items/doctor_window_ok",
+        json={
+            "name": "پنجرهٔ پذیرش سالم است",
+            "kind": "yes_no",
+            "location_id": "shelf_reception",
+            "unit": "وضعیت",
+            "minimum": 0,
+            "acc_code": None,
+            "stock_factor": 1,
+            "retired": False,
+            "responsible_role": "reception",
+            "frequency": "daily",
+        },
+        headers={"X-CSRFToken": token.group(1)},
+    )
+    assert created.status_code == 200, created.text
+    assert (created.json()["kind"], created.json()["responsible_role"], created.json()["frequency"]) == (
+        "yes_no",
+        "reception",
+        "daily",
+    )
+    # A refused save answers a Persian sentence: the manager never reads a raw validation text.
+    refused = manager_client.put(
+        "/api/v1/catalog/items/doctor_window_ok",
+        json={
+            "name": "پنجرهٔ پذیرش سالم است",
+            "kind": "yes_no",
+            "location_id": "no_such_place",
+            "unit": "وضعیت",
+            "minimum": 0,
+            "acc_code": None,
+            "stock_factor": 1,
+            "retired": False,
+        },
+        headers={"X-CSRFToken": token.group(1)},
+    )
+    assert refused.status_code == 400
+    assert "این محل" in refused.json()["error"]["message"]
+    assert "must be" not in refused.text

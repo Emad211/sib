@@ -21,6 +21,7 @@ const PRECACHE_URLS = [
   "/static/app.js",
   "/static/handover.css",
   "/static/handover.js",
+  "/static/item-icons.js",
   "/static/offline.js",
   "/static/outbox-idb.js",
   "/static/csrf.js",

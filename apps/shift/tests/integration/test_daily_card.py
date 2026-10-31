@@ -1240,3 +1240,45 @@ def test_the_reward_and_campaign_sections_are_one_muted_line_on_a_day_with_nothi
         section = _section_html(text, anchor)
         assert section.count("mg-empty") == 1, anchor
         assert "mg-row" not in section and "mg-amount" not in section, anchor
+
+def test_a_checklist_no_and_a_reading_reach_the_card(database: Database, clock: FixedClock, service: DailyCardService) -> None:
+    """B3: a «no» and a number read off a device land on the manager's card; a quiet yes stays off it."""
+    _staff(database)
+    store = EventStore(database, clock=clock)
+    shift_id = ShiftKey(MONDAY, 1).text
+    at = _monday(9, 0)
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "trolley_seal_ok", "ok": False, "reading": None, "photo_id": None},
+    )
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "oxygen_pressure_trolley", "ok": True, "reading": 120, "photo_id": None},
+    )
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "store_lock_ok", "ok": True, "reading": None, "photo_id": None},
+    )
+
+    card = service.regenerate(CARD_DAY)
+
+    assert card is not None
+    assert [(row.name, row.ok, row.reading) for row in card.checklist_answers] == [
+        ("trolley_seal_ok", False, None),
+        ("oxygen_pressure_trolley", True, 120.0),
+    ]

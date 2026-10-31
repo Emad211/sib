@@ -140,6 +140,14 @@ def test_the_migrations_seed_the_setting_defaults(database: Database) -> None:
             "changed_by": "migration:m0004",
         },
         {
+            # E1 (owner decision 11): an optional number, seeded empty so no rule fires until it is set.
+            "setting_key": "cash_float_toman",
+            "value": "",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0020",
+        },
+        {
             # Retired by ADR-018 (the card's Friday gap is clinic policy, not a setting): the row
             # stays as history and `SettingsService.snapshot` ignores it.
             "setting_key": "daily_card_skip_weekday",
@@ -149,11 +157,39 @@ def test_the_migrations_seed_the_setting_defaults(database: Database) -> None:
             "changed_by": "migration:m0008",
         },
         {
+            "setting_key": "diastolic_threshold",
+            "value": "",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0020",
+        },
+        {
+            "setting_key": "oxygen_pressure_threshold",
+            "value": "",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0020",
+        },
+        {
             "setting_key": "session_ttl_hours",
             "value": "12",
             "version": 1,
             "effective_from_shift": "0001-01-01#1",
             "changed_by": "migration:m0004",
+        },
+        {
+            "setting_key": "sugar_threshold",
+            "value": "",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0020",
+        },
+        {
+            "setting_key": "systolic_threshold",
+            "value": "",
+            "version": 1,
+            "effective_from_shift": "0001-01-01#1",
+            "changed_by": "migration:m0020",
         },
         {
             "setting_key": "takeover_window_minutes",
@@ -202,7 +238,7 @@ def test_migrating_again_does_not_reseed(database: Database) -> None:
     database.migrate()
 
     with database.read() as connection:
-        assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 7
+        assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 12
 
 
 def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_path: Path) -> None:
@@ -225,7 +261,7 @@ def test_upgrading_a_version_three_database_applies_every_pending_migration(tmp_
             assert (
                 connection.exec_driver_sql("SELECT last_seq FROM meta_projection WHERE name = 'kept'").scalar_one() == 7
             )
-            assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 7
+            assert connection.exec_driver_sql("SELECT COUNT(*) FROM setting_versions").scalar_one() == 12
     finally:
         upgraded.close()
 
