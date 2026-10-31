@@ -20,6 +20,7 @@ from shift.api import (
     routes_handover,
     routes_held,
     routes_manager,
+    routes_purchase,
     routes_settings,
     routes_web,
 )
@@ -42,6 +43,7 @@ from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
 from shift.services.projections import ProjectionEngine
+from shift.services.purchase import PurchaseService
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
 from shift.services.shift_events import ShiftEventService
@@ -172,6 +174,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The manager's daily card (SHF-6.1) reads the log, the flows and the audit trail and stores
         # one document per day; the scheduler's action below is the only thing that generates it.
         application.state.daily_card = DailyCardService(database, clock=clock, audit=audit)
+        # The purchasing chain and the warehouse (SHF-4): one service writes every action and folds the
+        # state the page reads, so the log stays the only truth of the chain.
+        application.state.purchase = PurchaseService(
+            database,
+            application.state.events,
+            application.state.projections,
+            application.state.catalog,
+            application.state.settings_service,
+            clock=clock,
+        )
         # One bridge for the process: the handover start reads accounting through it, and the
         # background poll keeps the mirror live. Without an accounting copy the bridge stays None
         # and a handover start is refused (H-03), never silently allowed.
@@ -252,6 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_events.router)
     app.include_router(routes_handover.router)
     app.include_router(routes_held.router)
+    app.include_router(routes_purchase.router)
     app.include_router(routes_web.router)
 
     @app.get("/healthz", tags=["ops"])

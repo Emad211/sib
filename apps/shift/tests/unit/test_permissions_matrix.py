@@ -49,7 +49,17 @@ def test_purchaser_is_a_role_with_the_buying_permissions() -> None:
 
     assert Role.PURCHASER.value == "purchaser"
     assert {Permission.PURCHASE_ORDER_DRAFT, Permission.PURCHASE_DELIVERY_RECEIVE} <= granted
+    # P-03: only the buyer hands an approved order to a vendor; deciding it stays the manager's (P-02).
+    assert Permission.PURCHASE_ORDER_PLACE in granted
     assert Permission.PURCHASE_ORDER_DECIDE not in granted, "whoever drafts must not approve"
+
+
+def test_the_counter_takes_a_delivery_in_whatever_shift_it_arrives() -> None:
+    """S01 §4: reception receives the parcel, so it holds the receipt and not the shelf charge."""
+    granted = ROLE_PERMISSIONS[Role.RECEPTION]
+
+    assert Permission.PURCHASE_DELIVERY_RECEIVE in granted
+    assert Permission.STOCK_RESTOCK_CONFIRM not in granted
 
 
 def test_reception_keeps_the_counter_and_loses_the_store() -> None:

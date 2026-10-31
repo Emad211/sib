@@ -115,6 +115,8 @@ BODIES = {
     },
     "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
+    # No such action: every permitted role gets the same deterministic refusal, and nothing is written.
+    "POST /api/v1/purchase/action": {"action": "unknown.action", "data": {}},
 }
 PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns", "GET /events"}
 

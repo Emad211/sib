@@ -55,6 +55,19 @@ EXPECTED_EFFECTS = {
     EventType.EVENT_RELEASED: ((), None),
     EventType.EVENT_HOLD_REJECTED: ((), None),
     EventType.EVENT_REJECTED: ((), None),
+    # SHF-4: the purchasing documents change no projection; the shelf charge moves both ends at once.
+    EventType.ORDER_DRAFTED: ((), None),
+    EventType.ORDER_DECIDED: ((), None),
+    EventType.ORDER_PLACED: ((), None),
+    EventType.DELIVERY_RECEIVED: ((), None),
+    EventType.DELIVERY_FLAGGED: ((), None),
+    EventType.DELIVERY_TRANSFERRED: ((), None),
+    EventType.INVOICE_DIGITIZED: ((), None),
+    EventType.PAYMENT_RECORDED: ((), None),
+    EventType.VENDOR_RETURN: ((), None),
+    EventType.VENDOR_CREDIT: ((), None),
+    EventType.RESTOCK_CONFIRMED: ((StockOperation.SUBTRACT, StockOperation.ADD), None),
+    EventType.EXPIRY_FLAGGED: ((), None),
 }
 
 
@@ -273,6 +286,18 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.EVENT_HELD,
         EventType.EVENT_RELEASED,
         EventType.EVENT_HOLD_REJECTED,
+        EventType.ORDER_DRAFTED,
+        EventType.ORDER_DECIDED,
+        EventType.ORDER_PLACED,
+        EventType.DELIVERY_RECEIVED,
+        EventType.DELIVERY_FLAGGED,
+        EventType.DELIVERY_TRANSFERRED,
+        EventType.INVOICE_DIGITIZED,
+        EventType.PAYMENT_RECORDED,
+        EventType.VENDOR_RETURN,
+        EventType.VENDOR_CREDIT,
+        EventType.RESTOCK_CONFIRMED,
+        EventType.EXPIRY_FLAGGED,
     }
 
 

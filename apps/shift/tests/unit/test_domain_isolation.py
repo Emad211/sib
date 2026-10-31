@@ -8,7 +8,17 @@ import pytest
 DOMAIN_DIR = Path(__file__).resolve().parents[2] / "src" / "shift" / "domain"
 # permissions.py is a pure role × permission data table: it legitimately grows with each rule
 # (H-12 added the nursing flow's start and its sign), so it carries its own cap. Logic stays at 150.
-LINE_CAPS = {"permissions.py": 180}
+# SHF-4 is the same kind of growth, one chain at a time: `events.py` gains one row per type S03 §3
+# names (twelve of them) and `effects.py` the group's one effect builder; the payload file and the
+# parcel's fold are each one document of that chain — S03 §3's vocabulary and S03 §4's states — so
+# splitting either would hide the chain instead of shortening it.
+LINE_CAPS = {
+    "permissions.py": 180,
+    "events.py": 200,
+    "effects.py": 200,
+    "purchase_payloads.py": 200,
+    "purchase_deliveries.py": 200,
+}
 DEFAULT_LINE_CAP = 150
 FORBIDDEN_ROOTS = {
     "io",

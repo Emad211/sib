@@ -196,7 +196,22 @@
    "shift_doctor": 403,
    "storekeeper": 403
   }
- }, "GET /api/v1/settings [list_settings]": {
+ }, "GET /api/v1/purchase/state [get_purchase_state]": {
+  "guard": "permission:events.append",
+  "note": "the purchasing chain as this person may see it: the service cuts the sections down to the permissions held, so any phone that may append asks and gets only its own (R-01, R-07)",
+  "roles": {
+   "accountant": 200,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /api/v1/settings [list_settings]": {
   "guard": "permission:settings.change",
   "roles": {
    "accountant": 403,
@@ -679,7 +694,23 @@
    "shift_doctor": 403,
    "storekeeper": 403
   }
- }, "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
+ },
+ "POST /api/v1/purchase/action [post_purchase_action]": {
+  "guard": "permission:events.append",
+  "note": "the action's own permission is enforced by the service, exactly like the phone's event endpoint; an unknown action is the deterministic 422 this matrix probes with",
+  "roles": {
+   "accountant": 422,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 422,
+   "reception": 422,
+   "shift_doctor": 422,
+   "storekeeper": 422
+  }
+ },
+ "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
   "guard": "permission:staff.pin.reset",
   "roles": {
    "accountant": 403,

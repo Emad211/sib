@@ -74,6 +74,23 @@ def stock_delta(operation: StockOperation) -> EffectBuilder:
     return build
 
 
+def stock_transfer(payload: Any) -> Effects:
+    """A shelf charged from another place moves both ends in one event, in this order (P-10).
+
+    The storekeeper takes the goods out of the main store and puts them on the shelf in the same
+    moment, so the two effects travel together: a rebuild that replays the event applies the
+    subtraction first and the addition second, and the pair can never be separated by a crash between
+    two events. S01 §4 asks for exactly this — the store down and the shelf up at once, never one
+    without the other.
+    """
+    return Effects(
+        stock=(
+            StockEffect(payload.item_id, payload.from_location_id, StockOperation.SUBTRACT, payload.quantity),
+            StockEffect(payload.item_id, payload.to_location_id, StockOperation.ADD, payload.quantity),
+        )
+    )
+
+
 def cash_open(payload: Any) -> Effects:
     """Opening cash seeds the reception box; a nursing flow opens no cash at all (H-12, ADR-017 8)."""
     if payload.opening_cash is None:

@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from shift.domain import purchase_payloads as purchase
 from shift.domain.effects import (
     CashOperation,
     EffectBuilder,
@@ -19,6 +20,7 @@ from shift.domain.effects import (
     settled_count,
     stock_delta,
     stock_set,
+    stock_transfer,
 )
 from shift.domain.event_types import EventType, UnknownEventType
 from shift.domain.handover_baseline import BaselineRecorded
@@ -102,6 +104,26 @@ BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.EVENT_HELD: EventSpec(SubmissionHeld, no_effects, requires_shift=True),
     EventType.EVENT_RELEASED: EventSpec(HeldReleased, no_effects, requires_shift=True),
     EventType.EVENT_HOLD_REJECTED: EventSpec(HeldRejected, no_effects, requires_shift=True),
+    # The SHF-4 purchasing chain (S01 §4, S03 §3) is a set of documents, and a document changes no
+    # shelf: `delivery_received` is the buying record while the goods enter a shelf through the shift
+    # event «و» (`stock.shelf_restocked`), so one arrival is never counted into stock twice. An invoice,
+    # a payment and a credit are the accountant's figures — the shift app records them and never moves
+    # the clinic box with them — and a vendor return is a purchasing credit, not a shelf movement.
+    EventType.ORDER_DRAFTED: EventSpec(purchase.OrderDrafted, no_effects, requires_shift=True),
+    EventType.ORDER_DECIDED: EventSpec(purchase.OrderDecided, no_effects, requires_shift=True),
+    EventType.ORDER_PLACED: EventSpec(purchase.OrderPlaced, no_effects, requires_shift=True),
+    EventType.DELIVERY_RECEIVED: EventSpec(purchase.DeliveryReceived, no_effects, requires_shift=True),
+    # Its shift-event kind owns this type too; the composed spec below keeps the same payload and the
+    # same (empty) effect, and `approvable_by=(MANAGER,)` is what lets the manager unlock a payment.
+    EventType.DELIVERY_FLAGGED: EventSpec(purchase.DeliveryFlagged, no_effects, requires_shift=True),
+    EventType.DELIVERY_TRANSFERRED: EventSpec(purchase.DeliveryTransferred, no_effects, requires_shift=True),
+    EventType.INVOICE_DIGITIZED: EventSpec(purchase.InvoiceDigitized, no_effects, requires_shift=True),
+    EventType.PAYMENT_RECORDED: EventSpec(purchase.PaymentRecorded, no_effects, requires_shift=True),
+    EventType.VENDOR_RETURN: EventSpec(purchase.VendorReturn, no_effects, requires_shift=True),
+    EventType.VENDOR_CREDIT: EventSpec(purchase.VendorCredit, no_effects, requires_shift=True),
+    # The one moving record of the group: a shelf charged from another place, both ends at once (P-10).
+    EventType.RESTOCK_CONFIRMED: EventSpec(purchase.RestockConfirmed, stock_transfer, requires_shift=True),
+    EventType.EXPIRY_FLAGGED: EventSpec(purchase.ExpiryFlagged, no_effects, requires_shift=True),
 }
 
 
