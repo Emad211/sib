@@ -764,7 +764,10 @@ def test_the_store_screens_never_carry_a_reference_figure(app_client: TestClient
         _sign_in(app_client, scanner, role)
         _call(app_client, scanner, "GET", "/purchase")
         _call(app_client, scanner, "GET", "/api/v1/purchase/state")
-    assert scanner.count >= 4, "every request of this test is scanned"
+    # B2 and C1: the accountant's queue (with its deposit link) and the wizard it opens hold no figure either.
+    for path in ("/accountant/queue", "/events?kind=cash.deposited"):
+        assert _call(app_client, scanner, "GET", path).status_code == 200, path
+    assert scanner.count >= 6, "every request of this test is scanned"
 
 
 def test_the_reference_never_leaves_the_server_in_a_whole_handover(

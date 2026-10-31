@@ -286,3 +286,34 @@ def test_a_late_record_from_the_previous_flow_never_moves_the_next_flow_referenc
     assert _payloads(database, "handover.cash_reference_adjusted", second) == []
     assert _payloads(database, "discrepancy.recorded", second) == []
     assert _box(database) == 400_000
+
+
+def test_a_bank_deposit_that_happened_before_the_cutoff_is_no_false_discrepancy(
+    service: HandoverService, database: Database, store: EventStore, projections: ProjectionEngine
+) -> None:
+    """B2: the accountant carried 150k to the bank; the box counts 350k and the count still agrees."""
+    handover_id = _start(service, opening_cash=OPENING_CASH)
+    _move(store, projections, "cash.deposited", 150_000, at=MOMENT - timedelta(hours=1))
+
+    _settle(service, handover_id, 350_000)
+
+    assert _payloads(database, "handover.cash_reference_adjusted", handover_id) == [{"delta": -150_000}]
+    assert _payloads(database, "discrepancy.recorded", handover_id) == []
+    assert _box(database) == 350_000
+    assert projections.rebuild().drift == ()
+    assert _box(database) == 350_000
+
+
+def test_a_bank_deposit_after_the_cutoff_stays_on_top_of_the_agreed_figure(
+    service: HandoverService, database: Database, store: EventStore, projections: ProjectionEngine
+) -> None:
+    """A deposit made after the count began is the next shift's money, whenever it reaches the server."""
+    handover_id = _start(service, opening_cash=OPENING_CASH)
+    _move(store, projections, "cash.deposited", 150_000, at=MOMENT + timedelta(minutes=5))
+
+    _settle(service, handover_id, 500_000)
+
+    carries = [row["carry"] for row in _payloads(database, "handover.count_settled", handover_id)]
+    assert -150_000 in carries
+    assert _box(database) == 350_000
+    assert _payloads(database, "discrepancy.recorded", handover_id) == []

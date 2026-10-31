@@ -901,6 +901,13 @@
 
     renderGroups();
 
+    // The accountant's queue sends her straight to the one question she came for (?kind=cash.deposited).
+    var wanted = new URLSearchParams(window.location.search).get("kind");
+    var chosen = catalog.kinds.filter(function (candidate) {
+      return candidate.type === wanted;
+    })[0];
+    if (chosen) startKind(chosen);
+
     byId("shift-event-groups").addEventListener("click", function (event) {
       var button = event.target.closest("[data-kind]");
       if (!button) return;

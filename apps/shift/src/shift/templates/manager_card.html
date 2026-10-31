@@ -36,7 +36,7 @@
       <p class="mg-alert-who">ثبت‌کننده: {{ row.recorded_by }}</p>
       <p class="mg-line">مدیر تأییدکننده: {{ row.manager }}</p>
       <p class="mg-line">زمان: {{ row.at }}</p>
-      <p class="mg-line mg-muted">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+      <p class="mg-line mg-muted">{{ row.flow }}</p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -54,6 +54,13 @@
       <p class="mg-alert-who">گیرنده: {{ row.recipient }} · مدیر نام‌برده: {{ row.manager }}</p>
       <p class="mg-line">دلیل: {{ row.reason }}</p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
+      {% if row.pending %}
+      <p class="mg-note">پول از صندوق رفته است؛ رد کردن پول را به صندوق برنمی‌گرداند و فقط ثبت می‌شود.</p>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.event_id }}" data-reject-note="این برداشت رد شود؟ پول به صندوق برنمی‌گردد.">رد</button>
+      </p>
+      {% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -68,7 +75,7 @@
     <article class="mg-row">
       <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان رسید</span></p>
       {% if row.outflow != "0" %}<p class="mg-amount">{{ row.outflow }} <span class="mg-unit">تومان برداشت</span></p>{% endif %}
-      <p class="mg-line">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+      <p class="mg-line">{{ row.flow }}</p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
     </article>
     {% else %}
@@ -155,6 +162,12 @@
       <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
       {% endfor %}
       {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
+      {% if row.decidable %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.event_id }}">رد</button>
+      </p>
+      {% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -205,7 +218,7 @@
     <article class="mg-row">
       <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
       <p class="mg-line">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }}</p>
-      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}{% if row.handover_id %} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span>{% endif %}</p>
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}</p>
       <p class="mg-line mg-muted">توضیح مغایرت همان تحویل: {{ row.explains }}</p>
     </article>
     {% else %}
@@ -243,7 +256,12 @@
       <p class="mg-line">{{ row.lines }}</p>
       {% if row.note %}<p class="mg-line mg-muted">یادداشت: {{ row.note }}</p>{% endif %}
       <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
-      <p class="mg-line mg-muted">شناسهٔ سفارش <span class="mg-id" dir="ltr">{{ row.order_id }}</span></p>
+      <p class="mg-line mg-actions" dir="rtl" data-order-id="{{ row.order_id }}">
+        <input class="mg-input" type="text" maxlength="500" placeholder="یادداشت تغییر (اختیاری)" data-order-note aria-label="یادداشت تغییر">
+        <button type="button" class="btn btn-primary btn-compact" data-order-decision="approved">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-order-decision="rejected">رد</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-order-decision="changed">تغییر</button>
+      </p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -259,7 +277,12 @@
       <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }} — {{ row.reason }}</p>
       <p class="mg-line">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
       <p class="mg-line mg-muted">{{ row.age_hours }} ساعت در انتظار تصمیم شما؛ پرداخت تا آن زمان قفل است.</p>
-      <p class="mg-line mg-muted">شناسهٔ دریافت <span class="mg-id" dir="ltr">{{ row.delivery_id }}</span></p>
+      {% if row.flag_event_id %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.flag_event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.flag_event_id }}">رد</button>
+      </p>
+      {% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -274,7 +297,7 @@
     <article class="mg-row">
       <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }}{% if row.packages %} — {{ row.packages }} بسته{% endif %}</p>
       <p class="mg-line">{{ row.age_hours }} ساعت در راه · ثبت‌کننده: {{ row.actor }}</p>
-      <p class="mg-line mg-muted">دریافت: {{ row.at }} · شناسه <span class="mg-id" dir="ltr">{{ row.delivery_id }}</span></p>
+      <p class="mg-line mg-muted">دریافت: {{ row.at }}</p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -307,6 +330,54 @@
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "event_counts" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-counts-title">
+    <h2 id="mg-counts-title" class="mg-section-title">رویدادهای ۲۴ ساعت</h2>
+    {% for row in card.sections.event_counts %}
+    <details class="mg-row">
+      <summary class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.count }} بار</summary>
+      {% for item in row.rows %}
+      <p class="mg-line">{{ item.actor }} · {{ item.at }} — {{ item.status }}</p>
+      {% for field in item.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+      {% endfor %}
+    </details>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "overdue_faults" in card.sections %}
+  <section class="mg-section mg-emergency{% if not card.sections.overdue_faults %} mg-clear{% endif %}" aria-labelledby="mg-overdue-title">
+    <h2 id="mg-overdue-title" class="mg-section-title">ارجاع‌های مهلت‌گذشته</h2>
+    {% for row in card.sections.overdue_faults %}
+    <article class="mg-alert-row">
+      <p class="mg-alert-who">{{ row.device }} — {{ row.days_late }} روز دیرتر از مهلت</p>
+      <p class="mg-line">ارجاع‌شده به: {{ row.assignee }} · مهلت: {{ row.due }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">ارجاع مهلت‌گذشته‌ای نیست.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "call_sample" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-call-title">
+    <h2 id="mg-call-title" class="mg-section-title">نمونهٔ تماس</h2>
+    <p class="mg-note">چند ثبت بیمار تصادفی برای تماس کنترلی. شماره تلفن را از پروندهٔ بیمار در نرم‌افزار حسابداری بخوانید.</p>
+    {% for row in card.sections.call_sample %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">پرونده {{ row.patient_number }}</p>
+      <p class="mg-line">ثبت: {{ row.day }} · ثبت‌کننده: {{ row.registrar }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">ثبت بیماری برای نمونه نبود.</p>
     {% endfor %}
   </section>
   {% endif %}
