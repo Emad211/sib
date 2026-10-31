@@ -373,8 +373,8 @@
     <p class="mg-note">چند ثبت بیمار تصادفی برای تماس کنترلی. نام و تلفن هنگام باز شدن همین صفحه از حسابداری خوانده می‌شود و جایی ذخیره نمی‌شود.</p>
     {% for row in card.sections.call_sample %}
     <article class="mg-row">
-      <p class="mg-line mg-strong">{{ row.name or ("پروندهٔ " ~ row.patient_id) }}</p>
       {% if row.phone %}
+      <p class="mg-line mg-strong">{{ row.name }}</p>
       <p class="mg-line"><a href="tel:{{ row.phone }}">تماس با {{ row.phone }}</a></p>
       {% else %}
       <p class="mg-line mg-muted">پروندهٔ {{ row.patient_id }} — تلفن از حسابداری خوانده نشد.</p>

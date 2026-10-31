@@ -162,7 +162,7 @@ def call_sample_contacts(connection: Connection, patient_ids: Sequence[int]) -> 
     if not patient_ids:
         return {}
     placeholders = ", ".join("?" for _ in patient_ids)
-    rows = connection.exec_driver_sql(CALL_SAMPLE_SQL.format(placeholders=placeholders), list(patient_ids)).mappings()
+    rows = connection.exec_driver_sql(CALL_SAMPLE_SQL.format(placeholders=placeholders), tuple(patient_ids)).mappings()
     return {int(row["patient_id"]): row for row in rows}
 
 

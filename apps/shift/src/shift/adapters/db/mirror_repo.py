@@ -99,10 +99,11 @@ def insert_vitals(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> 
 def insert_registrations(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> int:
     """Copy patient registrations with validity flags only, never the national ID or phone.
 
-    Every other column is the copy already stored; `first_for_phone` is the one fact that can change
-    its mind, because a row first read through `_v1` was stored as the first for its mobile and a
-    later read of `_v2` is the side that knows better. Without that, an install upgraded from an
-    older accounting would keep paying twice for one mobile.
+    `first_for_phone` is the one fact a re-read may correct — a row first read through `_v1` was
+    stored as the first for its mobile and a later read of `_v2` is the side that knows better — so
+    the insert updates that column on a patient it already has. A row written without the flag is a
+    v1 row: accounting never checked a duplicate there, so it counts as the first, the column's own
+    default.
     """
     if not rows:
         return 0
@@ -111,7 +112,10 @@ def insert_registrations(connection: Connection, rows: Sequence[Mapping[str, Any
     result = connection.exec_driver_sql(
         f"INSERT INTO {REGISTRATION} ({', '.join(columns)}) VALUES ({placeholders}) "
         "ON CONFLICT (patient_id) DO UPDATE SET first_for_phone = excluded.first_for_phone",
-        [tuple(row[column] for column in columns) for row in rows],
+        [
+            tuple(row.get(column, 1) if column == "first_for_phone" else row[column] for column in columns)
+            for row in rows
+        ],
     )
     return int(result.rowcount)
 

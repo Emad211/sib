@@ -16,7 +16,8 @@
 | کارت‌به‌کارت: شمارهٔ پذیرش معتبر | `invoices.id` | `v_shift_invoice_lookup_v1(invoice_id, patient_id, status, total, closed_at)` |
 | ابطال و بازپرداخت (ACC-2.12) | وضعیت `voided` و جدول `invoice_voids` (مهاجرت ۶، view در مهاجرت ۷) | `v_shift_voids_v1(invoice_id, kind, amount, refund_method, reason, voided_by, voided_at)` |
 | پاداش قند و فشار | `injections` با نوع «تست قند» و «کنترل فشار» | `v_shift_vitals_services_v1(invoice_id, nurse_id, type, closed_at)` |
-| پاداش ثبت بیمار | `patients.created_by`، `created_at`، کد ملی، موبایل | `v_shift_patient_registrations_v1(patient_id, created_by, created_at, has_valid_nid, phone)` |
+| پاداش ثبت بیمار | `patients.created_by`، `created_at`، کد ملی، موبایل | `v_shift_patient_registrations_v1(patient_id, created_by, created_at, has_valid_nid, has_valid_phone, is_foreign)`؛ از مهاجرت ۸: `v_shift_patient_registrations_v2` با ستون اضافهٔ `first_for_phone` |
+| نمونهٔ تماس کارت مدیر (تصمیم ۵) | `patients.full_name`، `phone_number`، `created_at`، `created_by` | `v_shift_call_sample_v1(patient_id, full_name, phone_number, created_at, created_by)`؛ فقط هنگام رندر خوانده می‌شود و ذخیره نمی‌شود |
 | کمپین تخفیف | **در حسابداری وجود ندارد** | Q-12 |
 
 > **وضعیت ۱۴۰۵/۰۸/۰۴:** ACC-2.11 پیاده شد (مهاجرت ۴). تفاوت‌ها با جدول بالا: `v_shift_consumption_v1` ستون‌های `ledger_id` و `item_name` هم دارد؛ `v_shift_cash_receipts_v1` جمع نقد هر فاکتور است و `v_shift_payment_lines_v1` ردیف‌های کارت/نقد را می‌دهد؛ مبلغ‌ها از جدول `invoice_payment_lines` می‌آیند که **هنگام بستن فاکتور** پر می‌شود (فقط از زمان استقرار؛ فاکتورهای قدیمی ردیف ندارند)؛ viewهای ثبت بیمار فقط اعتبار کد ملی و موبایل را می‌دهند، نه خود شماره را (حریم خصوصی).

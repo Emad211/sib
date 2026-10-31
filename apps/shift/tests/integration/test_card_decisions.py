@@ -171,9 +171,11 @@ def test_the_card_counts_events_per_code_highlights_the_overdue_repair_and_sampl
     assert "ارجاع‌های مهلت‌گذشته" in page
     assert "دستگاه فشار" in page and "روز دیرتر از مهلت" in page
     assert "نمونهٔ تماس" in page
-    shown = re.findall(r"پرونده (\d+)", page)
+    # This install has no accounting copy, so a drawn row names the patient id alone; the name and
+    # mobile are read live only when accounting is configured (test_call_sample_live).
+    shown = re.findall(r"پروندهٔ (\d+)", page)
     assert len(shown) == 3 and len(set(shown)) == 3
-    assert _card(app) == page or re.findall(r"پرونده (\d+)", _card(app)) == shown, "the draw is stable per card day"
+    assert re.findall(r"پروندهٔ (\d+)", _card(app)) == shown, "the draw is stable per card day"
 
 
 def test_the_card_page_shows_no_raw_id_and_no_reference(app: TestClient) -> None:

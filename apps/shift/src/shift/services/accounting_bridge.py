@@ -199,14 +199,17 @@ def _feeds(contract: views.ViewsReport) -> Mapping[ViewName, Feed]:
     """The feeds of one poll: registrations read v2 when accounting has it, v1 when it does not.
 
     Both views feed the same mirror, so only one of them is read in a poll: v2 is a superset of v1
-    and the only one that can name the first registration for a mobile.
+    and the only one that can name the first registration for a mobile. The feed keeps the v1 name as
+    its watermark key — one watermark per mirror, so an install that upgrades does not re-read its
+    whole history: rows already mirrored keep the flag they were ingested with, and every new
+    registration from the upgrade on carries accounting's answer.
     """
     if ViewName.PATIENT_REGISTRATIONS_V2 not in contract.present:
         return FEEDS
     upgraded = dict(FEEDS)
     upgraded[ViewName.PATIENT_REGISTRATIONS] = replace(
         FEEDS[ViewName.PATIENT_REGISTRATIONS],
-        read=views.PAGED_READS[ViewName.PATIENT_REGISTRATIONS_V2],
+        read=replace(views.PAGED_READS[ViewName.PATIENT_REGISTRATIONS_V2], view=ViewName.PATIENT_REGISTRATIONS),
     )
     return upgraded
 

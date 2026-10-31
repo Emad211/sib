@@ -233,7 +233,7 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 14
+        assert _version(database) == migrations.LATEST == 15
         assert {
             "handover",
             "handover_custody",
