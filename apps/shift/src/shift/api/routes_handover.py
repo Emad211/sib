@@ -37,7 +37,15 @@ from shift.domain.permissions import Permission, Role
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
-from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
+from shift.services.handover import (
+    NO_ACCOUNTING,
+    NO_BASELINE,
+    Caller,
+    HandoverService,
+    HandoverState,
+    NotASigner,
+    NotOfTheFlow,
+)
 from shift.services.purchase import PurchaseService
 
 log = logging.getLogger(__name__)
@@ -56,6 +64,8 @@ NO_STORE = {
 NO_SUCH_HANDOVER = "این تحویل شیفت پیدا نشد."
 GENERIC_REFUSAL = "این کار در وضعیت فعلی تحویل شیفت مجاز نیست؛ صفحه را تازه کنید."
 NOT_A_SIGNER = "این تحویل مال شما نیست؛ فقط نفر ورودی و نفر خروجی همین تحویل امضا می‌کنند."
+# A5 (H-10): the same two people are the only ones who count, advance, answer a checklist or hand a parcel.
+NOT_OF_THE_FLOW = "این تحویل مال شما نیست؛ شمارش، چک‌لیست و بسته‌های آن با دو نفرِ همین تحویل است."
 _REFUSALS: tuple[tuple[str, str], ...] = (
     ("invoices are open", "تحویل شیفت با صورت‌حساب باز شروع نمی‌شود؛ ابتدا صورت‌حساب‌های باز را ببندید."),
     ("already has a", "این تحویل از قبل برای این شیفت باز شده است."),
@@ -173,6 +183,9 @@ def _caller(principal: Principal) -> Caller:
 def _refusal(exc: HandoverError) -> ApiError:
     """Translate a service refusal into the one error envelope, in Persian and with no number."""
     reason = str(exc)
+    if isinstance(exc, NotOfTheFlow):
+        log.info("handover refusal: %s", reason)
+        return Forbidden(NOT_OF_THE_FLOW)
     if isinstance(exc, NotASigner):
         log.info("handover refusal: %s", reason)
         return Forbidden(NOT_A_SIGNER)

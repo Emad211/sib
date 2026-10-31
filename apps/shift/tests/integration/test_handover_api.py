@@ -634,3 +634,36 @@ def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> 
     assert handover_event.status_code == 422
     assert discrepancy.status_code == 422
     assert "سرور" in handover_event.json()["error"]["message"], "the refusal is for a person, in Persian"
+
+
+def test_only_the_two_people_of_a_flow_may_count_advance_or_answer(client: TestClient) -> None:
+    """A5 (H-10): a second receptionist on the same shift cannot count or move somebody else's flow.
+
+    The person is on shift and holds the count permission, so nothing here is an access refusal: the
+    flow itself belongs to its outgoing and incoming person, and a third colleague is answered 403 in
+    Persian for every step of it.
+    """
+    _baseline(client)
+    incoming = _phone(client, "reception")
+    handover_id = _start(client, incoming)["handover_id"]
+
+    # A colleague of the same shift with the same count permission, who is not one of the flow's two.
+    second = _phone(client, "storekeeper")
+    assert client.get("/events", headers=_as(client, second)).status_code == 200, "she may append"
+
+    refusals = {
+        "counts": _item(client, second, handover_id, PARA, 0),
+        "joint": client.post(
+            f"/api/v1/handover/{handover_id}/joint",
+            json={"scope": "item", "item_id": PARA, "location_id": SHELF, "counted": 0},
+            headers=_as(client, second),
+        ),
+        "advance": _advance(client, second, handover_id),
+        "checklists": _checklist(client, second, handover_id, "store_lock_ok", ok=True),
+        "parcels": _parcel(client, second, handover_id),
+        "early-leave": client.post(f"/api/v1/handover/{handover_id}/early-leave", headers=_as(client, second)),
+    }
+
+    for step, response in refusals.items():
+        assert response.status_code == 403, f"{step}: {response.text}"
+        assert "دو نفرِ همین تحویل" in response.json()["error"]["message"], f"{step}: {response.text}"

@@ -127,9 +127,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.VITALS_RECORD,
                 _P.SHIFT_EVENT_APPROVE,
                 _P.REWARD_VIEW,
-                # ADR-021: the shift doctor declares «حضور در شیفت» and is on shift from then.
+                # ADR-021: «حضور در شیفت»; R-15: an off-shift queued record is held, not refused.
                 _P.SHIFT_PRESENCE_DECLARE,
-                # R-15: a queued record made while off shift is held for the manager, never refused.
                 _P.SHIFT_RECORD_HOLD,
             }
         ),
