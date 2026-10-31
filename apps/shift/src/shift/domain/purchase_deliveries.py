@@ -161,5 +161,11 @@ def _delivery_id(event: Any) -> str | None:
 
 
 def _settled(state: DeliveryState) -> DeliveryState:
-    """P-08: a delivery is paid once its payments cover a real invoice, whatever closed it last."""
-    return replace(state, status=PAID) if state.invoice_total > 0 and state.paid_total >= state.invoice_total else state
+    """P-08: a delivery is paid once its payments cover a real invoice, whatever closed it last.
+
+    A parcel that went back to the vendor keeps `returned`: the money for it is the credit note, so a
+    refunded return must never read as a paid invoice.
+    """
+    if state.returned or state.invoice_total <= 0 or state.paid_total < state.invoice_total:
+        return state
+    return replace(state, status=PAID)

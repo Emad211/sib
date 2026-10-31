@@ -396,11 +396,21 @@ def answer_checklist(
 def hand_parcel(
     handover_id: str,
     body: ParcelIn,
+    request: Request,
     response: Response,
     principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """Record one parcel in transit changing hands on the parcels step (H-04)."""
+    """Record one parcel in transit changing hands on the parcels step (H-04).
+
+    P-12: once the purchasing chain knows which parcels are on their way, the only ids this route
+    accepts are those real deliveries — a typed number can no longer stand in for a parcel nobody can
+    trace. An install that has not used the chain yet still hands over a parcel by its own id.
+    """
+    purchase: PurchaseService = request.app.state.purchase
+    known = {parcel.delivery_id for parcel in purchase.in_transit(deps.running_shift(request))}
+    if known and body.parcel_id not in known:
+        raise Conflict("این شناسهٔ بسته در فهرست بارهای در راه نیست؛ بسته را از فهرست انتخاب کنید.")
     state = _run(service.hand_parcel, handover_id, body.parcel_id, body.packages, caller=_caller(principal))
     _no_store(response)
     return _state(state)

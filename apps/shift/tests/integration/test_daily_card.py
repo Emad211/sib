@@ -643,7 +643,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
     card = service.regenerate(CARD_DAY)
     assert card is not None
     document = json.loads(_stored_payload(database, CARD_DAY))
-    assert document["schema"] == CARD_SCHEMA_VERSION == 4
+    assert document["schema"] == CARD_SCHEMA_VERSION == 5
 
     legacy = {
         "schema": 2,
@@ -677,7 +677,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
     assert stored.open_events == ()
     assert stored.emergency_starts == card.emergency_starts
     # A document with a version this code does not know is not guessed at.
-    for schema in (1, 5):
+    for schema in (1, 6):
         with pytest.raises(ValueError):
             Card.from_payload({**legacy, "schema": schema})
 

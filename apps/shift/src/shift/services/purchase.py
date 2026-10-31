@@ -19,6 +19,7 @@ server: `state()` carries no projected quantity at all, and `weekly.count` answe
 only, because the difference would hand the counter the number he is supposed to count (R-02, P-11).
 """
 
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -93,6 +94,7 @@ UNKNOWN_LOCATION = "محل مبدأ یا مقصد در کاتالوگ نیست."
 ITEM_NOT_THERE = "این قلم در قفسهٔ مقصد در کاتالوگ نیست."
 NOT_A_COUNTED_ITEM = "این قلم در این محل قلم شمارشی نیست."
 NOT_THE_STORE = "شمارش هفتگی فقط برای انبار اصلی ثبت می‌شود."
+RESTOCK_FROM_STORE = "شارژ قفسه فقط از انبار اصلی ثبت می‌شود."
 UNKNOWN_CONFIRMER = "تأییدکننده باید از کارکنان فعال درمانگاه باشد."
 PAYMENT_RETURNED = "بار این فاکتور به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."
 
@@ -133,6 +135,10 @@ RESTOCK_HISTORY = 20
 # flagged delivery until the manager decides (P-06), never the accountant's price entry. `RECEIVED_STATUSES`
 # already leaves out a parcel that went back to the vendor or is already paid.
 _RECEIVABLE = RECEIVED_STATUSES
+
+# One writer at a time: a rule that reads the folded log and then appends must not interleave with a
+# second request doing the same, or two payments could each pass the invoice-balance check (P-08).
+_WRITE_LOCK = threading.Lock()
 
 
 class PurchaseRuleError(ValueError):
@@ -307,6 +313,11 @@ class PurchaseService:
 
         The permission is checked here and not on the route, exactly like the phone's event endpoint:
         the route only asks for a session that may append at all, and a refusal writes nothing.
+
+        Every action runs under one process-wide lock. A rule such as «payments never pass the invoice
+        balance» reads the folded log and then appends; two requests interleaving between those two
+        steps would each pass the check and the log would hold both payments. The clinic's server is one
+        process, so one lock makes the pair atomic without inventing a second source of truth.
         """
         entry = ACTIONS.get(action)
         if entry is None:
@@ -314,8 +325,9 @@ class PurchaseService:
         permission, handler = entry
         if permission not in principal.permissions:
             raise PurchaseRuleError(NO_PERMISSION)
-        result: dict[str, Any] = getattr(self, handler)(principal, shift, dict(data))
-        self._projections.sync()
+        with _WRITE_LOCK:
+            result: dict[str, Any] = getattr(self, handler)(principal, shift, dict(data))
+            self._projections.sync()
         return result
 
     def _order_draft(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
@@ -409,7 +421,9 @@ class PurchaseService:
         return {"status": "recorded", "event_id": event_id, "delivery_id": payment.delivery_id}
 
     def _return_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-09: one return per delivery, hung off the receipt it belongs to."""
+        """P-09: one return per delivery, recorded by the storekeeper who lets the goods out."""
+        if not self._is_storekeeper(principal.staff_id):
+            raise PurchaseRuleError(NOT_A_STOREKEEPER)
         returned = self._body(VendorReturn, data)
         if self._require_delivery(returned.delivery_id).returned:
             raise PurchaseRuleError(CANNOT_RETURN)
@@ -439,6 +453,8 @@ class PurchaseService:
         restock = self._body(RestockConfirmed, data)
         if restock.from_location_id == restock.to_location_id:
             raise PurchaseRuleError(SAME_LOCATION)
+        if restock.from_location_id != MAIN_STORE:
+            raise PurchaseRuleError(RESTOCK_FROM_STORE)
         places = {place.location_id for place in self._catalog.locations(shift)}
         if restock.from_location_id not in places or restock.to_location_id not in places:
             raise PurchaseRuleError(UNKNOWN_LOCATION)

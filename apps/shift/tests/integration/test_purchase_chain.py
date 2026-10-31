@@ -186,6 +186,12 @@ def _written(desk: Desk) -> int:
         return events_repo.count_events(connection)
 
 
+def _cash_rows(desk: Desk) -> list[dict[str, Any]]:
+    """The cash projection as it stands: a purchase record must leave it exactly as it found it."""
+    with desk.database.read() as connection:
+        return projections_repo.cash_rows(connection)
+
+
 def _drafted(desk: Desk, quantity: int = 4) -> str:
     return _act(
         desk,
@@ -595,7 +601,8 @@ def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(
             to_location_id="cpr_room",
             quantity=1,
         )
-    with pytest.raises(PurchaseRuleError, match="کاتالوگ"):
+    # A source that is not the store is refused before the catalog is even asked.
+    with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
         _act(
             desk,
             desk.storekeeper,
@@ -823,3 +830,50 @@ def test_the_handover_hands_a_real_parcel_and_stops_listing_it_once_the_store_ta
     )
 
     assert desk.service.in_transit(desk.shift) == ()
+
+
+def test_the_chain_never_moves_the_cash_box(desk: Desk) -> None:
+    """P-08 and S03 §5: invoices, payments and credits are accounting figures, not box movements."""
+    before = _cash_rows(desk)
+    delivery_id = _digitized_delivery(desk)
+    _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=10_000, method="cash")
+    _act(
+        desk,
+        desk.storekeeper,
+        "return.record",
+        delivery_id=delivery_id,
+        lines=[{"item_id": ITEM, "quantity": 1}],
+        reason="بار شکسته بود",
+    )
+    _act(desk, desk.accountant, "credit.record", delivery_id=delivery_id, amount_toman=5_000, note=None)
+
+    assert _cash_rows(desk) == before, "a purchase record never touches proj_cash"
+
+
+def test_only_the_storekeeper_records_a_vendor_return(desk: Desk) -> None:
+    """P-09: the storekeeper lets the goods out, so reception and the purchaser cannot record the exit."""
+    delivery_id = _received_delivery(desk, _placed_order(desk))
+    for person in (desk.reception, desk.purchaser):
+        with pytest.raises(PurchaseRuleError, match="انباردار"):
+            _act(
+                desk,
+                person,
+                "return.record",
+                delivery_id=delivery_id,
+                lines=[{"item_id": ITEM, "quantity": 1}],
+                reason="بار شکسته بود",
+            )
+
+
+def test_a_shelf_charge_moves_stock_only_from_the_main_store(desk: Desk) -> None:
+    """P-10: the store charges a shelf, so a shelf-to-shelf move is refused."""
+    with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
+        _act(
+            desk,
+            desk.storekeeper,
+            "restock.record",
+            item_id=ITEM,
+            from_location_id=LOCATION,
+            to_location_id="cpr_room",
+            quantity=1,
+        )
