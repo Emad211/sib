@@ -31,6 +31,12 @@ def test_the_migration_seeds_the_policy_defaults(service: SettingsService) -> No
         SettingKey.SESSION_TTL_HOURS: "12",
         SettingKey.WEEKLY_COUNT_TIME: "07:30",
         SettingKey.WEEKLY_COUNT_WEEKDAY: "0",
+        # E1 (owner decision 11): seeded empty, so no rule suggests anything until the manager sets one.
+        SettingKey.SUGAR_THRESHOLD: "",
+        SettingKey.SYSTOLIC_THRESHOLD: "",
+        SettingKey.DIASTOLIC_THRESHOLD: "",
+        SettingKey.OXYGEN_PRESSURE_THRESHOLD: "",
+        SettingKey.CASH_FLOAT_TOMAN: "",
     }
     assert {value.version for value in snapshot.values()} == {1}
     assert {value.effective_from_shift for value in snapshot.values()} == {ShiftKey.baseline()}
@@ -205,3 +211,14 @@ def test_a_missing_setting_row_is_reported(database: Database, service: Settings
         service.value(SettingKey.CARD_TIME)
     with pytest.raises(SettingError, match="card_time"):
         service.snapshot()
+
+
+def test_an_optional_threshold_is_unset_until_the_manager_sets_it(service: SettingsService) -> None:
+    """E1: an empty threshold means «not set», so no rule suggests anything (owner decision 11)."""
+    assert service.optional_number(SettingKey.SUGAR_THRESHOLD) is None
+
+    service.change(SettingKey.SUGAR_THRESHOLD, "140", actor_id="staff-manager", running_shift=EVENING)
+    assert service.optional_number(SettingKey.SUGAR_THRESHOLD, NIGHT) == 140
+
+    service.change(SettingKey.SUGAR_THRESHOLD, "", actor_id="staff-manager", running_shift=EVENING)
+    assert service.optional_number(SettingKey.SUGAR_THRESHOLD, NIGHT) is None

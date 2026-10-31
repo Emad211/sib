@@ -201,3 +201,16 @@ def cash_settle_seq(connection: Connection, handover_id: str) -> int | None:
         (handover_id, "handover.count_settled"),
     ).first()
     return None if row is None else int(row[0])
+
+
+def last_work_date_of_item(connection: Connection, event_type: str, item_id: str) -> str | None:
+    """The newest work date on which an event of `event_type` named `item_id`, or None if none did.
+
+    A checklist line asked daily or weekly stays quiet once somebody answered it in the period, and the
+    log is the only place that knows (S01 §2); `work_date` is the clinic day the answer belongs to.
+    """
+    row = connection.exec_driver_sql(
+        "SELECT MAX(work_date) FROM events WHERE type = ? AND json_extract(payload, '$.item_id') = ?",
+        (event_type, item_id),
+    ).first()
+    return None if row is None or row[0] is None else str(row[0])

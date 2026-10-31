@@ -16,8 +16,11 @@ from datetime import date, datetime, time, timedelta
 from shift.common.clock import TEHRAN
 
 # Bumped only with the stored payload's shape; a stored card stays readable while the shape grows.
-# 3 added the shift-event sections; a stored schema-2 card still reads, with those two sections empty.
-CARD_SCHEMA_VERSION = 4
+# 3 added the shift-event sections, 5 the reward and campaign ones and 6 the purchasing and warehouse ones
+# (SHF-4); 7 adds the checklist answers and the cash float (B3, E1); 8 adds the event counts, overdue
+# fault assignments and call sample (C1). A stored card of an older schema still reads, with the
+# sections it predates simply empty.
+CARD_SCHEMA_VERSION = 8
 FRIDAY = 4
 SATURDAY = 5
 DEFAULT_HORIZON_DAYS = 14

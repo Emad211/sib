@@ -73,7 +73,7 @@ def test_a_counted_item_without_an_accounting_code_is_a_bad_request(database: Da
     response = client.put("/api/v1/catalog/items/para_500_amp", json={**ITEM, "acc_code": None})
 
     assert response.status_code == 400
-    assert "acc_code" in response.json()["detail"]
+    assert "کد کالا" in response.json()["detail"]
 
 
 def test_an_unknown_item_kind_fails_validation(database: Database) -> None:
@@ -139,7 +139,7 @@ def test_a_location_id_that_is_not_a_slug_is_a_bad_request(database: Database) -
     response = api(database).put("/api/v1/catalog/locations/Shelf Reception", json=LOCATION)
 
     assert response.status_code == 400
-    assert "location_id" in response.json()["detail"]
+    assert "شناسه" in response.json()["detail"]
 
 
 def test_a_staff_id_that_is_not_usable_is_a_bad_request(database: Database) -> None:
@@ -150,7 +150,7 @@ def test_a_staff_id_that_is_not_usable_is_a_bad_request(database: Database) -> N
 
     assert listed.status_code == 400
     assert granted.status_code == 400
-    assert "staff_id" in granted.json()["detail"]
+    assert "شناسه" in granted.json()["detail"]
 
 
 def test_an_unknown_role_in_the_path_fails_validation(database: Database) -> None:

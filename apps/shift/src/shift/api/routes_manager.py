@@ -18,16 +18,21 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import SQLAlchemyError
 
+from shift.adapters.accounting import views
+from shift.adapters.accounting.readonly import AccountingUnavailable, open_accounting
 from shift.adapters.db import handover_repo, staff_repo
 from shift.api import deps
 from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
 from shift.api.templating import templates
-from shift.common.clock import TEHRAN, parse_iso, to_tehran
+from shift.common.clock import TEHRAN, parse_iso, to_tehran, utc_iso
 from shift.common.jalali import format_jalali
+from shift.domain.checklist_rules import Frequency
+from shift.domain.event_types import EventType
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.permissions import Permission
-from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
+from shift.domain.policy import SETTING_SPECS, PolicyError, Role, SettingKey, SettingKind, ShiftKey
 from shift.domain.shift_events import FieldKind, KindSpec, kind_for
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
@@ -47,6 +52,8 @@ from shift.services.daily_card import (
     ShiftEventLine,
 )
 from shift.services.handover import HandoverError, HandoverService
+from shift.services.learning_status import learning_status
+from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
@@ -54,6 +61,7 @@ HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
 BASELINE_PATH = "/manager/baseline"
 ITEMS_PATH = "/manager/items"
+STAFF_PATH = "/manager/staff"
 BASELINE_API_PATH = "/api/v1/manager/baseline"
 NO_STORE = "no-store"
 FRIDAY = 4
@@ -70,6 +78,23 @@ ITEM_KIND_LABELS = {
     ItemKind.READING: "عدد خواندنی",
     ItemKind.PHOTO: "عکس",
 }
+# The seven roles in the manager's words, in the order the staff screen lists them (R-08).
+ROLE_LABELS: dict[str, str] = {
+    "manager": "مدیر",
+    "reception": "پذیرش",
+    "nurse": "پرستار",
+    "shift_doctor": "پزشک شیفت",
+    "storekeeper": "انباردار",
+    "purchaser": "مسئول خرید",
+    "accountant": "حسابدار",
+}
+FREQUENCY_LABELS = {
+    Frequency.EVERY_SHIFT: "هر شیفت",
+    Frequency.DAILY: "روزانه",
+    Frequency.WEEKLY: "هفتگی",
+}
+# Only these three roles answer a checklist; the storekeeper's lines never come up in a handover.
+LIST_ROLE_CHOICES = (Role.RECEPTION, Role.NURSE, Role.STOREKEEPER)
 BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
 BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "
 BASELINE_CUSTODIAN = "نگه‌دارنده باید از کارکنان فعال درمانگاه باشد."
@@ -125,6 +150,10 @@ SHIFT_EVENT_STATUS_LABELS = {
 BOOLEAN_LABELS = {True: "بله", False: "خیر"}
 MULTI_SEPARATOR = "، "
 TOMAN = "تومان"
+# The three states a reward row can carry on the card, in the manager's words (S01 §5).
+REWARD_STATUS_LABELS = {PENDING: "در انتظار تأیید", CONFIRMED: "تأییدشده", REVOKED: "ابطال‌شده"}
+# A campaign the calendar no longer holds keeps its count and has no price; the card never invents one.
+UNKNOWN_FIGURE = "نامعلوم"
 SHIFT_LABELS = {1: "شیفت صبح", 2: "شیفت عصر", 3: "شیفت شب"}
 WEEKDAY_LABELS = {
     0: "دوشنبه",
@@ -144,6 +173,12 @@ SETTING_LABELS = {
     SettingKey.SESSION_TTL_HOURS: "اعتبار نشست (ساعت)",
     SettingKey.WEEKLY_COUNT_TIME: "ساعت هشدار شمارش هفتگی",
     SettingKey.WEEKLY_COUNT_WEEKDAY: "روز شمارش هفتگی",
+    # E1 (owner decision 11): the manager's own numbers; an empty value means «not set», not zero.
+    SettingKey.SUGAR_THRESHOLD: "آستانهٔ قند خون",
+    SettingKey.SYSTOLIC_THRESHOLD: "آستانهٔ فشار سیستول",
+    SettingKey.DIASTOLIC_THRESHOLD: "آستانهٔ فشار دیاستول",
+    SettingKey.OXYGEN_PRESSURE_THRESHOLD: "آستانهٔ فشار کپسول اکسیژن",
+    SettingKey.CASH_FLOAT_TOMAN: "تنخواه صندوق (تومان)",
 }
 
 # A page guard each: a signed-out browser is sent to the login screen, a non-manager gets a 403.
@@ -151,6 +186,7 @@ CardViewer = Annotated[Principal, Depends(deps.require_page(Permission.DAILY_CAR
 SettingsEditor = Annotated[Principal, Depends(deps.require_page(Permission.SETTINGS_CHANGE))]
 BaselineEditor = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE))]
 ItemsEditor = Annotated[Principal, Depends(deps.require_page(Permission.CATALOG_MANAGE))]
+StaffEditor = Annotated[Principal, Depends(deps.require_page(Permission.STAFF_MANAGE))]
 
 CardsService = Callable[[Request], DailyCardService]
 SettingsServiceSource = Callable[[Request], SettingsService]
@@ -232,7 +268,7 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         shift = deps.running_shift(request)
         places = {place.location_id: place.name for place in catalog.locations(shift)}
         with request.app.state.database.read() as connection:
-            people = staff_repo.list_with_roles(connection)
+            people = staff_repo.list_with_roles(connection, shift.text)
             recorded = {flow: handover_repo.has_baseline(connection, flow) for flow in FLOW_LOCATIONS}
         flows = []
         for flow, location_ids in FLOW_LOCATIONS.items():
@@ -329,16 +365,122 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         return _shell_page(
             request,
             "manager_items.html",
-            {"items": rows, "counted": len(counted), "missing": missing},
+            {
+                "items": rows,
+                "counted": len(counted),
+                "missing": missing,
+                # A4: the manager builds the lists here, so the page carries every place and the words
+                # for the kind, the responsible role and how often the line is asked.
+                "places": [{"id": place_id, "name": name} for place_id, name in sorted(places.items())],
+                "kinds": [{"id": kind.value, "label": label} for kind, label in ITEM_KIND_LABELS.items()],
+                "roles": [{"id": role.value, "label": ROLE_LABELS[role]} for role in LIST_ROLE_CHOICES],
+                "frequencies": [
+                    {"id": frequency.value, "label": label} for frequency, label in FREQUENCY_LABELS.items()
+                ],
+            },
             cache_control=NO_STORE,
         )
+
+    @pages.get(STAFF_PATH, response_class=HTMLResponse, summary="The staff and their roles")
+    def get_manager_staff(request: Request, _editor: StaffEditor) -> HTMLResponse:
+        """Everyone with the roles they hold from the next shift on, and a form for a new person (ADR-022)."""
+        people = request.app.state.auth.directory()
+        rows = [
+            {
+                "id": person.staff_id,
+                "name": person.full_name,
+                "mobile": person.mobile,
+                "active": person.active,
+                "next_roles": person.next_roles,
+                "pending": person.next_roles != person.roles,
+            }
+            for person in people
+        ]
+        roles = [{"id": role, "label": label} for role, label in ROLE_LABELS.items()]
+        return _shell_page(request, "manager_staff.html", {"staff": rows, "roles": roles}, cache_control=NO_STORE)
 
     return pages
 
 
 def _card_page(request: Request, card: Card) -> HTMLResponse:
     """One card, formatted once here so the template carries Persian text and no figures logic."""
-    return _shell_page(request, "manager_card.html", {"card": _card_view(card)}, cache_control=NO_STORE)
+    learning = learning_status(request.app.state.database, to_tehran(request.app.state.clock.now_utc()).date())
+    view = _card_view(card)
+    _attach_call_contacts(request, card, view["sections"].get("call_sample", []))
+    return _shell_page(
+        request,
+        "manager_card.html",
+        {
+            "card": view,
+            "presence": _presence_rows(request, card),
+            "learning": {"active": learning.active, "until": learning.until_fa},
+        },
+        cache_control=NO_STORE,
+    )
+
+
+PRESENCE_ROLE_LABELS = {"reception": "پذیرش", "shift_doctor": "پزشک شیفت"}
+
+
+def _presence_rows(request: Request, card: Card) -> list[dict[str, str]]:
+    """ADR-021: who said «حضور در شیفت» on the covered day, in which role and when.
+
+    A declaration is an event, not a flag, so the card reads the log for the day it covers rather than
+    a table that carries "now". Read here and not stored in the card document, so a card built before
+    the button existed needs no rebuild.
+    """
+    database = getattr(request.app.state, "database", None)
+    if database is None:
+        return []
+    with database.read() as connection:
+        rows = (
+            connection.exec_driver_sql(
+                "SELECT actor_id, client_at, json_extract(payload, '$.role') AS role FROM events "
+                "WHERE type = ? AND julianday(client_at) >= julianday(?) AND julianday(client_at) < julianday(?) "
+                "ORDER BY julianday(client_at), seq",
+                (
+                    EventType.SHIFT_PRESENCE_DECLARED.value,
+                    utc_iso(datetime.combine(card.covered_from, time.min, tzinfo=TEHRAN)),
+                    utc_iso(datetime.combine(card.covered_to + timedelta(days=1), time.min, tzinfo=TEHRAN)),
+                ),
+            )
+            .mappings()
+            .all()
+        )
+        names = {person.staff.staff_id: person.staff.full_name for person in staff_repo.list_with_roles(connection)}
+    return [
+        {
+            "name": names.get(str(row["actor_id"]), str(row["actor_id"])),
+            "role": PRESENCE_ROLE_LABELS.get(str(row["role"]), str(row["role"])),
+            "at": _stamp_fa(str(row["client_at"])),
+        }
+        for row in rows
+    ]
+
+
+def _attach_call_contacts(request: Request, card: Card, rows: list[dict[str, Any]]) -> None:
+    """Fill the drawn rows' name and mobile from accounting now, keeping nothing (owner decision 5).
+
+    The card stores patient ids alone, so this is the only moment a mobile exists in the shift app: it
+    goes into one no-store response and is never written to the database, an event, a log or the card
+    document. Accounting below migration 8, or an install without a copy, leaves the id alone.
+    """
+    if not rows:
+        return
+    ids = [int(row["patient_id"]) for row in rows if str(row["patient_id"]).isdigit()]
+    path = request.app.state.settings.accounting_db_path
+    if path is None or not ids:
+        return
+    try:
+        with open_accounting(path) as accounting, accounting.connect() as connection:
+            contacts = views.call_sample_contacts(connection, ids)
+    except (AccountingUnavailable, SQLAlchemyError):
+        return
+    for row in rows:
+        contact = contacts.get(int(row["patient_id"]))
+        if contact is not None:
+            row["name"] = str(contact["full_name"])
+            row["phone"] = str(contact["phone_number"])
 
 
 def _not_found() -> HTMLResponse:
@@ -399,23 +541,38 @@ def _card_view(card: Card) -> dict[str, Any]:
         "date": format_jalali(card.card_date),
         "coverage": _coverage(card),
         "generated_at": _moment_fa(card.generated_at),
+        # E1: a reminder beside the cash count, never an input to any calculation (owner decision 11).
+        "cash_float": None if card.cash_float is None else f"{card.cash_float:,}",
         "sections": _sections(card),
     }
 
 
 def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
-    """The card's seven sections as rows of text; a section the stored card lacks is left out."""
+    """Every section of the card as rows of text; a section the stored card lacks is left out."""
     builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
         "over_cap_withdrawals": _withdrawal_rows,
         "late_cash": _late_cash_rows,
         "held_events": _held_rows,
         "cash_exceptions": _cash_rows,
+        "checklist_answers": _checklist_answer_rows,
         "discrepancies": _discrepancy_rows,
         "flows": _flow_rows,
         "open_flows": _open_flow_rows,
         "shift_events": _shift_event_rows,
         "open_events": _open_event_rows,
+        "rewards": _reward_rows,
+        "campaign_discounts": _campaign_rows,
+        # SHF-4: the purchasing chain's open decisions and the warehouse's unfinished work (M-19..M-21).
+        "purchase_orders": _purchase_order_rows,
+        "flagged_deliveries": _flagged_delivery_rows,
+        "parcels_in_transit": _parcel_rows,
+        "weekly_count": _weekly_count_rows,
+        "below_minimum": _below_minimum_rows,
+        # C1: counts per code with their details, overdue repairs and the control-call sample.
+        "event_counts": _event_count_rows,
+        "overdue_faults": _overdue_fault_rows,
+        "call_sample": _call_sample_rows,
     }
     return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
@@ -446,6 +603,26 @@ def _cash_rows(card: Card) -> list[dict[str, str]]:
         }
         for entry in card.cash_exceptions
     ]
+
+
+def _checklist_answer_rows(card: Card) -> list[dict[str, Any]]:
+    """B3: a «no» and every number read off a device, with who answered and when."""
+    return [
+        {
+            "name": entry.name,
+            "ok": entry.ok,
+            "answer": "خیر" if not entry.ok else "بله",
+            "reading": None if entry.reading is None else _reading_fa(entry.reading),
+            "person": _person(entry.actor),
+            "at": _stamp_fa(entry.answered_at_tehran),
+        }
+        for entry in card.checklist_answers
+    ]
+
+
+def _reading_fa(reading: float) -> str:
+    """A reading as the person wrote it: no trailing `0.0` on a whole number."""
+    return f"{reading:,.0f}" if reading == int(reading) else f"{reading:,}"
 
 
 def _discrepancy_rows(card: Card) -> list[dict[str, str]]:
@@ -502,10 +679,43 @@ def _open_event_rows(card: Card) -> list[dict[str, Any]]:
     return [{**_shift_event_row(entry.row), "age_hours": f"{entry.age_hours:,}"} for entry in card.open_events]
 
 
+def _event_count_rows(card: Card) -> list[dict[str, Any]]:
+    """«رویدادهای ۲۴ ساعت»: the count of each code, with the day's rows of that code to open (C1)."""
+    return [
+        {
+            "code": entry.code,
+            "label": entry.label_fa,
+            "count": str(entry.count),
+            "rows": [_shift_event_row(row) for row in card.shift_events if row.code == entry.code],
+        }
+        for entry in card.event_counts
+    ]
+
+
+def _overdue_fault_rows(card: Card) -> list[dict[str, str]]:
+    """An assigned repair past its deadline, highlighted: who owes it and how many days late (C1)."""
+    return [
+        {
+            "device": entry.device,
+            "assignee": entry.assignee,
+            "due": format_jalali(date.fromisoformat(entry.due_on)),
+            "days_late": f"{entry.days_late:,}",
+        }
+        for entry in card.overdue_faults
+    ]
+
+
+def _call_sample_rows(card: Card) -> list[dict[str, str]]:
+    """The registrations drawn for a control call: the patient id the card keeps (C1)."""
+    return [{"patient_id": entry.patient_id} for entry in card.call_sample]
+
+
 def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
     """One shift-event row: the kind's label and code, its actor, its instant and its own fields."""
     photo = entry.summary.get("photo_sha256")
     row: dict[str, Any] = {
+        "event_id": entry.event_id or "",
+        "decidable": entry.status == "pending" and entry.event_id is not None,
         "code": entry.code,
         "label": entry.label_fa,
         "actor": _person(entry.actor),
@@ -601,6 +811,7 @@ def _setting_row(key: SettingKey, current: SettingValue, newest: SettingValue) -
         "label": SETTING_LABELS[key],
         "value": current.value,
         "kind": spec.kind.value,
+        "optional": spec.optional,
         "minimum": spec.minimum,
         "maximum": spec.maximum,
         "effective_from": _shift_fa(current.effective_from_shift.text),
@@ -631,6 +842,7 @@ def _withdrawal_rows(card: Card) -> list[dict[str, str]]:
     return [
         {
             "event_id": entry.event_id,
+            "pending": entry.status == "pending",
             "amount": f"{entry.amount:,}",
             "reason": entry.reason,
             "recipient": _person(entry.recipient),
@@ -694,5 +906,118 @@ def _item_row(item: Any, places: dict[str, str]) -> dict[str, Any]:
         "minimum": item.minimum,
         "acc_code": item.acc_code or "",
         "stock_factor": item.stock_factor,
+        "responsible_role": item.responsible_role.value,
+        "role_label": ROLE_LABELS.get(item.responsible_role, item.responsible_role.value),
+        "frequency": item.frequency.value,
+        "frequency_label": FREQUENCY_LABELS.get(item.frequency, item.frequency.value),
+        "sort_order": item.sort_order,
+        "retired": item.retired,
         "needs_code": item.kind is ItemKind.COUNTED and not item.acc_code,
     }
+
+
+def _reward_rows(card: Card) -> list[dict[str, str]]:
+    """The day's rewards and the ones still waiting: earner, work, amount, and a deduction's month."""
+    return [
+        {
+            "earner": _person(entry.earner),
+            "work": entry.label_fa,
+            "status": REWARD_STATUS_LABELS.get(entry.status, entry.status),
+            "amount": f"{entry.amount:,}",
+            "at": _stamp_fa(entry.at_tehran),
+            "deduction_month": "" if entry.deduction_month is None else entry.deduction_month.replace("-", "/"),
+        }
+        for entry in card.rewards
+    ]
+
+
+def _campaign_rows(card: Card) -> list[dict[str, str]]:
+    """One campaign that discounted in the window: how many, what it costs and what it gave away."""
+    return [
+        {
+            "name": entry.name,
+            "service": entry.service,
+            "count": f"{entry.count:,}",
+            "amount": UNKNOWN_FIGURE if entry.amount is None else f"{entry.amount:,}",
+            "total": UNKNOWN_FIGURE if entry.total is None else f"{entry.total:,}",
+        }
+        for entry in card.campaign_discounts
+    ]
+
+
+# --- the purchasing chain and the warehouse (SHF-4, M-19..M-21) ------------------------------
+
+_WEEKLY_STATE_FA = {"done": "انجام شده", "due": "در انتظار شمارش", "overdue": "گذشته از موعد"}
+
+
+def _purchase_order_rows(card: Card) -> list[dict[str, str]]:
+    """M-19: an order waiting for the manager, its lines and how long it has waited."""
+    return [
+        {
+            "order_id": entry.order_id,
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+            "line_count": str(entry.line_count),
+            "lines": "، ".join(entry.lines),
+            "note": entry.note or "",
+        }
+        for entry in card.purchase_orders
+    ]
+
+
+def _flagged_delivery_rows(card: Card) -> list[dict[str, str]]:
+    """M-19: a problem parcel whose payment waits for the manager."""
+    return [
+        {
+            "flag_event_id": entry.flag_event_id or "",
+            "delivery_id": entry.delivery_id,
+            "invoice_reference": entry.invoice_reference,
+            "reason": entry.reason_fa,
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+        }
+        for entry in card.flagged_deliveries
+    ]
+
+
+def _parcel_rows(card: Card) -> list[dict[str, str]]:
+    """M-20: a parcel still on its way to the storekeeper, with its age in hours."""
+    return [
+        {
+            "delivery_id": entry.delivery_id,
+            "invoice_reference": entry.invoice_reference,
+            "packages": "" if entry.packages is None else str(entry.packages),
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+        }
+        for entry in card.parcels_in_transit
+    ]
+
+
+def _weekly_count_rows(card: Card) -> list[dict[str, Any]]:
+    """M-20: the main store's count for this week and the window it belongs to."""
+    return [
+        {
+            "state": _WEEKLY_STATE_FA.get(entry.state, entry.state),
+            "window": f"{format_jalali(date.fromisoformat(entry.window_from))} تا "
+            f"{format_jalali(date.fromisoformat(entry.window_to))}",
+            "last_count": "" if entry.last_count_on is None else format_jalali(date.fromisoformat(entry.last_count_on)),
+        }
+        for entry in card.weekly_count
+    ]
+
+
+def _below_minimum_rows(card: Card) -> list[dict[str, Any]]:
+    """M-21: an item under its minimum, with the figure it stands at now."""
+    return [
+        {
+            "name": entry.name,
+            "location": entry.location,
+            "minimum": entry.minimum,
+            "quantity": entry.quantity,
+        }
+        for entry in card.below_minimum
+    ]

@@ -21,6 +21,9 @@ class Permission(StrEnum):
     HANDOVER_CASH_SUBMIT = "handover.cash.submit"
     HANDOVER_SIGN = "handover.sign"
     HANDOVER_BASELINE = "handover.baseline"
+    # Owner decision 9 (ADR-022 item 5): the person whose role owns a flow records that flow's initial
+    # count on their own phone, before they hold any custody. The manager's tool is the fallback path.
+    HANDOVER_BASELINE_OWN = "handover.baseline.own"
     CASH_WITHDRAW_REQUEST = "cash.withdraw.request"
     CASH_WITHDRAW_APPROVE = "cash.withdraw.approve"
     CASH_DEPOSIT_RECORD = "cash.deposit.record"
@@ -30,6 +33,7 @@ class Permission(StrEnum):
     STOCK_WASTE_REPORT = "stock.waste.report"
     PURCHASE_ORDER_DRAFT = "purchase.order.draft"
     PURCHASE_ORDER_DECIDE = "purchase.order.decide"
+    PURCHASE_ORDER_PLACE = "purchase.order.place"
     PURCHASE_DELIVERY_RECEIVE = "purchase.delivery.receive"
     PURCHASE_PAYMENT_RECORD = "purchase.payment.record"
     PARCEL_HANDLE = "parcel.handle"
@@ -45,6 +49,13 @@ class Permission(StrEnum):
     VITALS_RECORD = "vitals.record"
     CLEANING_CONFIRM = "cleaning.confirm"
     SHIFT_EVENT_APPROVE = "shift_event.approve"
+    # The accountant's queue and rewards (S01 §5, SHF-5). A person reads only their own reward rows;
+    # the manager alone credits an assigned task and confirms a reward; the queue and the campaign
+    # report belong to the accountant and the manager (the owner's logic document, «کار حسابدار»).
+    REWARD_VIEW = "reward.view"
+    REWARD_GRANT = "reward.grant"
+    ACCOUNTANT_QUEUE_VIEW = "accountant.queue.view"
+    CAMPAIGN_REPORT_VIEW = "campaign.report.view"
     # The manager's own pages: the daily card and its history (S01 §6, SHF-6.1).
     DAILY_CARD_VIEW = "daily_card.view"
     SETTINGS_CHANGE = "settings.change"
@@ -53,6 +64,12 @@ class Permission(StrEnum):
     STAFF_UNLOCK = "staff.unlock"
     DEVICE_ENROLL = "device.enroll"
     DEVICE_REVOKE = "device.revoke"
+    # ADR-021: a second receptionist or the shift doctor says «حضور در شیفت» and is on shift from then
+    # until that shift ends. Declaring presence must work while off shift, so it is always allowed.
+    SHIFT_PRESENCE_DECLARE = "shift.presence.declare"
+    # R-15: the phone may hand over a record it made while off shift so the manager keeps it, held and
+    # in Persian, instead of the record being lost at the door with a 403.
+    SHIFT_RECORD_HOLD = "shift.record.hold"
 
 
 class UnknownRole(ValueError):

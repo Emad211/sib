@@ -20,7 +20,7 @@ class SettingUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    value: str = Field(min_length=1, max_length=32)
+    value: str = Field(max_length=32)
 
 
 class SettingOut(BaseModel):

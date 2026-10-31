@@ -246,8 +246,42 @@
     byId("shift-step-error").classList.add("hidden");
     container.textContent = "";
     container.appendChild(buildControl(field));
+    suggestFollowup(field, container);
     byId("shift-step-back").textContent = state.index === 0 ? "بازگشت" : "قبلی";
     byId("shift-step-next").textContent = state.index === state.fields.length - 1 ? "بازبینی" : "بعدی";
+  }
+
+  /** The reading keys whose threshold the manager may set, and the setting each one reads. */
+  var THRESHOLD_KEYS = { sugar: "sugar", systolic: "systolic", diastolic: "diastolic" };
+
+  /**
+   * E1: with a threshold set, an above-threshold reading offers one button into the follow-up path.
+   * With no number set the box never appears, so the app suggests nothing (owner decision 11).
+   */
+  function suggestFollowup(field, container) {
+    if (!THRESHOLD_KEYS[field.key]) return;
+    var limit = catalog && catalog.thresholds ? catalog.thresholds[THRESHOLD_KEYS[field.key]] : null;
+    if (limit === null || limit === undefined) return;
+    var input = container.querySelector("input[data-field='" + field.key + "']");
+    if (!input) return;
+    var box = el("div", "se-suggest hidden");
+    box.appendChild(el("p", "se-hint", "این عدد از آستانه‌ای که مدیر گذاشته بالاتر است."));
+    var button = el("button", "btn btn-primary", "باز کردن مسیر پیگیری");
+    button.type = "button";
+    button.addEventListener("click", function () {
+      var kind = (catalog.kinds || []).filter(function (candidate) {
+        return candidate.type === "vitals.followup_opened";
+      })[0];
+      if (kind) startKind(kind);
+    });
+    box.appendChild(button);
+    container.appendChild(box);
+    function refresh() {
+      var above = input.value !== "" && Number(input.value) > Number(limit);
+      box.classList.toggle("hidden", !above);
+    }
+    input.addEventListener("input", refresh);
+    refresh();
   }
 
   function optionValue(raw) {
@@ -506,12 +540,16 @@
       case "staff":
         return selectControl(field, staffChoices(), "نفر را انتخاب کنید…");
       case "date":
+        // The Jalali picker attaches when this field reaches the page and owns the ISO value.
         control = el("input", "form-control");
-        control.type = "date";
+        control.type = "text";
+        control.name = field.key;
+        control.setAttribute("data-jalali-date", "");
+        control.autocomplete = "off";
         control.value = value || "";
         control.dataset.field = field.key;
-        control.addEventListener("input", function () {
-          state.values[field.key] = control.value;
+        control.addEventListener("change", function () {
+          state.values[field.key] = window.ShiftJalaliDatepicker.getIso(control);
         });
         return control;
       case "boolean":
@@ -900,6 +938,13 @@
     if (!catalog) return;
 
     renderGroups();
+
+    // The accountant's queue sends her straight to the one question she came for (?kind=cash.deposited).
+    var wanted = new URLSearchParams(window.location.search).get("kind");
+    var chosen = catalog.kinds.filter(function (candidate) {
+      return candidate.type === wanted;
+    })[0];
+    if (chosen) startKind(chosen);
 
     byId("shift-event-groups").addEventListener("click", function (event) {
       var button = event.target.closest("[data-kind]");

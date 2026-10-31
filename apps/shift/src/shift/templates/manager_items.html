@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}سیب — اقلام و کد کالا{% endblock %}
+{% block title %}اقلام و چک‌لیست‌ها{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/manager.css">
@@ -8,34 +8,99 @@
 
 {% block content %}
 <div class="mg-page">
-  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
-    <a class="mg-nav-link" href="/manager/card">کارت امروز</a>
-    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
-    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
-    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
-  </nav>
+  {% include "_manager_nav.html" %}
 
   <header class="mg-head">
-    <h1 class="mg-title">اقلام و کد کالا</h1>
+    <h1 class="mg-title">اقلام و چک‌لیست‌ها</h1>
     <p class="mg-meta">{{ counted }} قلم شمارشی دارد و {{ counted - missing }} قلم کد کالا گرفته است؛ {{ missing }} قلم بی‌کد مانده.</p>
-    <p class="mg-hint">کد کالا همان کدی است که در نرم‌افزار حسابداری روی این قلم است. قلم شمارشی بدون کد ذخیره نمی‌شود.</p>
+    <p class="mg-hint">هر تغییر از شیفت بعد به کار می‌رود، نه میان شیفت جاری. قلم شمارشی بدون کد کالا ذخیره نمی‌شود.</p>
   </header>
 
-  {% for item in items %}
-  <form class="mg-section mg-item{% if item.needs_code %} is-missing-code{% endif %}" data-item="{{ item.item_id }}"
-        data-name="{{ item.name }}" data-kind="{{ item.kind }}" data-location="{{ item.location_id }}"
-        data-unit="{{ item.unit }}" data-stock-factor="{{ item.stock_factor }}">
-    <h2 class="mg-section-title">{{ item.name }}</h2>
-    <p class="mg-line mg-muted">{{ item.kind_label }} · {{ item.location_name }} · {{ item.unit }}</p>
+  <form class="mg-section" data-new-item data-retired="false">
+    <h2 class="mg-section-title">افزودن قلم تازه</h2>
+    <p class="mg-hint">برای چک‌لیست یک فضا، نوع «بله/خیر» یا «عدد خواندنی» را با محل «فضای عمومی» یا «اتاق پزشک» انتخاب کنید؛ ورودی همان جریان پذیرش پرسیده می‌شود.</p>
     <div class="mg-item-controls">
+      <label class="mg-hint" for="new-item-id">شناسه (لاتین کوچک)</label>
+      <input class="form-control mg-input" id="new-item-id" data-field="item_id" type="text" dir="ltr"
+             maxlength="48" autocomplete="off" required>
+      <label class="mg-hint" for="new-item-name">نام</label>
+      <input class="form-control mg-input" id="new-item-name" data-field="name" type="text" maxlength="80" required>
+      <label class="mg-hint" for="new-item-kind">نوع</label>
+      <select class="form-control mg-input" id="new-item-kind" data-field="kind">
+        {% for kind in kinds %}<option value="{{ kind.id }}">{{ kind.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="new-item-place">محل</label>
+      <select class="form-control mg-input" id="new-item-place" data-field="location_id">
+        {% for place in places %}<option value="{{ place.id }}">{{ place.name }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="new-item-role">نقش مسئول</label>
+      <select class="form-control mg-input" id="new-item-role" data-field="responsible_role">
+        {% for role in roles %}<option value="{{ role.id }}">{{ role.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="new-item-frequency">تناوب</label>
+      <select class="form-control mg-input" id="new-item-frequency" data-field="frequency">
+        {% for frequency in frequencies %}<option value="{{ frequency.id }}">{{ frequency.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="new-item-unit">واحد</label>
+      <input class="form-control mg-input" id="new-item-unit" data-field="unit" type="text" maxlength="16" required>
+      <label class="mg-hint" for="new-item-minimum">حداقل</label>
+      <input class="form-control mg-input" id="new-item-minimum" data-field="minimum" type="number"
+             inputmode="numeric" min="0" step="1" dir="ltr" value="0">
+      <label class="mg-hint" for="new-item-code">کد کالا</label>
+      <input class="form-control mg-input" id="new-item-code" data-field="acc_code" type="text" dir="ltr"
+             maxlength="32" autocomplete="off">
+      <label class="mg-hint" for="new-item-sort">ترتیب قفسه</label>
+      <input class="form-control mg-input" id="new-item-sort" data-field="sort_order" type="number"
+             inputmode="numeric" min="0" step="1" dir="ltr">
+    </div>
+    <button class="btn btn-primary mg-save" type="submit">افزودن</button>
+    <p class="mg-status" role="status"></p>
+  </form>
+
+  {% for item in items %}
+  <form class="mg-section mg-item{% if item.needs_code %} is-missing-code{% endif %}" data-item
+        data-item-id="{{ item.item_id }}" data-stock-factor="{{ item.stock_factor }}"
+        data-retired="{{ 'true' if item.retired else 'false' }}">
+    <h2 class="mg-section-title">{{ item.name }}</h2>
+    <p class="mg-line mg-muted">{{ item.kind_label }} · {{ item.location_name }} · {{ item.unit }} · {{ item.role_label }} · {{ item.frequency_label }}</p>
+    <div class="mg-item-controls">
+      <label class="mg-hint" for="name-{{ item.item_id }}">نام</label>
+      <input class="form-control mg-input" id="name-{{ item.item_id }}" data-field="name"
+             type="text" maxlength="80" value="{{ item.name }}" required>
+      <label class="mg-hint" for="kind-{{ item.item_id }}">نوع</label>
+      <select class="form-control mg-input" id="kind-{{ item.item_id }}" data-field="kind">
+        {% for kind in kinds %}<option value="{{ kind.id }}"{% if kind.id == item.kind %} selected{% endif %}>{{ kind.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="place-{{ item.item_id }}">محل</label>
+      <select class="form-control mg-input" id="place-{{ item.item_id }}" data-field="location_id">
+        {% for place in places %}<option value="{{ place.id }}"{% if place.id == item.location_id %} selected{% endif %}>{{ place.name }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="role-{{ item.item_id }}">نقش مسئول</label>
+      <select class="form-control mg-input" id="role-{{ item.item_id }}" data-field="responsible_role">
+        {% for role in roles %}<option value="{{ role.id }}"{% if role.id == item.responsible_role %} selected{% endif %}>{{ role.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="frequency-{{ item.item_id }}">تناوب</label>
+      <select class="form-control mg-input" id="frequency-{{ item.item_id }}" data-field="frequency">
+        {% for frequency in frequencies %}<option value="{{ frequency.id }}"{% if frequency.id == item.frequency %} selected{% endif %}>{{ frequency.label }}</option>{% endfor %}
+      </select>
+      <label class="mg-hint" for="unit-{{ item.item_id }}">واحد</label>
+      <input class="form-control mg-input" id="unit-{{ item.item_id }}" data-field="unit"
+             type="text" maxlength="16" value="{{ item.unit }}" required>
       <label class="mg-hint" for="min-{{ item.item_id }}">حداقل</label>
       <input class="form-control mg-input" id="min-{{ item.item_id }}" data-field="minimum"
              type="number" inputmode="numeric" min="0" step="1" dir="ltr" value="{{ item.minimum }}">
       <label class="mg-hint" for="code-{{ item.item_id }}">کد کالا</label>
       <input class="form-control mg-input" id="code-{{ item.item_id }}" data-field="acc_code"
-             type="text" dir="ltr" maxlength="32" autocomplete="off" value="{{ item.acc_code }}"
-             {%- if item.kind == 'counted' %} required{% endif %}>
+             type="text" dir="ltr" maxlength="32" autocomplete="off" value="{{ item.acc_code }}">
+      <label class="mg-hint" for="sort-{{ item.item_id }}">ترتیب قفسه</label>
+      <input class="form-control mg-input" id="sort-{{ item.item_id }}" data-field="sort_order"
+             type="number" inputmode="numeric" min="0" step="1" dir="ltr" value="{{ item.sort_order }}">
       <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
+      {% if not item.retired %}
+      <button class="btn mg-retire" type="button" data-retire>برداشتن از فهرست</button>
+      {% else %}
+      <p class="mg-pending">این قلم بازنشسته است و در فهرست‌ها نمی‌آید.</p>
+      {% endif %}
     </div>
     {% if item.needs_code %}
     <p class="mg-pending">این قلم هنوز کد کالا ندارد.</p>

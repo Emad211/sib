@@ -56,6 +56,36 @@ class EventType(StrEnum):
     EVENT_HELD = "event.held"
     EVENT_RELEASED = "event.released"
     EVENT_HOLD_REJECTED = "event.hold_rejected"
+    # ADR-021: a second receptionist or the shift doctor says «حضور در شیفت»; the record carries who
+    # and when, and who is on shift is derived from it, never stored as a flag.
+    SHIFT_PRESENCE_DECLARED = "shift.presence_declared"
+    # SHF-5 rewards (S01 §5): written by the reward service or the manager's screen, never a phone
+    # button, and none of them moves a projection — the ledger is derived from these three records.
+    REWARD_EARNED = "reward.earned"
+    REWARD_CONFIRMED = "reward.confirmed"
+    REWARD_REVOKED = "reward.revoked"
+    # SHF-4 purchasing chain (S01 §4, S03 §3): documents of the order → delivery → invoice → payment
+    # path, plus the two warehouse records. Only `restock_confirmed` moves stock.
+    ORDER_DRAFTED = "order_drafted"
+    ORDER_DECIDED = "order_decided"
+    ORDER_PLACED = "order_placed"
+    DELIVERY_RECEIVED = "delivery_received"
+    DELIVERY_FLAGGED = "delivery_flagged"
+    DELIVERY_TRANSFERRED = "delivery_transferred"
+    INVOICE_DIGITIZED = "invoice_digitized"
+    PAYMENT_RECORDED = "payment_recorded"
+    VENDOR_RETURN = "vendor_return"
+    VENDOR_CREDIT = "vendor_credit"
+    RESTOCK_CONFIRMED = "restock_confirmed"
+    EXPIRY_FLAGGED = "expiry_flagged"
+    # The main store's own records (B1, G3, C1): the receiver's count that lets a parcel join the store, the
+    # giver's half of a shelf charge, the storekeeper's opening count, the accountant's monthly sample
+    # and the manager's answer on a card row that is not an approvable record.
+    DELIVERY_CONFIRMED = "delivery_confirmed"
+    RESTOCK_OFFERED = "restock_offered"
+    STOCK_STORE_BASELINED = "stock.store_baselined"
+    STOCK_SAMPLE_COUNT = "stock.sample_count"
+    MANAGER_REVIEWED = "manager.reviewed"
 
 
 class UnknownEventType(ValueError):

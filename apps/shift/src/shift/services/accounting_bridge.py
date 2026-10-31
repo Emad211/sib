@@ -32,7 +32,7 @@ registrations and voids' own rows are mirrors that the handover and reward scree
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -132,6 +132,8 @@ def _vital_mirror(row: Mapping[str, Any], ingested_at: str) -> MirrorRow:
 
 
 def _registration_mirror(row: Mapping[str, Any], ingested_at: str) -> MirrorRow:
+    # A `_v1` row carries no flag: accounting never checked a duplicate for it, so it counts as the
+    # first for its mobile — what the reward ledger did before v2 existed.
     return {
         "patient_id": int(row["patient_id"]),
         "created_by": row["created_by"],
@@ -139,6 +141,7 @@ def _registration_mirror(row: Mapping[str, Any], ingested_at: str) -> MirrorRow:
         "has_valid_nid": int(row["has_valid_nid"]),
         "has_valid_phone": int(row["has_valid_phone"]),
         "is_foreign": int(row["is_foreign"]),
+        "first_for_phone": int(row.get("first_for_phone", 1)),
         "ingested_at": ingested_at,
     }
 
@@ -190,6 +193,25 @@ FEEDS: Mapping[ViewName, Feed] = {
     ),
     ViewName.VOIDS: Feed(views.PAGED_READS[ViewName.VOIDS], _void_mirror, mirror_repo.insert_voids),
 }
+
+
+def _feeds(contract: views.ViewsReport) -> Mapping[ViewName, Feed]:
+    """The feeds of one poll: registrations read v2 when accounting has it, v1 when it does not.
+
+    Both views feed the same mirror, so only one of them is read in a poll: v2 is a superset of v1
+    and the only one that can name the first registration for a mobile. The feed keeps the v1 name as
+    its watermark key — one watermark per mirror, so an install that upgrades does not re-read its
+    whole history: rows already mirrored keep the flag they were ingested with, and every new
+    registration from the upgrade on carries accounting's answer.
+    """
+    if ViewName.PATIENT_REGISTRATIONS_V2 not in contract.present:
+        return FEEDS
+    upgraded = dict(FEEDS)
+    upgraded[ViewName.PATIENT_REGISTRATIONS] = replace(
+        FEEDS[ViewName.PATIENT_REGISTRATIONS],
+        read=replace(views.PAGED_READS[ViewName.PATIENT_REGISTRATIONS_V2], view=ViewName.PATIENT_REGISTRATIONS),
+    )
+    return upgraded
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,7 +293,7 @@ class AccountingBridge:
         rows: dict[str, int] = {}
         events = pages = 0
         error: str | None = None
-        for view, feed in FEEDS.items():
+        for view, feed in _feeds(contract).items():
             if view not in contract.present:
                 continue
             try:

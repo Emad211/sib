@@ -233,10 +233,18 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 12
-        assert {"handover", "handover_custody", "daily_cards", "campaigns"} <= _tables(database)
+        assert _version(database) == migrations.LATEST == 20
+        assert {
+            "handover",
+            "handover_custody",
+            "daily_cards",
+            "campaigns",
+            "reward_rates",
+            "reward_team_goals",
+        } <= _tables(database)
         assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
         assert _columns(database, "handover_custody") == ("flow", "custodian_id", "updated_at", "updated_by")
+        assert "acc_user" in _columns(database, "staff")
         assert _columns(database, "campaigns") == (
             "campaign_id",
             "name",
@@ -342,5 +350,35 @@ def test_a_v11_database_gains_the_campaign_table_and_keeps_its_events(tmp_path: 
         assert [event.hash for event in events] == [old_hash]
         assert verify_chain(events).ok is True
         assert campaigns == 0, "the migration creates the table and never invents a campaign"
+    finally:
+        database.close()
+
+
+def test_a_v12_database_gains_the_reward_rate_table_and_keeps_its_events(tmp_path: Path) -> None:
+    """v13 is one table plus one nullable `staff` column: a v12 install keeps every event and hash."""
+    path = tmp_path / "v12.db"
+    _migrate_to(path, 12)
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        old_hash = _write_v8_event(connection)
+        connection.exec_driver_sql(
+            "INSERT INTO staff (staff_id, full_name, mobile, pin_hash, pin_updated_at, created_at) "
+            "VALUES ('staff-1', 'پرستار یک', '09120000002', 'digest', ?, ?)",
+            (utc_iso(CLIENT_AT), utc_iso(CLIENT_AT)),
+        )
+    engine.dispose()
+
+    database = Database(path)
+    try:
+        report = database.migrate(backup_dir=tmp_path / "backups")
+        assert (report.from_version, report.to_version) == (12, migrations.LATEST)
+        with database.read() as connection:
+            events = list(events_repo.iter_events(connection))
+            rates = connection.exec_driver_sql("SELECT COUNT(*) FROM reward_rates").scalar_one()
+            unmapped = connection.exec_driver_sql("SELECT acc_user FROM staff WHERE staff_id = 'staff-1'").one()[0]
+        assert [event.hash for event in events] == [old_hash]
+        assert verify_chain(events).ok is True
+        assert rates == 0, "the migration creates the table and invents no rate"
+        assert unmapped is None, "an unmapped person stays unmapped; the manager maps him himself"
     finally:
         database.close()

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from auth_fixtures import PIN, ROLES, login, seed_roster
+from auth_fixtures import PIN, ROLES, login, put_on_shift, seed_roster
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
 from synthetic_accounting import empty_accounting
@@ -45,6 +45,7 @@ NO_CSRF = {"X-CSRFToken": "not-the-token"}
 
 def _settings(root: Path, accounting: Path | None) -> Settings:
     return Settings(
+        environment="development",  # plain-HTTP test client: no Secure cookies
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",
@@ -55,9 +56,13 @@ def _settings(root: Path, accounting: Path | None) -> Settings:
 
 @contextmanager
 def _client(root: Path, *, accounting: Path | None) -> Iterator[TestClient]:
-    """A running app on a fresh database, the seeded roster and the reference catalog."""
+    """A running app on a fresh database, the seeded roster and the reference catalog.
+
+    The roster starts off shift: these tests record the manager's baseline, which is what puts the
+    flow's custodian on shift through the real path (ADR-021).
+    """
     with TestClient(create_app(_settings(root, accounting))) as client:
-        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key, on_shift=False)
         seed_catalog(client.app.state.database)
         yield client
 
@@ -583,8 +588,9 @@ def test_the_targets_list_the_items_and_the_checklists_without_quantities(client
     assert response.status_code == 200
     body = response.json()
     assert {item["item_id"] for item in body["items"]} == {PARA, DICLO}
-    assert all(set(item) == {"item_id", "name", "unit", "location_id"} for item in body["items"])
+    assert all(set(item) == {"item_id", "name", "unit", "location_id", "icon"} for item in body["items"])
     assert {entry["item_id"] for entry in body["checklists"]} == {"store_lock_ok", "fridge_temperature"}
+    assert all(entry["icon"] for entry in body["checklists"]), "G2: every checklist line carries a picture"
     assert _numbers(body) == []
 
 
@@ -608,6 +614,8 @@ def test_the_manager_list_names_the_manager_who_confirms_by_phone(client: TestCl
 
 
 def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> None:
+    # ADR-021: the person is on shift, so the refusal under test is the flow rule, not access.
+    put_on_shift(client.app.state.database)
     """ADR-016: a blind count runs against the live server, so the outbox refuses its vocabulary."""
     phone = _phone(client)
     submission = {
@@ -627,3 +635,54 @@ def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> 
     assert handover_event.status_code == 422
     assert discrepancy.status_code == 422
     assert "سرور" in handover_event.json()["error"]["message"], "the refusal is for a person, in Persian"
+
+
+def test_the_nursing_flow_asks_only_its_own_checklist(client: TestClient) -> None:
+    """A3: the trolley belongs to nursing; reception's store lines never appear on its step."""
+    phone = _phone(client, "nurse")
+    _baseline(
+        client,
+        flow=HandoverFlow.NURSING,
+        custodian=OUTGOING,
+        opening_cash=None,
+        items=[{"item_id": "saline_500_bag", "location_id": "cpr_room", "quantity": 0}],
+    )
+    handover_id = _start(client, phone, "nursing")["handover_id"]
+
+    body = client.get(f"/api/v1/handover/{handover_id}/targets", headers=_as(client, phone)).json()
+
+    assert {entry["item_id"] for entry in body["checklists"]} == {"trolley_seal_ok", "oxygen_pressure_trolley"}
+    assert all(entry["icon"] for entry in body["checklists"])
+
+
+def test_only_the_two_people_of_a_flow_may_count_advance_or_answer(client: TestClient) -> None:
+    """A5 (H-10): a second receptionist on the same shift cannot count or move somebody else's flow.
+
+    The person is on shift and holds the count permission, so nothing here is an access refusal: the
+    flow itself belongs to its outgoing and incoming person, and a third colleague is answered 403 in
+    Persian for every step of it.
+    """
+    _baseline(client)
+    incoming = _phone(client, "reception")
+    handover_id = _start(client, incoming)["handover_id"]
+
+    # A colleague of the same shift with the same count permission, who is not one of the flow's two.
+    second = _phone(client, "storekeeper")
+    assert client.get("/events", headers=_as(client, second)).status_code == 200, "she may append"
+
+    refusals = {
+        "counts": _item(client, second, handover_id, PARA, 0),
+        "joint": client.post(
+            f"/api/v1/handover/{handover_id}/joint",
+            json={"scope": "item", "item_id": PARA, "location_id": SHELF, "counted": 0},
+            headers=_as(client, second),
+        ),
+        "advance": _advance(client, second, handover_id),
+        "checklists": _checklist(client, second, handover_id, "store_lock_ok", ok=True),
+        "parcels": _parcel(client, second, handover_id),
+        "early-leave": client.post(f"/api/v1/handover/{handover_id}/early-leave", headers=_as(client, second)),
+    }
+
+    for step, response in refusals.items():
+        assert response.status_code == 403, f"{step}: {response.text}"
+        assert "دو نفرِ همین تحویل" in response.json()["error"]["message"], f"{step}: {response.text}"

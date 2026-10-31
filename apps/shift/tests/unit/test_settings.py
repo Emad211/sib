@@ -14,7 +14,7 @@ def test_defaults_are_relative_to_the_app_checkout() -> None:
     assert settings.port == DEFAULT_PORT
     assert settings.host == "127.0.0.1"
     assert settings.hash_chain is True
-    assert settings.environment == "development"
+    assert settings.environment == "production"
 
 
 def test_environment_overrides(tmp_path: Path) -> None:

@@ -80,6 +80,7 @@ def live_shift(tmp_path: Path) -> Generator[tuple[str, Database]]:
     root = tmp_path / "shift_events_app"
     root.mkdir(parents=True, exist_ok=True)
     settings = Settings(
+        environment="development",  # httpx helper signs in over plain HTTP
         database_path=root / "shift.db",
         log_dir=root / "logs",
         audit_log_path=root / "logs" / "audit.log",
@@ -156,7 +157,7 @@ def _login(page: Page, base_url: str, person: Seeded) -> None:
     page.fill("#pin", PIN)
     page.click("#submit")
     page.wait_for_function(
-        "() => Boolean(document.querySelector('#message.ok')) || location.pathname === '/admin/devices'",
+        "() => location.pathname === '/'",
         timeout=15000,
     )
 

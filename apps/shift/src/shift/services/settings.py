@@ -14,6 +14,7 @@ from shift.domain.policy import (
     parse_setting,
     spec_for,
 )
+from shift.domain.policy import optional_number as parse_optional_number
 from shift.domain.shift_clock import covering, effective_from, require_monotonic
 
 
@@ -104,6 +105,10 @@ class SettingsService:
         if not isinstance(parsed, int):
             raise PolicyError(f"{key} is not a whole number")
         return parsed
+
+    def optional_number(self, key: SettingKey | str, shift: ShiftKey | None = None) -> int | None:
+        """A threshold or amount the manager may leave unset: None means "no number", so no rule fires (E1)."""
+        return parse_optional_number(key, self.value(key, shift).value)
 
     def clock_time(self, key: SettingKey | str, shift: ShiftKey | None = None) -> time:
         """A clock-time setting, such as the daily card time."""

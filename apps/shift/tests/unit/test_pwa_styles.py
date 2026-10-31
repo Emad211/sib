@@ -1,9 +1,11 @@
-"""Static accessibility gates for the PWA stylesheet (review S10 and NICE 5/6)."""
+"""Static accessibility gates for the PWA stylesheet and the phone's two shell pages."""
 
 import re
 from pathlib import Path
 
-_CSS_PATH = Path(__file__).resolve().parents[2] / "src" / "shift" / "static" / "app.css"
+_STATIC = Path(__file__).resolve().parents[2] / "src" / "shift" / "static"
+_TEMPLATES = _STATIC.parent / "templates"
+_CSS_PATH = _STATIC / "app.css"
 
 
 def _css() -> str:
@@ -60,6 +62,41 @@ def test_primary_button_meets_wcag_aa_in_both_themes() -> None:
 def test_stylesheet_declares_native_color_scheme() -> None:
     """Native selects and number inputs must follow the dark theme."""
     assert re.search(r"color-scheme:\s*light dark", _css())
+
+
+def test_every_status_colour_is_readable_on_its_own_surface_in_both_themes() -> None:
+    """A status, error or success line must stay at 4.5:1 on the dark phone as well as the light one."""
+    css = _css()
+    root = _block(css, ":root {")
+    dark = _block(css, "@media (prefers-color-scheme: dark)")
+    pairs = ("success", "warning", "danger", "info")
+
+    for theme in (root, dark):
+        for name in pairs:
+            assert _contrast(_color(theme, f"color-{name}"), _color(theme, f"color-{name}-bg")) >= 4.5, name
+        # The login and enrol messages sit straight on a card, not on a coloured badge.
+        for name in ("success", "danger"):
+            assert _contrast(_color(theme, f"color-{name}"), _color(theme, "color-surface")) >= 4.5, name
+
+
+def test_templates_take_their_colours_from_tokens_only() -> None:
+    """A hard-coded hex ignores the dark theme; #3c3c3c inputs and purple links came from exactly that."""
+    for path in (*_TEMPLATES.glob("*.html"), *_STATIC.glob("*.html")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "theme-color" in line:
+                continue
+            assert re.search(r"#[0-9a-fA-F]{3,8}\b", line) is None, f"{path.name}: {line.strip()}"
+
+
+def test_login_says_which_field_is_empty_before_it_sends() -> None:
+    """An empty field answers in Persian and gets the cursor, never the server's «درخواست نامعتبر است.»."""
+    page = (_TEMPLATES / "login.html").read_text(encoding="utf-8")
+
+    assert "شمارهٔ موبایل را وارد کنید" in page
+    assert "رمز شش‌رقمی را وارد کنید" in page
+    assert page.count('inputmode="numeric"') == 2
+    assert page.count('dir="ltr"') == 2
+    assert ".focus()" in page
 
 
 def test_mobile_layout_uses_dynamic_viewport_and_safe_areas() -> None:

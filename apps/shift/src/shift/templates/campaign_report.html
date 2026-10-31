@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}گزارش کمپین{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های حسابدار">
+    <a class="mg-nav-link" href="/accountant/queue">صف حسابدار</a>
+    <a class="mg-nav-link" href="/accountant/campaigns">گزارش کمپین</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">گزارش کمپین</h1>
+    <p class="mg-meta">تخفیف‌های اعمال‌شده از {{ report.from_fa }} تا {{ report.to_fa }}. کمپینی که در این بازه تخفیفی نداشته هم می‌آید، تا کمپین بی‌مشتری دیده شود.</p>
+    {% if message %}<p class="mg-status is-error">{{ message }}</p>{% endif %}
+  </header>
+
+  <form class="mg-section" method="get" action="/accountant/campaigns">
+    <h2 class="mg-section-title">بازهٔ گزارش</h2>
+    <label class="mg-meta" for="report-from">از روز (YYYY-MM-DD)</label>
+    <input class="form-control mg-input" id="report-from" name="from" data-jalali-date dir="rtl" value="{{ report.from }}">
+    <label class="mg-meta" for="report-to">تا روز (YYYY-MM-DD)</label>
+    <input class="form-control mg-input" id="report-to" name="to" data-jalali-date dir="rtl" value="{{ report.to }}">
+    <button class="btn btn-primary mg-save" type="submit">نمایش</button>
+  </form>
+
+  <section class="mg-section" aria-labelledby="cr-campaigns-title">
+    <h2 id="cr-campaigns-title" class="mg-section-title">هر کمپین چه داد</h2>
+    {% for row in report.lines %}
+    <article class="mg-row" data-campaign-id="{{ row.campaign_id }}">
+      <p class="mg-line mg-strong">{{ row.name }} <span class="mg-id">({{ row.campaign_id }})</span></p>
+      {% if row.service %}<p class="mg-line">خدمات شامل: {{ row.service }}</p>{% endif %}
+      <p class="mg-line">تعداد تخفیف: {{ row.count }}</p>
+      <p class="mg-line">مبلغ کمپین: {{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">جمع تخفیف: {{ row.total }} <span class="mg-unit">تومان</span></p>
+      {% if row.silent %}<p class="mg-empty">بدون تخفیف در این بازه</p>{% endif %}
+      {% if row.unknown %}<p class="mg-hint">این کمپین دیگر در تقویم نیست؛ مبلغش نامشخص است.</p>{% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">هنوز کمپینی تعریف نشده است.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="cr-total-title">
+    <h2 id="cr-total-title" class="mg-section-title">جمع</h2>
+    <p class="mg-line">تعداد تخفیف‌ها: {{ report.count }}</p>
+    <p class="mg-amount">جمع کل: {{ report.total }} تومان</p>
+    {% if report.unpriced %}
+    <p class="mg-note">{{ report.unpriced }} تخفیف بی‌مبلغ است (کمپینش در تقویم نیست) و در جمع کل نیامده است.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

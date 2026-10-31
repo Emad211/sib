@@ -2,25 +2,37 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ورود — شیفت سیب</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="شیفت">
+  <meta name="format-detection" content="telephone=no">
+  <title>ورود — شیفت</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-180.png">
+  <link rel="preload" href="/static/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/app.css">
   <style>
-    :root { color-scheme: light; }
     body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-           font-family: system-ui, "Segoe UI", Tahoma, sans-serif; background: #f4f6f8; color: #1f2933; }
-    main { width: min(22rem, 92vw); background: #fff; padding: 1.75rem; border-radius: .75rem;
+           font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text);
+           padding: env(safe-area-inset-top) env(safe-area-inset-right)
+                    env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    main { width: min(22rem, 92vw); background: var(--color-surface); padding: 1.75rem; border-radius: .75rem;
            box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
     h1 { margin: 0 0 1.25rem; font-size: 1.15rem; }
     label { display: block; margin: .75rem 0 .3rem; font-size: .9rem; }
-    input { width: 100%; padding: .6rem .7rem; font-size: 1rem; border: 1px solid #cbd2d9;
-            border-radius: .5rem; box-sizing: border-box; direction: ltr; text-align: center; }
-    button { width: 100%; margin-top: 1.1rem; padding: .7rem; font-size: 1rem; border: 0;
-             border-radius: .5rem; background: #1f6feb; color: #fff; cursor: pointer; }
-    button:disabled { background: #8ea6c8; cursor: progress; }
-    #message { min-height: 1.2rem; margin: .9rem 0 0; font-size: .88rem; color: #b42318; }
-    #message.ok { color: #067647; }
-    .hint { margin: 1.1rem 0 0; font-size: .78rem; color: #616e7c; line-height: 1.5; }
+    input { width: 100%; box-sizing: border-box; text-align: center; }
+    button { width: 100%; margin-top: 1.1rem; min-height: var(--touch-target); padding: .7rem;
+             font-size: 1rem; border: 0; border-radius: .5rem;
+             background: var(--color-primary-button); color: var(--color-on-primary); cursor: pointer; }
+    button:disabled { background: var(--color-surface-raised); color: var(--color-text-muted); cursor: progress; }
+    #message { min-height: 1.2rem; margin: .9rem 0 0; font-size: .88rem; color: var(--color-danger); }
+    #message.ok { color: var(--color-success); }
+    .hint { margin: 1.1rem 0 0; font-size: .78rem; color: var(--color-text-muted); line-height: 1.5; }
   </style>
 </head>
 <body data-next="{{ next_path }}">
@@ -28,26 +40,49 @@
     <h1>ورود به شیفت</h1>
     <form id="login-form" novalidate>
       <label for="mobile">شمارهٔ موبایل</label>
-      <input id="mobile" name="mobile" inputmode="numeric" autocomplete="username" required>
+      <input id="mobile" name="mobile" class="form-control" dir="ltr" inputmode="numeric"
+             autocomplete="username" enterkeyhint="next" required>
       <label for="pin">رمز شش‌رقمی</label>
-      <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password"
-             maxlength="6" required>
+      <input id="pin" name="pin" class="form-control" type="password" dir="ltr" inputmode="numeric"
+             autocomplete="current-password" enterkeyhint="go" maxlength="6" required>
       <button id="submit" type="submit">ورود</button>
       <p id="message" role="status"></p>
     </form>
     <p class="hint">رمز فقط روی گوشیی کار می‌کند که قبلاً با کد ثبت دستگاه جفت شده باشد.</p>
   </main>
+  <script src="/static/pwa.js"></script>
   <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const deviceId = localStorage.getItem("shift_device_id") || "";
     const form = document.getElementById("login-form");
     const button = document.getElementById("submit");
     const message = document.getElementById("message");
+    // Persian digits are accepted everywhere on the phone; the API only sees ASCII.
+    const asciiDigits = (value) =>
+      window.ShiftPWA && window.ShiftPWA.normalizeDigits ? window.ShiftPWA.normalizeDigits(value) : value;
+
+    // Say which field is empty and put the cursor there, instead of sending the form and
+    // letting the server answer «درخواست نامعتبر است.».
+    function requireField(field, text) {
+      if (asciiDigits(field.value).trim()) {
+        return true;
+      }
+      message.className = "";
+      message.textContent = text;
+      field.focus();
+      return false;
+    }
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       message.className = "";
       message.textContent = "";
+      if (!requireField(form.mobile, "شمارهٔ موبایل را وارد کنید")) {
+        return;
+      }
+      if (!requireField(form.pin, "رمز شش‌رقمی را وارد کنید")) {
+        return;
+      }
       if (!deviceId) {
         message.textContent = "این گوشی ثبت نشده است؛ ابتدا کد ثبت دستگاه را اسکن کنید.";
         return;
@@ -58,8 +93,8 @@
           method: "POST",
           headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
           body: JSON.stringify({
-            mobile: form.mobile.value,
-            pin: form.pin.value,
+            mobile: asciiDigits(form.mobile.value),
+            pin: asciiDigits(form.pin.value),
             device_id: deviceId,
           }),
         });
@@ -69,10 +104,9 @@
           return;
         }
         const next = document.body.dataset.next;
-        if (next && next !== "/") { location.assign(next); return; }
-        if (body.permissions.includes("device.enroll")) { location.assign("/admin/devices"); return; }
         message.className = "ok";
         message.textContent = "ورود انجام شد.";
+        location.assign(next || "/");
       } finally {
         button.disabled = false;
       }

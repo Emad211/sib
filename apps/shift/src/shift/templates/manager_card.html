@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}سیب — کارت روزانهٔ مدیر{% endblock %}
+{% block title %}کارت روزانهٔ مدیر{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/manager.css">
@@ -8,12 +8,7 @@
 
 {% block content %}
 <div class="mg-page">
-  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
-    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
-    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
-    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
-    <a class="mg-nav-link" href="/manager/items">اقلام و کد کالا</a>
-  </nav>
+  {% include "_manager_nav.html" %}
 
   {% if card %}
   <header class="mg-head">
@@ -21,6 +16,10 @@
     <p class="mg-meta">کارت {{ card.date }} — پوشش: {{ card.coverage }}</p>
     <p class="mg-meta">ساخته‌شده: {{ card.generated_at }}</p>
   </header>
+
+  {% if learning and learning.active %}
+  <p class="mg-line mg-meta">حالت یادگیری: مغایرت‌های این روزها فقط برای یادگیری است و بر پاداش کسی اثر ندارد؛ این حالت تا {{ learning.until }} ادامه دارد.</p>
+  {% endif %}
 
   {# H-08 first: an emergency start and the cash recorded inside it must be impossible to miss. #}
   {% if "emergency_starts" in card.sections %}
@@ -32,7 +31,7 @@
       <p class="mg-alert-who">ثبت‌کننده: {{ row.recorded_by }}</p>
       <p class="mg-line">مدیر تأییدکننده: {{ row.manager }}</p>
       <p class="mg-line">زمان: {{ row.at }}</p>
-      <p class="mg-line mg-muted">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+      <p class="mg-line mg-muted">{{ row.flow }}</p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -50,21 +49,48 @@
       <p class="mg-alert-who">گیرنده: {{ row.recipient }} · مدیر نام‌برده: {{ row.manager }}</p>
       <p class="mg-line">دلیل: {{ row.reason }}</p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
+      {% if row.pending %}
+      <p class="mg-note">پول از صندوق رفته است؛ رد کردن پول را به صندوق برنمی‌گرداند و فقط ثبت می‌شود.</p>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.event_id }}" data-reject-note="این برداشت رد شود؟ پول به صندوق برنمی‌گردد.">رد</button>
+      </p>
+      {% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
     {% endfor %}
   </section>
   {% endif %}
+  {% if "checklist_answers" in card.sections %}
+  {% set answers = card.sections.checklist_answers %}
+  <section class="mg-section{% if answers %} mg-emergency{% endif %}" aria-labelledby="mg-checklist-title">
+    <h2 id="mg-checklist-title" class="mg-section-title">پاسخ چک‌لیست‌ها: خیر و عددهای خوانده‌شده</h2>
+    {% for row in answers %}
+    <article class="mg-row">
+      <p class="mg-line"><strong>{{ row.name }}</strong> — پاسخ: {{ row.answer }}</p>
+      {% if row.reading %}<p class="mg-amount">{{ row.reading }} <span class="mg-unit">عدد خوانده‌شده</span></p>{% endif %}
+      <p class="mg-line mg-muted">{{ row.person }} · {{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">امروز «خیر» یا عددی در چک‌لیست‌ها ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if "cash_exceptions" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-cash-title">
     <h2 id="mg-cash-title" class="mg-section-title">نقد ثبت‌شده در تحویل</h2>
+    {% if card.cash_float %}
+    <p class="mg-line mg-amount">تنخواه صندوق: {{ card.cash_float }} <span class="mg-unit">تومان</span></p>
+    <p class="mg-note">فقط یادآور است؛ در هیچ محاسبه‌ای نمی‌آید.</p>
+    {% endif %}
     <p class="mg-note">این نقد داخل تحویل ثبت شده و مال شیفت بعد است.</p>
     {% for row in card.sections.cash_exceptions %}
     <article class="mg-row">
       <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان رسید</span></p>
       {% if row.outflow != "0" %}<p class="mg-amount">{{ row.outflow }} <span class="mg-unit">تومان برداشت</span></p>{% endif %}
-      <p class="mg-line">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
+      <p class="mg-line">{{ row.flow }}</p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
     </article>
     {% else %}
@@ -76,6 +102,7 @@
   {% if "discrepancies" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-gap-title">
     <h2 id="mg-gap-title" class="mg-section-title">مغایرت‌ها</h2>
+    {% if learning and learning.active %}<p class="mg-meta">این مغایرت‌ها در حالت یادگیری‌اند و بر پاداش اثری ندارند.</p>{% endif %}
     {% for row in card.sections.discrepancies %}
     <article class="mg-row">
       <p class="mg-amount">{{ row.difference }}{% if row.direction %} <span class="mg-unit">{{ row.direction }}</span>{% endif %}</p>
@@ -150,6 +177,47 @@
       <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
       {% endfor %}
       {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
+      {% if row.decidable %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.event_id }}">رد</button>
+      </p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "rewards" in card.sections %}
+  {% set rewards = card.sections.rewards %}
+  <section class="mg-section" aria-labelledby="mg-rewards-title">
+    <h2 id="mg-rewards-title" class="mg-section-title">پاداش‌های روز و در انتظار</h2>
+    <p class="mg-note">پاداش در ماهی پرداخت می‌شود که تأیید شده است؛ ردیف در انتظار تا تصمیم شما روی کارت می‌ماند.</p>
+    {% for row in rewards %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.earner }} — {{ row.work }}</p>
+      <p class="mg-line">{{ row.status }}</p>
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line mg-muted">{{ row.at }}{% if row.deduction_month %} · کسر از فیش ماه {{ row.deduction_month }}{% endif %}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "campaign_discounts" in card.sections %}
+  {% set campaigns = card.sections.campaign_discounts %}
+  <section class="mg-section" aria-labelledby="mg-campaigns-title">
+    <h2 id="mg-campaigns-title" class="mg-section-title">گزارش کمپین</h2>
+    <p class="mg-note">تخفیف‌های ثبت‌شدهٔ این روز، به تفکیک کمپین؛ عدد کل همان جمعی است که گزارش کمپین می‌آورد.</p>
+    {% for row in campaigns %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.name }}{% if row.service %} — {{ row.service }}{% endif %}</p>
+      <p class="mg-line">{{ row.count }} تخفیف · مبلغ کمپین: {{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-amount">{{ row.total }} <span class="mg-unit">تومان</span></p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -165,11 +233,24 @@
     <article class="mg-row">
       <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
       <p class="mg-line">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }}</p>
-      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}{% if row.handover_id %} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span>{% endif %}</p>
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}</p>
       <p class="mg-line mg-muted">توضیح مغایرت همان تحویل: {{ row.explains }}</p>
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if presence %}
+  <section class="mg-section" aria-labelledby="mg-presence-title">
+    <h2 id="mg-presence-title" class="mg-section-title">حضور در شیفت</h2>
+    <p class="mg-note">پذیرش دوم و پزشک شیفت با این دکمه حاضر می‌شوند و با پایان همان شیفت تمام می‌شود.</p>
+    {% for row in presence %}
+    <article class="mg-row" data-presence-row>
+      <p class="mg-line mg-strong">{{ row.name }}</p>
+      <p class="mg-line mg-muted">{{ row.role }} · {{ row.at }}</p>
+    </article>
     {% endfor %}
   </section>
   {% endif %}
@@ -190,6 +271,145 @@
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "purchase_orders" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-orders-title">
+    <h2 id="mg-orders-title" class="mg-section-title">سفارش‌های خرید در انتظار تصمیم</h2>
+    {% for row in card.sections.purchase_orders %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.line_count }} قلم — {{ row.age_hours }} ساعت در انتظار</p>
+      <p class="mg-line">{{ row.lines }}</p>
+      {% if row.note %}<p class="mg-line mg-muted">یادداشت: {{ row.note }}</p>{% endif %}
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-actions" dir="rtl" data-order-id="{{ row.order_id }}">
+        <input class="mg-input" type="text" maxlength="500" placeholder="یادداشت تغییر (اختیاری)" data-order-note aria-label="یادداشت تغییر">
+        <button type="button" class="btn btn-primary btn-compact" data-order-decision="approved">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-order-decision="rejected">رد</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-order-decision="changed">تغییر</button>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "flagged_deliveries" in card.sections %}
+  <section class="mg-section mg-emergency{% if not card.sections.flagged_deliveries %} mg-clear{% endif %}" aria-labelledby="mg-flagged-title">
+    <h2 id="mg-flagged-title" class="mg-section-title">بار مشکل‌دار (پرداخت قفل)</h2>
+    {% for row in card.sections.flagged_deliveries %}
+    <article class="mg-alert-row">
+      <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }} — {{ row.reason }}</p>
+      <p class="mg-line">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-muted">{{ row.age_hours }} ساعت در انتظار تصمیم شما؛ پرداخت تا آن زمان قفل است.</p>
+      {% if row.flag_event_id %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decide="approve" data-event-id="{{ row.flag_event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decide="reject" data-event-id="{{ row.flag_event_id }}">رد</button>
+      </p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "parcels_in_transit" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-parcels-title">
+    <h2 id="mg-parcels-title" class="mg-section-title">بار در راه انبار</h2>
+    {% for row in card.sections.parcels_in_transit %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }}{% if row.packages %} — {{ row.packages }} بسته{% endif %}</p>
+      <p class="mg-line">{{ row.age_hours }} ساعت در راه · ثبت‌کننده: {{ row.actor }}</p>
+      <p class="mg-line mg-muted">دریافت: {{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "weekly_count" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-weekly-title">
+    <h2 id="mg-weekly-title" class="mg-section-title">شمارش هفتگی انبار</h2>
+    {% for row in card.sections.weekly_count %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.state }}</p>
+      <p class="mg-line">بازهٔ شمارش: {{ row.window }}</p>
+      {% if row.last_count %}<p class="mg-line mg-muted">آخرین شمارش: {{ row.last_count }}</p>{% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "below_minimum" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-minimum-title">
+    <h2 id="mg-minimum-title" class="mg-section-title">اقلام زیر حداقل</h2>
+    {% for row in card.sections.below_minimum %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.name }}</p>
+      <p class="mg-line">{{ row.location }} · موجودی {{ row.quantity }} از حداقل {{ row.minimum }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "event_counts" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-counts-title">
+    <h2 id="mg-counts-title" class="mg-section-title">رویدادهای ۲۴ ساعت</h2>
+    {% for row in card.sections.event_counts %}
+    <details class="mg-row">
+      <summary class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.count }} بار</summary>
+      {% for item in row.rows %}
+      <p class="mg-line">{{ item.actor }} · {{ item.at }} — {{ item.status }}</p>
+      {% for field in item.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+      {% endfor %}
+    </details>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "overdue_faults" in card.sections %}
+  <section class="mg-section mg-emergency{% if not card.sections.overdue_faults %} mg-clear{% endif %}" aria-labelledby="mg-overdue-title">
+    <h2 id="mg-overdue-title" class="mg-section-title">ارجاع‌های مهلت‌گذشته</h2>
+    {% for row in card.sections.overdue_faults %}
+    <article class="mg-alert-row">
+      <p class="mg-alert-who">{{ row.device }} — {{ row.days_late }} روز دیرتر از مهلت</p>
+      <p class="mg-line">ارجاع‌شده به: {{ row.assignee }} · مهلت: {{ row.due }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">ارجاع مهلت‌گذشته‌ای نیست.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "call_sample" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-call-title">
+    <h2 id="mg-call-title" class="mg-section-title">نمونهٔ تماس</h2>
+    <p class="mg-note">چند ثبت بیمار تصادفی برای تماس کنترلی. نام و تلفن هنگام باز شدن همین صفحه از حسابداری خوانده می‌شود و جایی ذخیره نمی‌شود.</p>
+    {% for row in card.sections.call_sample %}
+    <article class="mg-row">
+      {% if row.phone %}
+      <p class="mg-line mg-strong">{{ row.name }}</p>
+      <p class="mg-line"><a href="tel:{{ row.phone }}">تماس با {{ row.phone }}</a></p>
+      {% else %}
+      <p class="mg-line mg-muted">پروندهٔ {{ row.patient_id }} — تلفن از حسابداری خوانده نشد.</p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">ثبت بیماری برای نمونه نبود.</p>
     {% endfor %}
   </section>
   {% endif %}

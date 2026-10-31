@@ -27,7 +27,7 @@ $env:PATH = ($env:PATH.Split(';') | Where-Object { $_ -notmatch 'GTK' }) -join '
 ```
 
 - One module: `./.venv/Scripts/python.exe -m pytest tests/integration/test_device_enrollment.py -q`. **Run pytest from `apps/shift`**: `pytest.ini` sets `pythonpath = src tests/data tools` and some tests call `tools/*.py` by relative path.
-- Settings come from `SHIFT_*` variables (`src/shift/config/settings.py`): `SHIFT_HOME`, `SHIFT_DB_PATH`, `SHIFT_LOG_DIR`, `SHIFT_AUDIT_LOG`, `SHIFT_SECRET_FILE`, `SHIFT_HOST`/`SHIFT_PORT`, `SHIFT_HASH_CHAIN`, `SHIFT_ACCOUNTING_DB`, `SHIFT_BACKUP_*`, `SHIFT_BACKGROUND_JOBS`.
+- Settings come from `SHIFT_*` variables (`src/shift/config/settings.py`; `SHIFT_ENV` defaults to `production`, tests that use plain HTTP pass `environment="development"`): `SHIFT_HOME`, `SHIFT_DB_PATH`, `SHIFT_LOG_DIR`, `SHIFT_AUDIT_LOG`, `SHIFT_SECRET_FILE`, `SHIFT_HOST`/`SHIFT_PORT`, `SHIFT_HASH_CHAIN`, `SHIFT_ACCOUNTING_DB`, `SHIFT_BACKUP_*`, `SHIFT_BACKGROUND_JOBS`.
 - `shift.db`, `logs/`, `backups/` and `.shift_secret_key` are gitignored; CI fails if a `*.db` file is tracked (ADR-006).
 
 ## Folder map
@@ -43,7 +43,7 @@ src/shift/adapters/accounting/ read-only bridge (mode=ro + PRAGMA query_only) an
 src/shift/common/              clock (Tehran), jalali, ids (ULID), hashing
 src/shift/templates|static/    Jinja pages incl. manager_*.html, PWA shell, service worker, vendored Vazirmatn — no CDN
 tests/                         unit, integration, contract, property, security, e2e, data (synthetic fixtures), js/outbox.test.js
-tools/                         operator CLIs: backup_now, verify_event_chain, rebuild_projections, restore_check, seed_reference_data, make_synthetic_acc_db, print_enroll_qr
+tools/                         operator CLIs: backup_now, verify_event_chain, rebuild_projections, restore_check, seed_reference_data, make_synthetic_acc_db, print_enroll_qr, create_staff (first manager, PIN asked at a prompt)
 ```
 
 ## Hard rules

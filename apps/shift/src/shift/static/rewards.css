@@ -1,0 +1,97 @@
+/**
+ * Sib Shift — the two reward screens (SHF-5).
+ *
+ * It only uses the colour and shape tokens of app.css, so the dark theme needs no second palette.
+ * A deduction line is the one loud row (a month's pay goes down), and the month arrows stay a plain
+ * link pair like the rest of the manager area.
+ */
+
+.rw-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.rw-totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.rw-totals div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.rw-totals dt {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.rw-totals dd {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.rw-net {
+  color: var(--color-primary);
+}
+
+.rw-status {
+  margin-inline-start: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* A revoked reward takes money back: it reads red, and its amount keeps the minus sign. */
+.rw-deduction .mg-amount,
+.rw-deduction .rw-status {
+  color: var(--color-danger);
+}
+
+.rw-revoke,
+.rw-rate-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rw-rate {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.rw-rate:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rw-danger {
+  flex: 0 0 auto;
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.rw-own-amount {
+  font-size: 2rem;
+}
+
+/* A 360 px phone stacks the field above the button, and keeps the figures readable. */
+@media (max-width: 380px) {
+  .rw-revoke,
+  .rw-rate-control {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rw-own-amount {
+    font-size: 1.75rem;
+  }
+}

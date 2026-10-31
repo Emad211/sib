@@ -1,6 +1,6 @@
 # راهنمای بهره‌برداری اپ شیفت
 
-> نسخه 1.1 · ۱۴۰۵/۰۸/۰۹ · مبنا: `docs/shift/S02` (بخش ۴ و ۵)، `docs/ops/O01` (ADR-008)، ADR-014 و ADR-015، گام ۱۴ طراحی
+> نسخه 1.3 · ۱۴۰۵/۰۸/۰۹ · مبنا: `docs/shift/S02` (بخش ۴ و ۵)، `docs/ops/O01` (ADR-008)، ADR-014، ADR-015 و ADR-023، گام ۱۴ طراحی
 > دامنه: `apps/shift` روی رایانهٔ درمانگاه. همهٔ دستورها از پوشهٔ `apps/shift` اجرا می‌شوند.
 
 ## ۱. پیش‌نیازها
@@ -28,12 +28,77 @@
    | `SHIFT_SECRET_FILE` | `<SHIFT_HOME>/.shift_secret_key` | کلید امضای نشست؛ یک‌بار ساخته می‌شود |
    | `SHIFT_HOST` / `SHIFT_PORT` | `127.0.0.1` / `8443` | آدرس شنود |
    | `SHIFT_HASH_CHAIN` | `1` | زنجیرهٔ هش رویدادها |
+   | `SHIFT_ENV` | `production` | پیش‌فرض تولید است: کوکی‌ها `Secure` می‌شوند و `/docs` و `/openapi.json` خاموش‌اند. فقط برای آزمون روی HTTP خام و بدون Caddy مقدار `development` بدهید؛ روی رایانهٔ درمانگاه هرگز |
 
-3. سرویس را اجرا کنید: `./dev.ps1 run`. در استارت، migrationها خودکار اجرا می‌شوند (`PRAGMA user_version`).
+3. دیتابیس و فهرست مرجع را بسازید (یک‌بار؛ پوشهٔ خالی کافی است). این دستور schema را migrate می‌کند و ۶ محل و ۸۳ قلم مرجع را می‌ریزد؛ اجرای دوباره بی‌خطر است:
+
+   ```powershell
+   .venv/Scripts/python.exe tools/seed_reference_data.py --db shift.db
+   ```
+
+   حداقل موجودی و کد حسابداری هر قلم را مدیر بعداً در `/manager/items` پر می‌کند (Q-17).
+4. **نخستین مدیر** را بسازید. PIN را خود ابزار دو بار و پنهان می‌پرسد (از خط فرمان گرفته نمی‌شود و جایی چاپ یا لاگ نمی‌شود)؛ شش رقم و غیرقابل‌حدس باشد. ابزار را با همان متغیرهای `SHIFT_*` سرویس اجرا کنید تا همان دیتابیس و همان `.shift_secret_key` استفاده شود:
+
+   ```powershell
+   .venv/Scripts/python.exe tools/create_staff.py --name "<نام و نام خانوادگی>" --mobile 09xxxxxxxxx --role manager --staff-id manager
+   ```
+
+   `--role` تکراری می‌تواند چند نقش بدهد (`reception`, `nurse`, `storekeeper`, `purchaser`, `accountant`, `shift_doctor`, `manager`). موبایل نام ورود است و یکتاست. بقیهٔ پرسنل را همین ابزار می‌سازد (مدیر فعلاً صفحهٔ ساخت کارمند ندارد؛ فقط بازنشانی PIN، قفل‌گشایی و ثبت گوشی دارد).
+5. سرویس را اجرا کنید: `./dev.ps1 run` (یا `.venv/Scripts/python.exe start.py`). در استارت، migrationها خودکار اجرا می‌شوند (`PRAGMA user_version`).
    اگر دیتابیس از قبل داده داشته باشد، **پیش از** هر migration یک snapshot در `backups/shift_pre_migration_<UTC>.db` گرفته می‌شود؛
    اگر backup یا migration شکست بخورد، سرویس بالا نمی‌آید (`MigrationError`) و هیچ تغییری نیمه‌کاره نمی‌ماند.
-4. بررسی سلامت: `GET /healthz` باید `{"status": "ok", "version": "..."}` برگرداند.
-5. برای اجرای دائمی، سرویس را با NSSM (یا Task Scheduler با گزینهٔ «Run whether user is logged on or not») ثبت کنید (S02 بخش ۵).
+6. بررسی سلامت: `GET /healthz` باید `{"status": "ok", "version": "..."}` برگرداند؛ `/docs` و `/openapi.json` باید ۴۰۴ بدهند.
+7. با سرویس روشن، گوشی مدیر را جفت کنید (بخش ۲.۱): `tools/print_enroll_qr.py --staff-id manager --origin https://<host> --out manager.svg`، سپس QR را روی گوشی باز کنید.
+8. برای اجرای دائمی و HTTPS، بخش ۲.۲ را انجام دهید.
+
+> **HTTPS:** سرویس خودش روی `127.0.0.1` HTTP ساده حرف می‌زند و Caddy (CA داخلی، ADR-015) روی همان رایانه HTTPS را به آن می‌رساند. کوکی‌های نشست در حالت تولید همیشه `Secure` هستند، پس بدون Caddy مرورگرِ گوشی ورود را نمی‌پذیرد؛ فقط Chrome روی `127.0.0.1` همان رایانه استثناست.
+
+## ۲.۲ اجرای دائمی و HTTPS روی رایانهٔ درمانگاه
+
+> این دو فایل هنوز با Caddy و NSSM واقعی اجرا نشده‌اند؛ روی رایانهٔ درمانگاه یک بار با حوصله امتحان و نتیجه اینجا ثبت شود.
+
+1. به رایانه یک **IP ثابت** در شبکهٔ داخلی بدهید.
+2. `caddy.exe` و `nssm.exe` را از سایت رسمی‌شان در یک پوشه بگذارید.
+3. PowerShell را با دسترسی مدیر باز کنید و از پوشهٔ `apps/shift/deploy` اجرا کنید:
+
+   ```powershell
+   ./install-services.ps1 -Site 192.168.1.10 -AppDir C:/ShiftApp/apps/shift -DataDir C:/ShiftData -ToolsDir C:/ShiftTools -AccountingDb C:/Hesabdari/clinic_new.db
+   ```
+
+   دو سرویس `ShiftApp` و `ShiftCaddy` با روشن شدن رایانه بالا می‌آیند، و فقط پورت‌های ۸۰ و ۴۴۳ در فایروال باز می‌شوند. داده و کلید نشست در `-DataDir` است، پس **همان `SHIFT_HOME` را هنگام اجرای ابزارهای بخش ۲ هم تنظیم کنید**.
+4. **روی هر گوشی، یک بار:** `http://<IP>/ca.crt` را باز کنید، گواهی را نصب و معتمد کنید. بعد `https://<IP>/` باید بدون هشدار باز شود.
+5. نشانی‌های ثبت گوشی از این پس `https://<IP>` است، نه پورت 8443.
+
+**برگشت:** `nssm remove ShiftApp confirm` و `nssm remove ShiftCaddy confirm`. دیتابیس دست نمی‌خورد.
+
+## ۲.۳ HTTPS با پایتون، بدون Caddy و NSSM (ADR-023)
+
+> مسیر رسمی همان بخش ۲.۲ است. این گزینه برای رایانه‌ای است که Caddy و NSSM روی آن نیست: یک پروسهٔ پایتون با **همان مدل اعتماد** (CA داخلی) و **بدون هیچ دانلودی**.
+
+1. یک **IP ثابت** به رایانه بدهید (بند ۱ بخش ۲.۲).
+2. از پوشهٔ `apps/shift`، با همان venv و همان `SHIFT_HOME`:
+
+   ```powershell
+   .venv/Scripts/python.exe deploy/serve_lan.py --home C:/ShiftData --ip 192.168.1.10
+   ```
+
+   اختیاری: `--name shift.local` (نام دوم گواهی)، `--https-port 8443`، `--http-port 8080`.
+3. در استارت دو نشانی چاپ می‌شود: `https://<IP>:8443/` و `http://<IP>:8080/ca.crt`؛ هیچ کلید یا رمزی چاپ نمی‌شود. اپ همیشه با `SHIFT_ENV=production` بالا می‌آید.
+4. **روی هر گوشی، یک بار:** `http://<IP>:8080/ca.crt` را نصب و معتمد کنید (صفحهٔ `/` همین را با پیوند فارسی نشان می‌دهد)، بعد `https://<IP>:8443/` را باز کنید. هر نشانی دیگری روی HTTP خودکار به HTTPS می‌رود.
+5. توقف: `Ctrl+C` — هر دو شنونده تمیز بسته می‌شوند.
+
+| مورد | مقدار |
+|---|---|
+| ریشهٔ CA | `<home>/tls/ca.crt` و `ca.key`؛ ۱۰ سال، `CA:TRUE`، `keyCertSign` + `cRLSign` |
+| گواهی سرور | `<home>/tls/server.crt` و `server.key`؛ حداکثر ۳۹۷ روز (سقف Android Chrome)، `serverAuth` |
+| SAN | `IP:<ip>`، `IP:127.0.0.1`، `DNS:<name>`، `DNS:localhost` |
+| بازصدور | با هر تغییر IP یا نام، و ۳۰ روز پیش از انقضا؛ **همیشه با همان ریشه**، پس گوشی چیزی دوباره نصب نمی‌کند |
+| کلیدها | فقط زیر `<home>/tls`؛ روی ویندوز ACL پوشه نگهبان واقعی است |
+| ساخت گواهی | `cryptography` اگر در venv باشد، وگرنه `openssl` از PATH (بدون وابستگی تازه) |
+
+- کوکی‌های نشست همچنان `Secure` و `SameSite=Strict` هستند و `/docs` و `/openapi.json` خاموش می‌مانند؛ این مسیر هیچ تنظیم امنیتی را سست نمی‌کند. `X-Forwarded-*` فقط از `127.0.0.1` (پروکسی محلی) باور می‌شود، نه از گوشی‌های شبکه.
+- پورت‌های ۸۴۴۳ و ۸۰۸۰ باید در فایروال ویندوز برای شبکهٔ خصوصی باز باشند؛ اگر ۸۰۸۰ روی این رایانه گرفته شده (مثلاً Docker)، `--http-port` دیگری بدهید و همان را به گوشی‌ها بگویید.
+- این فرمان سرویس ویندوز نمی‌سازد؛ برای بالا آمدن با روشن شدن رایانه، بند ۳ بخش ۲.۲ (NSSM) یا یک وظیفهٔ Task Scheduler لازم است.
 
 ## ۲.۱ ثبت گوشی پرسنل با QR (device enrollment)
 
@@ -46,7 +111,7 @@
 **راه ۲ — خط فرمان (از `apps/shift`):**
 
 ```powershell
-.venv/Scripts/python.exe tools/print_enroll_qr.py --db shift.db --staff-id <staff_id> --origin https://<host>:8443 --out "D:/sib-ops/enroll/<staff_id>.svg"
+.venv/Scripts/python.exe tools/print_enroll_qr.py --db shift.db --staff-id <staff_id> --origin https://<host> --out "D:/sib-ops/enroll/<staff_id>.svg"
 ```
 
 | خروجی | معنا |
@@ -170,6 +235,8 @@
 | `chain broken at seq <n>` | دست‌کاری یا بازگردانی ناقص | همان seq را با پشتیبان‌ها مقایسه کنید؛ حادثه S1 (O02) |
 | `MigrationError` در استارت | migration شکست خورده | سرویس بالا نمی‌آید؛ snapshot پیش از migration را بررسی/بازیابی کنید |
 | نبود `logs/audit.log` | مسیر `SHIFT_AUDIT_LOG` اشتباه یا بی‌مجوز | مسیر و دسترسی کاربر سرویس را درست کنید |
+| `database not found: ...; run tools/seed_reference_data.py` | هنوز دیتابیس ساخته نشده | بند ۳ بخش ۲ |
+| `refused: that staff id or mobile already exists` | موبایل یا شناسه قبلاً ثبت شده | موبایل دیگر یا `--staff-id` دیگر؛ برای بازنشانی PIN از صفحهٔ مدیر |
 | `cannot mint an enrollment token: ...` | کارمند غیرفعال است یا `--staff-id` غلط | شناسه را در فهرست `/admin/devices` ببینید و درست بدهید (بخش ۲.۱) |
 | `/enroll` می‌گوید «این صفحه باید روی نشانی امن (HTTPS) باز شود» | گوشی روی HTTP خام است یا گواهی ریشه نصب نیست | نشانی HTTPS با CA داخلی (ADR-015)؛ بخش ۲.۱ |
 | `enrollment token rejected: expired` یا `used` | توکن ۱۰ دقیقه‌ای گذشته یا یک‌بار مصرف شده | از مدیر کد تازه بگیرید؛ هر QR فقط یک گوشی |
@@ -180,9 +247,14 @@
 |---|---|
 | `services/scheduler.py` | ساخته شد؛ اجرای زمان‌بند از داخل اپ در SHF-6.x وصل می‌شود |
 | `services/audit.py` | ساخته شد؛ مسیرها/سرویس‌های حساس در گام‌های بعد آن را صدا می‌زنند |
+| Caddyfile و گواهی ریشهٔ داخلی (ADR-015) | در `apps/shift/deploy/Caddyfile` نوشته شده؛ روی رایانهٔ درمانگاه هنوز یک بار واقعی اجرا نشده (بخش ۲.۲) |
+| ثبت سرویس ویندوز (NSSM) | `apps/shift/deploy/install-services.ps1` در مخزن هست؛ روی رایانهٔ درمانگاه هنوز یک بار واقعی اجرا نشده (بخش ۲.۲) |
+| ساخت کارمند از صفحهٔ مدیر | ندارد؛ فعلاً فقط `tools/create_staff.py` |
 | پشتیبان خودکار | فعلاً با Task Scheduler ویندوز و `tools/backup_now.py`؛ زمان‌بند داخلی در گام‌های بعد |
 
 ## تاریخچه
 
 - 1.0، ۱۴۰۵/۰۸/۰۶: نسخهٔ اول — نصب، پشتیبان، بازیابی، بازسازی projectionها، بازبینی زنجیره.
 - 1.1، ۱۴۰۵/۰۸/۰۹: افزودن بخش ۲.۱ (ثبت گوشی پرسنل با QR، از صفحهٔ مدیر یا `tools/print_enroll_qr.py`) و سه ردیف عیب‌یابی ثبت دستگاه.
+- 1.2، ۱۴۰۵/۰۸/۰۹: پیش‌فرض `SHIFT_ENV` شد `production`؛ افزودن `tools/create_staff.py` (نخستین مدیر با PIN پرسیده‌شده) و ترتیب راه‌اندازی از پوشهٔ خالی (بخش ۲، بندهای ۳ تا ۶).
+- 1.3، ۱۴۰۵/۰۸/۰۹: افزودن بخش ۲.۳ (HTTPS با پایتون و CA محلی، بدون Caddy/NSSM؛ ADR-023) و اصلاح دو ردیف کهنه در بخش ۱۱ که نبودِ Caddyfile و فایل سرویس را می‌گفتند.

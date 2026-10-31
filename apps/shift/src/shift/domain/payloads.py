@@ -48,7 +48,9 @@ class CashWithdrawn(CashAmount):
 
 
 class CashDeposited(CashAmount):
-    pass
+    """Cash taken out of the box to the bank; the accountant records it, the bank slip is optional (B2)."""
+
+    photo_sha256: PhotoHash | None = None
 
 
 class CashReceipt(CashAmount):
@@ -93,6 +95,8 @@ class EmergencyWithdrawal(StockDelta):
 
     reason: Note | None = None
     second_person_id: Identifier | None = None
+    # The serial of the fresh seal put on the key pouch after it was opened (S01 line 151).
+    new_seal_number: Annotated[str, Field(max_length=100)] | None = None
 
 
 class WasteReported(StockDelta):
@@ -106,3 +110,13 @@ class WasteReported(StockDelta):
 
 class ConsumptionRecorded(StockDelta):
     pass
+
+
+class PresenceDeclared(Payload):
+    """ADR-021: a second receptionist or the shift doctor is on shift from now until this shift ends.
+
+    The role is the bound role being claimed; who and when come from the event's own `actor_id` and
+    `client_at`, so the record cannot say one thing and mean another.
+    """
+
+    role: Literal["reception", "shift_doctor"]

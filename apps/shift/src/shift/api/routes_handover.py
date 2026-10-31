@@ -22,22 +22,35 @@ steps of H-04 instead of walking past them.
 import logging
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shift.api import deps
 from shift.api.deps import NO_PERMISSION
 from shift.api.errors import ApiError, Conflict, Forbidden, NotFound
-from shift.common.clock import utc_iso
+from shift.common.clock import to_tehran, utc_iso
+from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow
 from shift.domain.handover_payloads import CountTarget
-from shift.domain.handover_steps import STEP_LOCATIONS
+from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, STEP_LOCATIONS
+from shift.domain.item_icons import icon_for
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
-from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
+from shift.services.checklists import ChecklistAsker
+from shift.services.handover import (
+    NO_ACCOUNTING,
+    NO_BASELINE,
+    OWN_FLOW_ONLY,
+    Caller,
+    HandoverService,
+    HandoverState,
+    NotASigner,
+    NotOfTheFlow,
+)
+from shift.services.purchase import PurchaseService
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +68,12 @@ NO_STORE = {
 NO_SUCH_HANDOVER = "این تحویل شیفت پیدا نشد."
 GENERIC_REFUSAL = "این کار در وضعیت فعلی تحویل شیفت مجاز نیست؛ صفحه را تازه کنید."
 NOT_A_SIGNER = "این تحویل مال شما نیست؛ فقط نفر ورودی و نفر خروجی همین تحویل امضا می‌کنند."
+# A5 (H-10): the same two people are the only ones who count, advance, answer a checklist or hand a parcel.
+NOT_OF_THE_FLOW = "این تحویل مال شما نیست؛ شمارش، چک‌لیست و بسته‌های آن با دو نفرِ همین تحویل است."
+# Owner decision 9: the initial count is the person's own act, so each refusal says what to do next.
+BASELINE_ITEMS = "شمارش اولیه باید همهٔ اقلام شمارشی جریان شما را دربر بگیرد، هر قلم یک بار."
+BASELINE_CASH = "شمارش اولیهٔ پذیرش باید موجودی صندوق را هم داشته باشد."
+BASELINE_NO_CASH = "جریان پرستاری صندوق نقدی ندارد."
 _REFUSALS: tuple[tuple[str, str], ...] = (
     ("invoices are open", "تحویل شیفت با صورت‌حساب باز شروع نمی‌شود؛ ابتدا صورت‌حساب‌های باز را ببندید."),
     ("already has a", "این تحویل از قبل برای این شیفت باز شده است."),
@@ -75,6 +94,7 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
     ("already settled", "این قلم قبلاً تسویه شده است."),
     ("signatures belong", "امضا فقط در مرحلهٔ امضای دوطرفه ثبت می‌شود."),
     ("checklists work belongs", "پاسخ چک‌لیست فقط در مرحلهٔ چک‌لیست ثبت می‌شود."),
+    ("not on this flow's checklist", "این مورد در چک‌لیست این تحویل نیست."),
     ("parcels work belongs", "ثبت بسته فقط در مرحلهٔ بسته‌های در راه انجام می‌شود."),
     ("cannot be skipped", "ثبت امضا پایان تحویل است؛ این مرحله رد نمی‌شود."),
     ("already signed", "این نفر قبلاً امضا کرده است."),
@@ -89,6 +109,9 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
 StartGuard = Annotated[Principal, Depends(deps.require(Permission.HANDOVER_START))]
 CountGuard = Annotated[Principal, Depends(deps.require(Permission.HANDOVER_COUNT_SUBMIT))]
 SignGuard = Annotated[Principal, Depends(deps.require(Permission.HANDOVER_SIGN))]
+# Owner decision 9 (ADR-022 item 5): the flow's own person records its first count; which flow that is
+# depends on the role they hold, so the route checks ownership after this guard.
+BaselineGuard = Annotated[Principal, Depends(deps.require(Permission.HANDOVER_BASELINE_OWN))]
 
 
 class StartIn(BaseModel):
@@ -151,6 +174,26 @@ class EmergencyStartIn(BaseModel):
     manager_id: str = Field(min_length=1, max_length=64)
 
 
+class BaselineItemIn(BaseModel):
+    """One shelf the person counted and what it holds; zero is a real, empty shelf."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(min_length=1, max_length=128)
+    location_id: str = Field(min_length=1, max_length=128)
+    quantity: int = Field(strict=True, ge=0)
+
+
+class OwnBaselineIn(BaseModel):
+    """The person's own first count: the flow, its box (reception only) and its shelves."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flow: HandoverFlow
+    opening_cash: int | None = Field(default=None, ge=0)
+    items: list[BaselineItemIn] = Field(min_length=1)
+
+
 def get_handover(request: Request) -> HandoverService:
     """The app-wide handover service created in the lifespan; fail closed when unwired."""
     service: HandoverService | None = getattr(request.app.state, "handover", None)
@@ -172,11 +215,16 @@ def _caller(principal: Principal) -> Caller:
 def _refusal(exc: HandoverError) -> ApiError:
     """Translate a service refusal into the one error envelope, in Persian and with no number."""
     reason = str(exc)
+    if isinstance(exc, NotOfTheFlow):
+        log.info("handover refusal: %s", reason)
+        return Forbidden(NOT_OF_THE_FLOW)
     if isinstance(exc, NotASigner):
         log.info("handover refusal: %s", reason)
         return Forbidden(NOT_A_SIGNER)
     if reason == NO_ACCOUNTING:
         return Conflict(NO_ACCOUNTING)
+    if reason == OWN_FLOW_ONLY:
+        return Forbidden(OWN_FLOW_ONLY)
     if reason == NO_BASELINE:
         return Conflict(NO_BASELINE)
     if reason.startswith("unknown handover"):
@@ -234,6 +282,55 @@ def start_handover(
     return _state(state)
 
 
+@router.post("/baseline", status_code=status.HTTP_201_CREATED)
+def record_own_baseline(
+    body: OwnBaselineIn,
+    request: Request,
+    response: Response,
+    principal: BaselineGuard,
+    service: Annotated[HandoverService, Depends(get_handover)],
+) -> dict[str, Any]:
+    """Owner decision 9 (ADR-022 item 5): the person whose role owns this flow records its first count.
+
+    The receptionist counts the reception flow (box included) and the nurse the nursing flow, on their
+    own phone, and whoever counts becomes that flow's custodian under their own name; the manager's
+    `/manager/baseline` tool stays the fallback and goes through the same service. Nothing here shows an
+    expected quantity: the person types only what they counted. A flow that already has its first count,
+    a person whose role does not own the flow, and a count that does not cover every counted item of the
+    flow are all refused in Persian before anything is written.
+    """
+    shift = deps.running_shift(request)
+    catalog: CatalogService = request.app.state.catalog
+    expected = {
+        (item.item_id, item.location_id)
+        for location_id in FLOW_COUNT_LOCATIONS[body.flow]
+        for item in catalog.items(shift, location_id=location_id)
+        if item.kind is ItemKind.COUNTED and item.frequency is Frequency.EVERY_SHIFT
+    }
+    if {(entry.item_id, entry.location_id) for entry in body.items} != expected:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_ITEMS)
+    if body.flow is HandoverFlow.RECEPTION and body.opening_cash is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_CASH)
+    if body.flow is HandoverFlow.NURSING and body.opening_cash is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_NO_CASH)
+    record = _run(
+        service.record_own_baseline,
+        flow=body.flow,
+        person_id=principal.staff_id,
+        roles=principal.roles,
+        device_id=principal.device_id,
+        opening_cash=body.opening_cash,
+        items=[entry.model_dump() for entry in body.items],
+    )
+    _no_store(response)
+    return {
+        "flow": record.flow.value,
+        "custodian_id": record.custodian_id,
+        "shelves": record.shelves,
+        "recorded_at_tehran": to_tehran(record.recorded_at).isoformat(),
+    }
+
+
 @router.get("/managers")
 def list_managers(request: Request, response: Response, _principal: CountGuard) -> list[dict[str, str]]:
     """The people a phone confirmation may name (H-08); the manager themselves needs no device."""
@@ -271,13 +368,23 @@ def current_handovers(
 @router.get("/{handover_id}")
 def get_handover_state(
     handover_id: str,
+    request: Request,
     response: Response,
     _principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """The flow as its own log rebuilt it: step, statuses and signatures only."""
+    """The flow as its own log rebuilt it: step, statuses, signatures and the parcels in transit.
+
+    The parcels are the purchasing chain's own deliveries (SHF-4, P-12): the screen hands over a real
+    parcel id instead of a number somebody typed, and only when the store has not taken it yet.
+    """
     _no_store(response)
-    return _state(_run(service.state, handover_id))
+    purchase: PurchaseService = request.app.state.purchase
+    parcels = [
+        {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
+        for parcel in purchase.in_transit(deps.running_shift(request))
+    ]
+    return {**_state(_run(service.state, handover_id)), "parcels_in_transit": parcels}
 
 
 @router.get("/{handover_id}/targets")
@@ -299,16 +406,23 @@ def handover_targets(
         if location is None:
             continue
         for item in catalog.items(at_shift, location_id=location):
-            if item.kind is not ItemKind.COUNTED or (item.item_id, location) in seen:
+            if item.kind is not ItemKind.COUNTED or item.frequency is not Frequency.EVERY_SHIFT:
+                continue
+            if (item.item_id, location) in seen:
                 continue
             seen.add((item.item_id, location))
             items.append(
-                {"item_id": item.item_id, "name": item.name, "unit": item.unit, "location_id": item.location_id}
+                {
+                    "item_id": item.item_id,
+                    "name": item.name,
+                    "unit": item.unit,
+                    "location_id": item.location_id,
+                    "icon": icon_for(item),
+                }
             )
     checklists = [
-        {"item_id": item.item_id, "name": item.name, "kind": item.kind.value}
-        for item in catalog.items(at_shift)
-        if item.kind is not ItemKind.COUNTED
+        {"item_id": item.item_id, "name": item.name, "kind": item.kind.value, "icon": icon_for(item)}
+        for item in ChecklistAsker(catalog, request.app.state.database).due(state.flow, at_shift)
     ]
     _no_store(response)
     return {"handover_id": state.handover_id, "flow": state.flow.value, "items": items, "checklists": checklists}
@@ -385,11 +499,21 @@ def answer_checklist(
 def hand_parcel(
     handover_id: str,
     body: ParcelIn,
+    request: Request,
     response: Response,
     principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """Record one parcel in transit changing hands on the parcels step (H-04)."""
+    """Record one parcel in transit changing hands on the parcels step (H-04).
+
+    P-12: once the purchasing chain knows which parcels are on their way, the only ids this route
+    accepts are those real deliveries — a typed number can no longer stand in for a parcel nobody can
+    trace. An install that has not used the chain yet still hands over a parcel by its own id.
+    """
+    purchase: PurchaseService = request.app.state.purchase
+    known = {parcel.delivery_id for parcel in purchase.in_transit(deps.running_shift(request))}
+    if known and body.parcel_id not in known:
+        raise Conflict("این شناسهٔ بسته در فهرست بارهای در راه نیست؛ بسته را از فهرست انتخاب کنید.")
     state = _run(service.hand_parcel, handover_id, body.parcel_id, body.packages, caller=_caller(principal))
     _no_store(response)
     return _state(state)

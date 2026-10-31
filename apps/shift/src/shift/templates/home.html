@@ -1,81 +1,60 @@
 {% extends "base.html" %}
 
-{% block title %}سیب — شیفت جاری{% endblock %}
+{% block title %}شیفت جاری{% endblock %}
 
 {% block content %}
-<section class="card" aria-labelledby="shift-overview-title">
-  <h1 id="shift-overview-title" class="card-title">شیفت فعال درمانگاه</h1>
-  <p class="card-subtitle">وضعیت شیفت، صف ارسال و رویدادهای جاری در یک نما.</p>
+<div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
 
-  <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
-
-  {% if show_dev_events %}
-  <p class="form-hint">این فرم فقط در محیط توسعه (<code>SHIFT_ENV=development</code>) نمایش داده می‌شود؛ شناسه کاربر، دستگاه و شیفت از نشست سرور گرفته می‌شود.</p>
-
-  <form id="quick-event-form">
-    <div class="form-group">
-      <label for="event-type" class="form-label">نوع رویداد (آفلاین مجاز):</label>
-      <select id="event-type" class="form-control" required>
-        <option value="stock.waste_reported">گزارش ضایعات</option>
-        <option value="stock.emergency_withdrawal">خروج اضطراری از قفسه</option>
-        <option value="stock.shelf_restocked">شارژ قفسه</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label for="event-item" class="form-label">شناسه کالا:</label>
-      <input type="text" id="event-item" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
-    </div>
-
-    <div class="form-group">
-      <label for="event-location" class="form-label">شناسه قفسه / محل:</label>
-      <input type="text" id="event-location" class="form-control" maxlength="128" autocomplete="off" dir="ltr" required>
-    </div>
-
-    <div class="form-group">
-      <label for="event-quantity" class="form-label">مقدار:</label>
-      <input type="number" id="event-quantity" class="form-control" min="0" step="1" value="1" required>
-    </div>
-
-    <button type="submit" id="submit-event-btn" class="btn btn-primary btn-block">
-      ثبت در صف ارسال
-    </button>
-  </form>
-  {% else %}
-  <div class="shell-notice" role="note">
-    <p>برای ثبت رویداد، از دستگاه جفت‌شدهٔ خود وارد شوید. رویدادهای جاری شیفت (ضایعات، خرابی، خدمات و امانات) در صورت قطع ارتباط در صف محلی ذخیره و پس از اتصال همگام می‌شوند.</p>
-    <p>تحویل شیفت و شمارش کور الزاماً با اتصال برخط به سرور درمانگاه انجام می‌شود.</p>
-  </div>
-  {% endif %}
-</section>
-
-{% if show_events_link %}
-<section class="card" aria-labelledby="events-link-title">
-  <h2 id="events-link-title" class="card-title">رویدادهای شیفت</h2>
-  <p class="card-subtitle">ضایعات، کارت‌به‌کارت، امانت بیمار، خرابی و بقیهٔ رویدادهای امروز، با یک دکمه.</p>
-  <a class="btn btn-primary btn-block" href="/events">ثبت رویداد شیفت</a>
+{% if shift_notice %}
+<section class="card" aria-live="polite">
+  <p class="card-subtitle">{{ shift_notice }}</p>
 </section>
 {% endif %}
 
-{% if show_manager_link %}
-<section class="card" aria-labelledby="manager-link-title">
-  <h2 id="manager-link-title" class="card-title">کارت روزانهٔ مدیر</h2>
-  <p class="card-subtitle">نقد ثبت‌شده در تحویل، مغایرت‌ها و تحویل‌های باز، هر روز صبح.</p>
-  <a class="btn btn-primary btn-block" href="/manager/card">باز کردن کارت امروز</a>
+{% if presence_options %}
+<section class="card" aria-labelledby="presence-title">
+  <h2 id="presence-title" class="card-title">حضور در شیفت</h2>
+  <p class="card-subtitle">اگر در این شیفت کار می‌کنید، حضورتان را اینجا ثبت کنید.</p>
+  {% for option in presence_options %}
+  <button type="button" class="btn btn-primary btn-block" data-presence-role="{{ option.role }}">حضور در شیفت — {{ option.label }}</button>
+  {% endfor %}
+  <p id="presence-feedback" class="badge hidden" role="status" aria-live="polite"></p>
+</section>
+{% endif %}
+
+{% if tiles %}
+<h1 class="home-title">کارهای من</h1>
+<nav class="home-tiles" aria-label="کارهای من">
+  {% for tile in tiles %}
+  <a class="home-tile" href="{{ tile.href }}">
+    <span class="home-tile-icon" aria-hidden="true">{{ tile.icon }}</span>
+    <span class="home-tile-text">
+      <span class="home-tile-title">{{ tile.title }}</span>
+      <span class="home-tile-hint">{{ tile.hint }}</span>
+    </span>
+  </a>
+  {% endfor %}
+</nav>
+{% else %}
+<section class="card" aria-labelledby="shift-overview-title">
+  <h1 id="shift-overview-title" class="card-title">شیفت</h1>
+  <p class="card-subtitle">برای شروع، از گوشی ثبت‌شدهٔ خود وارد شوید.</p>
+  <a class="btn btn-primary btn-block" href="/login">ورود</a>
 </section>
 {% endif %}
 
 <!-- Outbox Card (hidden when 0 items) -->
 <section id="outbox-card" class="card hidden" aria-labelledby="outbox-card-title">
-  <h2 id="outbox-card-title" class="card-title">صف رویدادهای محلی (Outbox)</h2>
-  <p class="card-subtitle">رویدادهایی که در دستگاه ذخیره شده و پس از اتصال بازپخش می‌شوند.</p>
+  <h2 id="outbox-card-title" class="card-title">ثبت‌های در انتظار ارسال</h2>
+  <p class="card-subtitle">این‌ها روی همین گوشی مانده‌اند و با وصل شدن به درمانگاه ارسال می‌شوند.</p>
 
   <ul id="outbox-list" class="outbox-list" role="list">
     <!-- Populated dynamically by app.js -->
   </ul>
 </section>
+
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="/static/home.js"></script>
+<script src="/static/presence.js"></script>
 {% endblock %}

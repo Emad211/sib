@@ -35,8 +35,8 @@
       field(form, "campaign-name").value = row.campaignName;
       field(form, "campaign-service").value = row.campaignService;
       field(form, "campaign-amount").value = row.campaignAmount;
-      field(form, "campaign-starts").value = row.campaignStarts;
-      field(form, "campaign-ends").value = row.campaignEnds;
+      window.ShiftJalaliDatepicker.setIso(field(form, "campaign-starts"), row.campaignStarts);
+      window.ShiftJalaliDatepicker.setIso(field(form, "campaign-ends"), row.campaignEnds);
       setStatus(form, "", "");
       form.scrollIntoView({ block: "center" });
     });
@@ -56,8 +56,8 @@
         name: field(form, "campaign-name").value,
         service: field(form, "campaign-service").value,
         amount_toman: Number(field(form, "campaign-amount").value),
-        starts_on: field(form, "campaign-starts").value,
-        ends_on: field(form, "campaign-ends").value,
+        starts_on: window.ShiftJalaliDatepicker.getIso(field(form, "campaign-starts")),
+        ends_on: window.ShiftJalaliDatepicker.getIso(field(form, "campaign-ends")),
       }),
     })
       .then(function (response) {

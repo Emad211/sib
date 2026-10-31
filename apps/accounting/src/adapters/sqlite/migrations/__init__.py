@@ -24,6 +24,7 @@ from . import (
     m0005_expenses,
     m0006_invoice_voids,
     m0007_shift_contract_voids,
+    m0008_shift_registration_first_for_phone,
 )
 
 log = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (5, "expenses_and_payroll_indexes", m0005_expenses.up),
     (6, "invoice_voids", m0006_invoice_voids.up),
     (7, "shift_contract_voids", m0007_shift_contract_voids.up),
+    (8, "shift_registration_first_for_phone", m0008_shift_registration_first_for_phone.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 

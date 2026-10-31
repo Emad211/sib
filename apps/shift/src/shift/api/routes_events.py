@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
-from shift.api.deps import require, running_shift
+from shift.api.deps import require, require_any, running_shift
 from shift.domain.permissions import Permission
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
@@ -180,7 +180,7 @@ def post_event(
     event_in: EventIn,
     request: Request,
     response: Response,
-    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    principal: Annotated[Principal, Depends(require_any(Permission.EVENTS_APPEND, Permission.SHIFT_RECORD_HOLD))],
     shift: Annotated[ShiftKey, Depends(running_shift)],
     service: Annotated[ShiftEventService, Depends(get_shift_events)],
 ) -> EventOut:

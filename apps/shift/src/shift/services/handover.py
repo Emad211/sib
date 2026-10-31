@@ -21,10 +21,11 @@ after the cutoff stays on top of the agreed figure instead of inside it. A recei
 the flow's window breaks that rule, and it goes to the manager through the audit trail alone — no
 response, header, public log line or client-visible event carries the number (R-02, ADR-011).
 
-The app starts from the manager's initial baseline (`record_baseline`, SHF-7.1), not from a staff
-handover: one event seeds the box, every shelf it names and who holds them. Nobody types the outgoing
-person either — a flow derives it from the newest flow of its kind's incoming person, or from the
-custody the baseline set, and refuses with a Persian message when neither exists.
+The app starts from an initial baseline (`record_baseline`, SHF-7.1), not from a staff
+handover: one event seeds the box, every shelf it names and who holds them. Owner decision 9 has each
+person record their own flow's first count (ADR-022 item 5); the manager keeps the tool as a fallback.
+Nobody types the outgoing person either — a flow derives it from the newest flow of its kind's incoming
+person, or from the custody the baseline set, and refuses with a Persian message when neither exists.
 """
 
 import logging
@@ -44,18 +45,21 @@ from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.cash_box import CashBox
 from shift.domain.cash_cutoff import CashMovement, signed_cash, windows
+from shift.domain.checklist_rules import Frequency
 from shift.domain.events import EventType
 from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, Handover, HandoverFlow, HandoverStep, Signer
 from shift.domain.handover_payloads import CountTarget
-from shift.domain.handover_steps import STEP_LOCATIONS
+from shift.domain.handover_steps import FLOW_OWNER_ROLES, STEP_LOCATIONS
+from shift.domain.on_shift import held_roles
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.catalog import CatalogService, Item, ItemKind
+from shift.services.checklists import ChecklistAsker
 from shift.services.event_store import EventStore, NewEvent
 from shift.services.projections import ProjectionEngine
 
@@ -71,6 +75,8 @@ NO_ACCOUNTING = (
     "نسخهٔ حسابداری در دسترس نیست؛ بدون آن صورت‌حساب‌های باز و عدد مرجع قابل محاسبه نیستند و تحویل شیفت آغاز نمی‌شود."
 )
 NO_BASELINE = "مدیر باید ابتدا شمارش اولیه را ثبت کند."
+# Owner decision 9: a flow's first count belongs to the person whose role owns that flow.
+OWN_FLOW_ONLY = "شمارش اولیهٔ هر جریان را فقط نفر همان جریان ثبت می‌کند."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -106,6 +112,10 @@ class Caller:
 
 class NotASigner(HandoverError):
     """The caller is neither the incoming nor the outgoing person of this flow (H-04, R-04)."""
+
+
+class NotOfTheFlow(NotASigner):
+    """A colleague who is not one of the flow's two people tried to work on it (A5, H-10)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +213,7 @@ class HandoverService:
         manager_id: str,
         opening_cash: int | None,
         items: Sequence[Mapping[str, Any]],
+        device_id: str = BASELINE_DEVICE_ID,
     ) -> BaselineRecord:
         """Record the manager's opening count: the box, every shelf it names and who holds them.
 
@@ -235,7 +246,7 @@ class HandoverService:
                 type=EventType.HANDOVER_BASELINE_RECORDED.value,
                 payload=baseline.model_dump(mode="json"),
                 actor_id=baseline.manager_id,
-                device_id=BASELINE_DEVICE_ID,
+                device_id=device_id,
                 work_date=shift.work_date,
                 client_at=now,
                 shift_id=shift.text,
@@ -259,6 +270,36 @@ class HandoverService:
             recorded_at=now,
             opening_cash=baseline.opening_cash,
             shelves=len(baseline.items),
+        )
+
+    def record_own_baseline(
+        self,
+        *,
+        flow: HandoverFlow,
+        person_id: str,
+        roles: Sequence[str],
+        device_id: str,
+        opening_cash: int | None,
+        items: Sequence[Mapping[str, Any]],
+    ) -> BaselineRecord:
+        """Owner decision 9 (ADR-022 item 5): the person whose role owns the flow counts it themselves.
+
+        The receptionist records the reception flow on their own phone and the nurse the nursing flow;
+        whoever counts becomes that flow's custodian, under their own name (`manager_id` in the payload
+        is the person who recorded it, which is the same person here). The manager's `/manager/baseline`
+        tool stays the fallback and goes through the same event, so a flow can still only have one
+        first count. Off shift is no bar: this person holds no custody yet (ADR-021). A role that does
+        not own the flow is refused in Persian before anything is written.
+        """
+        if FLOW_OWNER_ROLES[flow] not in held_roles(roles):
+            raise HandoverError(OWN_FLOW_ONLY)
+        return self.record_baseline(
+            flow=flow,
+            custodian_id=person_id,
+            manager_id=person_id,
+            opening_cash=opening_cash,
+            items=items,
+            device_id=device_id,
         )
 
     def custodian(self, flow: HandoverFlow) -> str | None:
@@ -364,6 +405,7 @@ class HandoverService:
     def count(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """Take one blind count and answer with a status only; the reference stays here (R-02)."""
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
+        _part_of_the_flow(flow.row, caller)
         chain = self._current(flow, target)
         if chain.status is CountStatus.JOINT:
             raise HandoverError("the joint count is recorded through `joint`")
@@ -388,6 +430,7 @@ class HandoverService:
     def joint(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """The figure both people counted together; it settles the chain (H-05, H-13)."""
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
+        _part_of_the_flow(flow.row, caller)
         chain = self._current(flow, target)
         if chain.status is not CountStatus.JOINT:
             raise HandoverError("this target has no joint count to record")
@@ -402,6 +445,7 @@ class HandoverService:
     def advance(self, handover_id: str, *, caller: Caller) -> HandoverState:
         """Leave the current step for the next one; the walk is ordered and never skips (H-04)."""
         flow = self._live(handover_id)
+        _part_of_the_flow(flow.row, caller)
         advanced = flow.handover.advance()  # the domain refuses a closed flow, a skipped sign or H-08
         self._require_step_done(flow)
         step = advanced.step
@@ -421,13 +465,18 @@ class HandoverService:
         photo_id: str | None = None,
     ) -> HandoverState:
         """Record one checklist answer on the checklists step (H-04); it changes no projection."""
+        _part_of_the_flow(self._row(handover_id), caller)
         flow = self._require_step(handover_id, HandoverStep.CHECKLISTS)
+        asked = ChecklistAsker(self._catalog, self._database).owned(flow.row.flow, ShiftKey.parse(flow.row.shift_id))
+        if item_id not in {item.item_id for item in asked}:
+            raise HandoverError("the item is not on this flow's checklist")
         payload = {"item_id": item_id, "ok": ok, "reading": reading, "photo_id": photo_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_CHECKLIST_ANSWERED.value, payload)])
         return self.state(handover_id)
 
     def hand_parcel(self, handover_id: str, parcel_id: str, packages: int, *, caller: Caller) -> HandoverState:
         """Record one parcel in transit changing hands on the parcels step (H-04)."""
+        _part_of_the_flow(self._row(handover_id), caller)
         flow = self._require_step(handover_id, HandoverStep.PARCELS)
         payload = {"parcel_id": parcel_id, "packages": packages}
         self._append(flow.row, caller, [(EventType.HANDOVER_PARCEL_HANDED.value, payload)])
@@ -464,6 +513,7 @@ class HandoverService:
     def report_early_leave(self, handover_id: str, *, caller: Caller) -> HandoverState:
         """Note that the outgoing person left before handing over (H-08); nothing happens by itself."""
         flow = self._live(handover_id)
+        _part_of_the_flow(flow.row, caller)
         flow.handover.report_early_leave()
         payload = {"staff_id": flow.row.outgoing_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_EARLY_LEAVE_REPORTED.value, payload)])
@@ -651,7 +701,11 @@ class HandoverService:
 
     def _counted_items(self, shift: ShiftKey, location: str) -> list[Item]:
         """The countable items of one step's location, as the catalog sees them at the flow's shift."""
-        return [item for item in self._catalog.items(shift, location_id=location) if item.kind is ItemKind.COUNTED]
+        return [
+            item
+            for item in self._catalog.items(shift, location_id=location)
+            if item.kind is ItemKind.COUNTED and item.frequency is Frequency.EVERY_SHIFT
+        ]
 
     def _live(self, handover_id: str) -> _Flow:
         """The flow rebuilt from its log; a closed flow accepts no more work."""
@@ -808,6 +862,17 @@ class HandoverService:
         # The projection catches up immediately: the next count's step and the next flow's reference
         # are read from it, and a rebuild has to equal what it shows (ADR-010).
         self._projections.sync()
+
+
+def _part_of_the_flow(row: FlowRow, caller: Caller) -> None:
+    """A5 (H-10): counting, advancing, checklists and parcels belong to this flow's two people.
+
+    A second receptionist of the same shift, or any other colleague holding the count permission, is
+    not one of them: the box and the shelves are counted by the person handing them over and the one
+    taking them, on their own phones, and nobody else can push a figure into their flow.
+    """
+    if caller.actor_id not in (row.incoming_id, row.outgoing_id):
+        raise NotOfTheFlow("the caller is not part of this handover")
 
 
 def _signer_of(row: FlowRow, caller: Caller) -> Signer:

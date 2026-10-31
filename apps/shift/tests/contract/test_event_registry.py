@@ -55,6 +55,33 @@ EXPECTED_EFFECTS = {
     EventType.EVENT_RELEASED: ((), None),
     EventType.EVENT_HOLD_REJECTED: ((), None),
     EventType.EVENT_REJECTED: ((), None),
+    # ADR-021: «حضور در شیفت» is a record of who declared presence, never a movement.
+    EventType.SHIFT_PRESENCE_DECLARED: ((), None),
+    # SHF-5's three reward records: the ledger is derived from them on every read, so a rebuild is
+    # still exactly the two projections the clinic keeps (stock, cash).
+    EventType.REWARD_EARNED: ((), None),
+    EventType.REWARD_CONFIRMED: ((), None),
+    EventType.REWARD_REVOKED: ((), None),
+    # SHF-4: the purchasing documents change no projection; the shelf charge moves both ends at once.
+    EventType.ORDER_DRAFTED: ((), None),
+    EventType.ORDER_DECIDED: ((), None),
+    EventType.ORDER_PLACED: ((), None),
+    EventType.DELIVERY_RECEIVED: ((), None),
+    EventType.DELIVERY_FLAGGED: ((), None),
+    EventType.DELIVERY_TRANSFERRED: ((), None),
+    EventType.INVOICE_DIGITIZED: ((), None),
+    EventType.PAYMENT_RECORDED: ((), None),
+    EventType.VENDOR_RETURN: ((), None),
+    EventType.VENDOR_CREDIT: ((), None),
+    EventType.RESTOCK_CONFIRMED: ((StockOperation.SUBTRACT, StockOperation.ADD), None),
+    EventType.EXPIRY_FLAGGED: ((), None),
+    # B1 and G3: the receiver's count adds the parcel to the main store, the storekeeper's opening count
+    # sets the whole store, and the giver's half of a shelf charge moves nothing until its confirmation.
+    EventType.DELIVERY_CONFIRMED: ((StockOperation.ADD,), None),
+    EventType.RESTOCK_OFFERED: ((), None),
+    EventType.STOCK_STORE_BASELINED: ((StockOperation.SET,), None),
+    EventType.STOCK_SAMPLE_COUNT: ((), None),
+    EventType.MANAGER_REVIEWED: ((), None),
 }
 
 
@@ -273,6 +300,27 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.EVENT_HELD,
         EventType.EVENT_RELEASED,
         EventType.EVENT_HOLD_REJECTED,
+        EventType.SHIFT_PRESENCE_DECLARED,
+        EventType.REWARD_EARNED,
+        EventType.REWARD_CONFIRMED,
+        EventType.REWARD_REVOKED,
+        EventType.ORDER_DRAFTED,
+        EventType.ORDER_DECIDED,
+        EventType.ORDER_PLACED,
+        EventType.DELIVERY_RECEIVED,
+        EventType.DELIVERY_FLAGGED,
+        EventType.DELIVERY_TRANSFERRED,
+        EventType.INVOICE_DIGITIZED,
+        EventType.PAYMENT_RECORDED,
+        EventType.VENDOR_RETURN,
+        EventType.VENDOR_CREDIT,
+        EventType.RESTOCK_CONFIRMED,
+        EventType.EXPIRY_FLAGGED,
+        EventType.DELIVERY_CONFIRMED,
+        EventType.RESTOCK_OFFERED,
+        EventType.STOCK_STORE_BASELINED,
+        EventType.STOCK_SAMPLE_COUNT,
+        EventType.MANAGER_REVIEWED,
     }
 
 

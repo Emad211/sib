@@ -20,6 +20,12 @@ NUMBER_VALUES = {
     SettingKey.WITHDRAWAL_CAP_TOMAN: st.integers(0, 1_000_000),
     SettingKey.SESSION_TTL_HOURS: st.integers(1, 24),
     SettingKey.WEEKLY_COUNT_WEEKDAY: st.integers(0, 6),
+    # E1: a threshold the manager sets behaves like every other number; unset is covered by the service test.
+    SettingKey.SUGAR_THRESHOLD: st.integers(1, 2000),
+    SettingKey.SYSTOLIC_THRESHOLD: st.integers(1, 400),
+    SettingKey.DIASTOLIC_THRESHOLD: st.integers(1, 300),
+    SettingKey.OXYGEN_PRESSURE_THRESHOLD: st.integers(1, 1000),
+    SettingKey.CASH_FLOAT_TOMAN: st.integers(0, 100_000_000),
 }
 CLOCK_KEYS = frozenset({SettingKey.CARD_TIME, SettingKey.WEEKLY_COUNT_TIME})
 CLOCK_VALUES = st.times().map(lambda moment: f"{moment.hour:02d}:{moment.minute:02d}")

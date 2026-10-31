@@ -22,6 +22,7 @@ from shift.services.auth import (
     InvalidCredentials,
     SessionInvalid,
     StaffInactive,
+    StaffInputError,
     StaffNotFound,
 )
 from shift.services.devices import DeviceError, DeviceNotFound, EnrollmentRejected, UnknownStaff
@@ -31,6 +32,15 @@ log = logging.getLogger(__name__)
 LOGIN_PATH = "/login"
 _UNEXPECTED = "خطای داخلی رخ داد؛ دوباره تلاش کنید."
 _BAD_CREDENTIALS = "موبایل یا رمز نامعتبر است."
+# Starlette's own refusals (unknown path, wrong verb, ...) carry the English reason phrase; staff get Persian.
+_ENGLISH_DETAILS = frozenset({"Not Found", "Method Not Allowed", "Forbidden", "Bad Request", "invalid Content-Length"})
+_HTTP_MESSAGES = {
+    400: "درخواست نامعتبر است.",
+    403: "اجازهٔ این کار را ندارید.",
+    404: "این صفحه پیدا نشد.",
+    405: "این درخواست در این صفحه مجاز نیست.",
+    413: "حجم درخواست بیش از حد مجاز است.",
+}
 
 
 class ApiError(Exception):
@@ -121,6 +131,8 @@ def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] |
         return 403, "device_revoked", "دسترسی این گوشی لغو شده است.", None
     if isinstance(exc, SessionInvalid):
         return 401, "not_authenticated", "نشست معتبر نیست؛ دوباره وارد شوید.", None
+    if isinstance(exc, StaffInputError):
+        return (409 if exc.conflict else 400), "staff_invalid", exc.message_fa, None
     if isinstance(exc, (StaffNotFound, UnknownStaff)):
         return 404, "staff_not_found", "کارمند پیدا نشد.", None
     if isinstance(exc, EnrollmentRejected):
@@ -171,7 +183,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse | HTMLResponse:
         code = "not_found" if exc.status_code == 404 else "http_error"
-        return _error_response(request, exc.status_code, code, str(exc.detail))
+        detail = str(exc.detail)
+        if exc.status_code in _HTTP_MESSAGES and detail in _ENGLISH_DETAILS:
+            detail = _HTTP_MESSAGES[exc.status_code]
+        return _error_response(request, exc.status_code, code, detail)
 
     @app.exception_handler(RequestValidationError)
     async def _invalid(request: Request, exc: RequestValidationError) -> JSONResponse | HTMLResponse:

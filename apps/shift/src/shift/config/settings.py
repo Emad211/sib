@@ -47,7 +47,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = DEFAULT_PORT
     hash_chain: bool = True
-    environment: str = "development"
+    environment: str = "production"
     # The accounting copy the read bridge polls; not configured means the bridge never runs.
     accounting_db_path: Path | None = None
     backup_dir: Path | None = None
@@ -76,7 +76,7 @@ class Settings:
             host=env.get("SHIFT_HOST", "127.0.0.1"),
             port=_as_port(env.get("SHIFT_PORT", str(DEFAULT_PORT))),
             hash_chain=_as_bool(env.get("SHIFT_HASH_CHAIN", "1")),
-            environment=env.get("SHIFT_ENV", "development"),
+            environment=env.get("SHIFT_ENV", "production"),
             accounting_db_path=Path(accounting).resolve() if accounting else None,
             backup_dir=Path(env.get("SHIFT_BACKUP_DIR", root / "backups")).resolve(),
             backup_mirror_dir=Path(mirror).resolve() if mirror else None,

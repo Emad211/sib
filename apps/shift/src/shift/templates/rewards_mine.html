@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}پاداش من{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+<link rel="stylesheet" href="/static/rewards.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های من">
+    <a class="mg-nav-link" href="/">خانه</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">پاداش من</h1>
+    <p class="mg-meta">{{ staff_name }} — {{ month.label }}</p>
+  </header>
+
+  <nav class="rw-months" aria-label="ماه‌ها">
+    <a class="mg-nav-link" href="/rewards?month={{ month.previous }}">ماه قبل</a>
+    <a class="mg-nav-link" href="/rewards?month={{ month.next }}">ماه بعد</a>
+  </nav>
+
+  <section class="mg-section" aria-label="مبلغ این ماه">
+    <h2 class="mg-section-title">مبلغ این ماه</h2>
+    <p class="mg-amount rw-own-amount">{{ own_amount }} <span class="mg-unit">تومان</span></p>
+    <p class="mg-line">کارهای تأییدشدهٔ شما: {{ own_works }}</p>
+    <p class="mg-meta">پاداش در ماهی پرداخت می‌شود که مدیر آن را تأیید کرده است.</p>
+  </section>
+
+  <section class="mg-section" aria-label="رقابت تیمی">
+    <h2 class="mg-section-title">رقابت تیمی</h2>
+    <p class="mg-line">رتبهٔ شما: {{ rank }} از {{ headcount }}</p>
+    {% if goal.set %}
+    <p class="mg-line">پیشرفت تیم: {{ goal.works }} از {{ goal.goal }} کار ({{ goal.percent }}٪)</p>
+    {% else %}
+    <p class="mg-line">هدف تیمی این ماه تعیین نشده است؛ کارهای تأییدشدهٔ تیم: {{ team_works }}</p>
+    {% endif %}
+    <p class="mg-meta">شما فقط اعداد خودتان و هدف تیمی را می‌بینید؛ نام و مبلغ بقیه پنهان است.</p>
+  </section>
+</div>
+{% endblock %}

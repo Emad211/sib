@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}پاداش‌ها{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+<link rel="stylesheet" href="/static/rewards.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  {% include "_manager_nav.html" %}
+
+  <header class="mg-head">
+    <h1 class="mg-title">پاداش کارکنان</h1>
+    <p class="mg-meta">{{ month.label }}</p>
+  </header>
+
+  <nav class="rw-months" aria-label="ماه‌ها">
+    <a class="mg-nav-link" href="/manager/rewards?month={{ month.previous }}">ماه قبل</a>
+    <a class="mg-nav-link" href="/manager/rewards?month={{ month.next }}">ماه بعد</a>
+  </nav>
+
+  <section class="mg-section" aria-label="کپی حسابداری">
+    <h2 class="mg-section-title">کپی حسابداری</h2>
+    {% if accounting.empty %}
+    <p class="mg-empty">هنوز هیچ رکوردی از حسابداری خوانده نشده است؛ تا کپی پر نشود پاداش خودکاری ثبت نمی‌شود.</p>
+    {% else %}
+    <p class="mg-line">
+      در این ماه {{ accounting.vitals }} خدمت قند و فشار و {{ accounting.registrations }} ثبت بیمار با کد ملی و
+      موبایل معتبر از حسابداری خوانده شده است.
+    </p>
+    {% endif %}
+    <form data-rewards-form method="post" action="/manager/rewards/accrue">
+      <input type="hidden" name="month" value="{{ month.key }}">
+      <button class="btn btn-primary mg-save" type="submit">ثبت پاداش‌های این ماه</button>
+    </form>
+    <p class="mg-hint">ثبت دوباره رویداد تازه نمی‌سازد؛ هر کار یک بار ثبت می‌شود.</p>
+    <p class="mg-status" role="status"></p>
+  </section>
+
+  <section class="mg-section" aria-label="تأییدهای در انتظار">
+    <h2 class="mg-section-title">تأییدهای در انتظار</h2>
+    <ul class="mg-list" role="list">
+      {% for row in pending %}
+      <li class="mg-row">
+        <p class="mg-line"><span class="mg-strong">{{ row.staff }}</span> — {{ row.work }}</p>
+        <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+        <p class="mg-meta">{{ row.at }}{% if row.note %} — {{ row.note }}{% endif %}</p>
+        <div class="mg-actions">
+          <button class="btn btn-primary" type="button" data-reward-approve="{{ row.event_id }}">تأیید</button>
+          <button class="btn" type="button" data-reward-reject="{{ row.event_id }}">رد</button>
+        </div>
+      </li>
+      {% else %}
+      <li class="mg-empty">چیزی در انتظار تأیید نیست.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="mg-section" aria-label="جدول این ماه">
+    <h2 class="mg-section-title">جدول این ماه</h2>
+    <dl class="rw-totals">
+      <div><dt>تأییدشده</dt><dd>{{ totals.earned }} تومان</dd></div>
+      <div><dt>کسر از ابطال</dt><dd>{{ totals.deducted }} تومان</dd></div>
+      <div><dt>خالص برای فیش</dt><dd class="rw-net">{{ totals.net }} تومان</dd></div>
+      <div><dt>تعداد نفرات</dt><dd>{{ totals.people }}</dd></div>
+    </dl>
+    <ul class="mg-list" role="list">
+      {% for row in rows %}
+      <li class="mg-row{% if row.deduction %} rw-deduction{% endif %}">
+        <p class="mg-line">
+          <span class="mg-strong">{{ row.staff }}</span> — {{ row.work }}
+          <span class="rw-status">{{ row.status }}</span>
+        </p>
+        <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+        <p class="mg-meta">{{ row.at }}{% if row.note %} — {{ row.note }}{% endif %}</p>
+        {% if row.revocable %}
+        <form class="rw-revoke" data-rewards-form method="post" action="/manager/rewards/revoke">
+          <input type="hidden" name="month" value="{{ month.key }}">
+          <input type="hidden" name="event_id" value="{{ row.event_id }}">
+          <input class="form-control mg-input" name="reason" type="text" maxlength="500" required
+                 aria-label="دلیل ابطال" placeholder="دلیل ابطال">
+          <button class="btn rw-danger" type="submit">ابطال</button>
+        </form>
+        {% endif %}
+      </li>
+      {% else %}
+      <li class="mg-empty">در این ماه پاداشی تأیید یا ابطال نشده است.</li>
+      {% endfor %}
+    </ul>
+    <p class="mg-status" role="status"></p>
+  </section>
+
+  <section class="mg-section" aria-label="نرخ پاداش">
+    <h2 class="mg-section-title">نرخ پاداش این ماه</h2>
+    {% for rate in rates %}
+    <form class="rw-rate" data-rewards-form method="post" action="/manager/rewards/rates">
+      <input type="hidden" name="month" value="{{ month.key }}">
+      <input type="hidden" name="work_type" value="{{ rate.work_type }}">
+      <label class="mg-meta" for="rate-{{ rate.work_type }}">{{ rate.label }} (تومان)</label>
+      <div class="rw-rate-control">
+        <input class="form-control mg-input" id="rate-{{ rate.work_type }}" name="amount_toman" type="number"
+               step="1" inputmode="numeric" dir="ltr" min="1" max="{{ max_amount }}"
+               value="{{ rate.amount }}" required>
+        <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
+      </div>
+      {% if rate.amount_fa %}
+      <p class="mg-meta">نرخ کنونی: {{ rate.amount_fa }} تومان — {{ rate.set_by }} — {{ rate.set_at }}</p>
+      {% else %}
+      <p class="mg-pending">برای این ماه نرخی تعیین نشده است.</p>
+      {% endif %}
+    </form>
+    {% endfor %}
+    <p class="mg-hint">مبلغ هر کار در ماهی که انجام شده قفل می‌شود؛ تغییر بعدی نرخ، پاداش صادرشده را عوض نمی‌کند.</p>
+    <p class="mg-status" role="status"></p>
+  </section>
+
+  <section class="mg-section" aria-label="اعتبار کار ارجاعی">
+    <h2 class="mg-section-title">اعتبار کار ارجاعی</h2>
+    <p class="mg-hint">کار ارجاعی را پس از بسته‌شدن اعتبار بدهید. مسیر پیگیری را تا آمدن سامانهٔ پیگیری، ماهی یک بار برای هر نفر دستی تأیید کنید؛ ثبت دوبارهٔ همان ماه رویداد تازه نمی‌سازد.</p>
+    <form class="rw-rate" data-rewards-form method="post" action="/manager/rewards/credit">
+      <input type="hidden" name="month" value="{{ month.key }}">
+      <label class="mg-meta" for="credit-staff">کارمند</label>
+      <select class="form-control mg-input" id="credit-staff" name="staff_id" required>
+        {% for person in staff %}
+        <option value="{{ person.staff_id }}">{{ person.name }}</option>
+        {% endfor %}
+      </select>
+      <label class="mg-meta" for="credit-work">نوع کار</label>
+      <select class="form-control mg-input" id="credit-work" name="work_type" required>
+        {% for work in credit_work_types %}
+        <option value="{{ work.value }}">{{ work.label }}</option>
+        {% endfor %}
+      </select>
+      <label class="mg-meta" for="credit-amount">مبلغ (تومان)</label>
+      <div class="rw-rate-control">
+        <input class="form-control mg-input" id="credit-amount" name="amount_toman" type="number"
+               step="1" inputmode="numeric" dir="ltr" min="1" max="{{ max_amount }}" required>
+        <button class="btn btn-primary mg-save" type="submit">ثبت اعتبار</button>
+      </div>
+      <label class="mg-meta" for="credit-note">یادداشت (اختیاری)</label>
+      <input class="form-control mg-input" id="credit-note" name="note" type="text" maxlength="500">
+    </form>
+    <p class="mg-status" role="status"></p>
+  </section>
+
+  <section class="mg-section" aria-label="هدف تیمی">
+    <h2 class="mg-section-title">هدف تیمی این ماه</h2>
+    <form class="rw-rate" data-rewards-form method="post" action="/manager/rewards/goal">
+      <input type="hidden" name="month" value="{{ month.key }}">
+      <label class="mg-meta" for="goal-works">هدف (تعداد کار تأییدشده)</label>
+      <div class="rw-rate-control">
+        <input class="form-control mg-input" id="goal-works" name="goal_works" type="number"
+               step="1" inputmode="numeric" dir="ltr" min="1" max="{{ max_goal }}"
+               value="{{ goal.amount }}" required>
+        <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
+      </div>
+      {% if goal.set %}
+      <p class="mg-meta">هدف کنونی: {{ goal.amount_fa }} کار — {{ goal.set_by }} — {{ goal.set_at }}</p>
+      {% else %}
+      <p class="mg-pending">برای این ماه هدفی تعیین نشده است؛ کارکنان فقط شمار کارهای تأییدشدهٔ تیم را می‌بینند.</p>
+      {% endif %}
+    </form>
+    <p class="mg-status" role="status"></p>
+  </section>
+
+  <section class="mg-section" aria-label="کار بدون نرخ">
+    <h2 class="mg-section-title">کار بدون نرخ</h2>
+    {% for row in unrated %}
+    <p class="mg-line">{{ row.work }}: {{ row.works }} کار — با تعیین نرخ، همین کارها هم ثبت می‌شوند.</p>
+    {% else %}
+    <p class="mg-empty">همهٔ کارهای این ماه نرخ دارند.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-label="شناسهٔ حسابداری بدون کارمند">
+    <h2 class="mg-section-title">شناسهٔ حسابداری بدون کارمند</h2>
+    {% for row in unmapped %}
+    <p class="mg-line">شناسهٔ {{ row.acc_user }} ({{ row.work }}): {{ row.works }} کار — تا به کارمندی وصل نشود پاداشی نمی‌گیرد.</p>
+    {% else %}
+    <p class="mg-empty">همهٔ شناسه‌های حسابداری به یک کارمند وصل‌اند.</p>
+    {% endfor %}
+    <form data-rewards-form method="post" action="/manager/rewards/staff-map">
+      <label class="mg-meta" for="map-staff">کارمند</label>
+      <select class="form-control mg-input" id="map-staff" name="staff_id" required>
+        {% for person in staff %}
+        <option value="{{ person.staff_id }}">{{ person.name }}{% if person.acc_user %} — {{ person.acc_user }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <label class="mg-meta" for="map-acc">شناسهٔ کاربر در حسابداری (خالی بگذارید تا اتصال پاک شود)</label>
+      <input class="form-control mg-input" id="map-acc" name="acc_user" type="text" maxlength="128" dir="ltr">
+      <button class="btn btn-primary mg-save" type="submit">ذخیرهٔ اتصال</button>
+    </form>
+    <p class="mg-status" role="status"></p>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/rewards.js"></script>
+{% endblock %}

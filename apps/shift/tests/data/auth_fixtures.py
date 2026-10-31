@@ -7,10 +7,18 @@ from datetime import UTC, datetime, timedelta
 from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 
-from shift.adapters.db import devices_repo, staff_repo
+from shift.adapters.db import devices_repo, handover_repo, staff_repo
 from shift.adapters.db.core import Database
-from shift.common.clock import utc_iso
+from shift.common.clock import SystemClock, to_tehran, utc_iso
+from shift.common.ids import new_ulid
+from shift.domain.event_types import EventType
+from shift.domain.handover_fsm import HandoverFlow
+from shift.domain.permissions import Role
+from shift.domain.shift_clock import covering
 from shift.services.auth import hash_pin
+from shift.services.event_store import EventStore, NewEvent
+
+store_clock = SystemClock()
 
 PIN = "482916"
 ALTERNATE_PIN = "739251"
@@ -96,8 +104,14 @@ def create_device(database: Database, *, device_id: str, staff_id: str, label: s
         )
 
 
-def seed_roster(database: Database, *, pepper: str = "") -> None:
-    """Every role from the route matrix plus one spare target for the manager routes."""
+def seed_roster(database: Database, *, pepper: str = "", on_shift: bool = True, presence: bool = False) -> None:
+    """Every role from the route matrix plus one spare target for the manager routes.
+
+    `on_shift` puts the bound roles on shift the way the clinic does (ADR-021), so the tests prove
+    the access rule instead of weakening it: a test that needs somebody off shift passes False.
+    `presence` also records «حضور در شیفت» for the second receptionist and the shift doctor, which
+    adds two records to the log — only the matrix asks for it, because other tests count records.
+    """
     for person in (*ROLES.values(), SPARE):
         create_staff(
             database,
@@ -108,6 +122,48 @@ def seed_roster(database: Database, *, pepper: str = "") -> None:
             pepper=pepper,
         )
         create_device(database, device_id=person.device_id, staff_id=person.staff_id)
+    if on_shift:
+        put_on_shift(database, presence=presence)
+
+
+def put_on_shift(database: Database, *, presence: bool = False) -> None:
+    """Put the roster on shift through the two doors the clinic has (ADR-021).
+
+    The receptionist and the nurse hold their own flow's custody — the manager's baseline seeds it and
+    a close hands it to the incoming person — and with `presence` the second receptionist and the
+    shift doctor also declared «حضور در شیفت» for the running shift.
+    """
+    with database.write() as connection:
+        for flow, custodian in (
+            (HandoverFlow.RECEPTION, ROLES["reception"].staff_id),
+            (HandoverFlow.NURSING, ROLES["nurse"].staff_id),
+        ):
+            handover_repo.set_custodian(
+                connection,
+                flow=flow,
+                custodian_id=custodian,
+                updated_at=FIXED_NOW,
+                updated_by=ROLES["manager"].staff_id,
+            )
+    if not presence:
+        return
+    store = EventStore(database)
+    stamp = store_clock.now_utc()
+    shift = covering(to_tehran(stamp))
+    for key, role in (("multi_role", Role.RECEPTION), ("shift_doctor", Role.SHIFT_DOCTOR)):
+        person = ROLES[key]
+        store.append(
+            NewEvent(
+                client_event_id=new_ulid(),
+                type=EventType.SHIFT_PRESENCE_DECLARED.value,
+                payload={"role": role.value},
+                actor_id=person.staff_id,
+                device_id=person.device_id,
+                shift_id=shift.text,
+                work_date=shift.work_date,
+                client_at=stamp,
+            )
+        )
 
 
 def login(client: TestClient, *, mobile: str, device_id: str, pin: str = PIN):

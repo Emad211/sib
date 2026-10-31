@@ -29,10 +29,14 @@ class OccurredVerdict(StrEnum):
     STALE = "stale"
 
 
+# R-15 (ADR-021): a record whose own instant falls outside the recorder's shift is kept for the manager.
+OFF_SHIFT_REASON = "off_shift"
+
 # The manager's line for a held record; it names no figure, like every message the phone shows.
 HELD_MESSAGES: dict[str, str] = {
     OccurredVerdict.FUTURE.value: "زمان ثبت این رویداد در آینده است؛ تا بررسی مدیر نگه داشته شد و هنوز روی صندوق یا قفسه اثر نکرده است.",
     OccurredVerdict.STALE.value: "این رویداد بیش از ۷۲ ساعت پیش ثبت شده است؛ تا بررسی مدیر نگه داشته شد و هنوز روی صندوق یا قفسه اثر نکرده است.",
+    OFF_SHIFT_REASON: "این رویداد در زمانی ثبت شده که ثبت‌کننده در شیفت نبوده است؛ تا بررسی مدیر نگه داشته شد و هنوز روی صندوق یا قفسه اثر نکرده است.",
 }
 
 

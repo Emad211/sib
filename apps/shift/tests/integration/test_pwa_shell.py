@@ -36,8 +36,9 @@ def test_manifest_start_url_is_precached_and_every_precache_url_serves(client: T
 
     sw_text = _service_worker(client)
     precache = _precache_urls(sw_text)
-    assert manifest["start_url"] in precache
-    assert "/" in precache
+    # Pages are stored once a signed-in person opens them; a precached page would be a guest's.
+    assert manifest["start_url"] not in precache
+    assert "/" not in precache
     assert "cache.addAll" not in sw_text, "atomic addAll silently disables the whole cache"
     assert "Promise.allSettled" in sw_text
 
@@ -144,8 +145,8 @@ def test_production_home_is_a_shell_not_a_demo_form(settings: Settings) -> None:
     with TestClient(create_app(replace(settings, environment="production"))) as client:
         text = client.get("/").text
 
-    assert "شیفت فعال درمانگاه" in text
-    assert "تحویل شیفت" in text
+    assert 'id="shift-overview-title"' in text
+    assert "از گوشی ثبت‌شدهٔ خود وارد شوید" in text
     for forbidden in (
         "staff_user_1",
         "device_web_client",
@@ -160,15 +161,54 @@ def test_production_home_is_a_shell_not_a_demo_form(settings: Settings) -> None:
         assert forbidden not in text
 
 
-def test_development_home_form_collects_no_identity_and_only_offline_types(client: TestClient) -> None:
-    """The dev form cannot forge actor/device/shift and offers no handover events."""
-    text = client.get("/").text
+def test_the_home_page_never_carries_a_dev_form_or_dev_text(settings: Settings) -> None:
+    """No environment, not even development, renders a developer form or names the dev switch."""
+    for environment in ("production", "development"):
+        with TestClient(create_app(replace(settings, environment=environment))) as client:
+            text = client.get("/").text
+            script_names = re.findall(r'<script[^>]+src="([^"]+)"', text)
 
-    assert 'id="quick-event-form"' in text
-    assert "stock.waste_reported" in text
-    assert "stock.emergency_withdrawal" in text
-    for forbidden in ("staff_user_1", "device_web_client", "shift_demo_1", 'id="event-actor"', "handover."):
-        assert forbidden not in text
+        for forbidden in (
+            "quick-event-form",
+            "dev-tools",
+            "ابزار توسعه",
+            "SHIFT_ENV",
+            "development",
+            'id="event-type"',
+            "event-item",
+            "/static/home.js",
+        ):
+            assert forbidden not in text, (environment, forbidden)
+        assert "/static/home.js" not in script_names
+
+
+def test_pages_name_held_records_in_persian_and_never_in_english(client: TestClient) -> None:
+    """The phone's waiting-records card gets Persian names for event types, and no "Outbox" text."""
+    text = client.get("/").text
+    labels = json.loads(re.search(r'<script id="outbox-labels"[^>]*>(.*?)</script>', text, re.S).group(1))
+
+    assert labels["stock.waste_reported"]
+    assert all(not name.isascii() for name in labels.values())
+    assert "(Outbox)" not in text
+    assert "<code>" not in client.get("/no-such-page", headers={"accept": "text/html"}).text
+
+
+def test_production_marks_the_csrf_cookie_secure_even_when_caddy_forwards_plain_http(settings: Settings) -> None:
+    for environment, expected in (("production", True), ("development", False)):
+        with TestClient(create_app(replace(settings, environment=environment))) as client:
+            cookie = client.get("/").headers["set-cookie"]
+        assert ("Secure" in cookie) is expected, environment
+
+
+def test_the_install_defaults_to_production() -> None:
+    """An install with no SHIFT_ENV must get Secure cookies and no development help."""
+    assert Settings.from_env({}).environment == "production"
+
+
+def test_the_api_docs_and_schema_are_not_served_in_production(settings: Settings) -> None:
+    with TestClient(create_app(replace(settings, environment="production"))) as client:
+        for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+            assert client.get(path).status_code == 404, path
 
 
 def test_manifest_is_served_as_json_with_install_metadata(client: TestClient) -> None:

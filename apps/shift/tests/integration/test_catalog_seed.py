@@ -103,7 +103,11 @@ def test_seeding_applies_from_the_baseline_and_leaves_settings_alone(tmp_path: P
 
         assert {item.effective_from_shift for item in catalog.items()} == {ShiftKey.baseline()}
         assert {len(settings.history(key)) for key in SettingKey} == {1}
-        assert {settings.value(key).changed_by for key in SettingKey} == {"migration:m0004", "migration:m0008"}
+        assert {settings.value(key).changed_by for key in SettingKey} == {
+            "migration:m0004",
+            "migration:m0008",
+            "migration:m0020",
+        }
     finally:
         database.close()
 

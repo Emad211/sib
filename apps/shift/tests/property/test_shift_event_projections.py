@@ -158,6 +158,7 @@ def test_moving_events_change_the_next_reference_and_rebuild_equal_live(
                     "quantity": emergency,
                     "reason": "قفسه خالی",
                     "second_person_id": nurse.staff_id,
+                    "new_seal_number": "پلمب ۱۴۲۰",
                 },
                 store_keeper,
                 shift,

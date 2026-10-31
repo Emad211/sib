@@ -17,10 +17,11 @@ from make_synthetic_acc_db import build
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.accounting.views import parse_time
-from shift.adapters.db import events_repo, migrations, projections_repo
+from shift.adapters.db import events_repo, handover_repo, migrations, projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import to_tehran
 from shift.common.ids import new_ulid
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
 
@@ -50,6 +51,16 @@ def _bootstrap(client: TestClient) -> None:
         roles=("nurse",),
         pepper=client.app.state.secret_key,
     )
+    # ADR-021: the nursing flow's custodian is on shift; the clinic's own close hands this on, and
+    # this journey starts from a nurse who already holds the trolley.
+    with database.write() as connection:
+        handover_repo.set_custodian(
+            connection,
+            flow=HandoverFlow.NURSING,
+            custodian_id=NURSE["staff_id"],
+            updated_at=datetime.now(UTC),
+            updated_by=MANAGER["staff_id"],
+        )
 
 
 def _login(client: TestClient, *, mobile: str, device_id: str) -> dict[str, Any]:

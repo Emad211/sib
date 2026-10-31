@@ -15,6 +15,8 @@
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })
         .then((reg) => {
+          // pwa.js owns the Persian update banner; hand it the live registration.
+          window.dispatchEvent(new CustomEvent("shift:sw-registered", { detail: reg }));
           // Listen for updates
           reg.addEventListener("updatefound", () => {
             const newWorker = reg.installing;
@@ -58,8 +60,25 @@
   }
 
   // Network Status Monitoring & Banners
-  function updateNetworkStatus() {
-    const isOnline = navigator.onLine;
+  // Wi-Fi being up says nothing about the clinic server, so the badge asks the server itself.
+  let serverReachable = true;
+  async function probeServer() {
+    let reachable = navigator.onLine;
+    if (reachable) {
+      try {
+        await fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" });
+      } catch {
+        reachable = false;
+      }
+    }
+    if (reachable !== serverReachable) {
+      serverReachable = reachable;
+      updateNetworkStatus(reachable ? { type: "online" } : undefined);
+    }
+  }
+
+  function updateNetworkStatus(event) {
+    const isOnline = navigator.onLine && serverReachable;
     const banner = document.getElementById("network-banner");
     const statusBadge = document.getElementById("connection-status-badge");
 
@@ -68,14 +87,19 @@
         banner.textContent = "ارتباط با سرور قطع است — ذخیره در صف آفلاین فعال شد";
         banner.className = "network-banner offline";
       } else {
-        banner.textContent = "اتصال برقرار شد — در حال همگام‌سازی...";
-        banner.className = "network-banner online";
         rememberOnlineSync();
-        setTimeout(() => {
-          if (navigator.onLine && banner) {
-            banner.className = "network-banner hidden";
-          }
-        }, 3000);
+        // Only a real reconnect deserves the banner, not every page load.
+        if (event && event.type === "online") {
+          banner.textContent = "اتصال برقرار شد — در حال همگام‌سازی...";
+          banner.className = "network-banner online";
+          setTimeout(() => {
+            if (navigator.onLine && banner) {
+              banner.className = "network-banner hidden";
+            }
+          }, 3000);
+        } else {
+          banner.className = "network-banner hidden";
+        }
       }
     }
 
@@ -125,6 +149,15 @@
     staleBadge.classList.remove("hidden");
   }
 
+  // Persian names of the event types the server accepts offline; a raw type id is never shown to staff.
+  const outboxLabels = (() => {
+    try {
+      return JSON.parse(document.getElementById("outbox-labels").textContent) || {};
+    } catch (error) {
+      return {};
+    }
+  })();
+
   // Outbox UI Binding
   async function refreshOutboxUi() {
     if (!window.ShiftOutbox || !window.ShiftOutbox.getQueuedItems) return;
@@ -166,7 +199,7 @@
 
         const title = document.createElement("span");
         title.className = "outbox-item-type";
-        title.textContent = item.body && item.body.type ? item.body.type : "رویداد ثبت‌شده";
+        title.textContent = (item.body && outboxLabels[item.body.type]) || "رویداد ثبت‌شده";
 
         const time = document.createElement("span");
         time.className = "outbox-item-time";
@@ -275,9 +308,67 @@
     }
   };
 
+  const ROLE_NAMES = {
+    reception: "پذیرش",
+    nurse: "پرستار",
+    storekeeper: "انباردار",
+    purchaser: "مسئول خرید",
+    accountant: "حسابدار",
+    shift_doctor: "پزشک شیفت",
+    manager: "مدیر",
+  };
+
+  // Who is signed in and how to leave: shown on every page, and simply absent offline or logged out.
+  // A signed-out phone keeps the app shell but none of the pages the last person saw.
+  async function forgetCachedPages() {
+    if (!("caches" in window)) return;
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) {
+        const path = new URL(request.url).pathname;
+        if (!path.startsWith("/static/") && path !== "/offline.html" && path !== "/manifest.webmanifest") {
+          await cache.delete(request);
+        }
+      }
+    }
+  }
+
+  async function showWhoAmI() {
+    const who = document.getElementById("who-am-i");
+    const logout = document.getElementById("logout-btn");
+    if (!who || !logout) return;
+    let me;
+    try {
+      const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
+      if (!response.ok) return;
+      me = await response.json();
+    } catch {
+      return;
+    }
+    // The session cookie is SameSite=Strict, so opening the installed app from the launcher sends the
+    // first request without it and the server answers with the guest page. Same-origin reload sends it.
+    if (document.getElementById("shift-overview-title") && !sessionStorage.getItem("shift:guest-reloaded")) {
+      sessionStorage.setItem("shift:guest-reloaded", "1");
+      location.reload();
+      return;
+    }
+    const roles = (me.roles || []).map((role) => ROLE_NAMES[role] || role).join("، ");
+    who.textContent = `${me.staff.name} · ${roles}`;
+    who.classList.remove("hidden");
+    logout.classList.remove("hidden");
+    logout.addEventListener("click", async () => {
+      await fetch("/api/v1/auth/logout", { method: "POST", headers: { "X-CSRFToken": me.csrf_token } });
+      await forgetCachedPages();
+      location.assign("/login");
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    showWhoAmI();
     requestPersistentStorage();
     updateNetworkStatus();
     refreshOutboxUi();
+    probeServer();
+    setInterval(probeServer, 20000);
   });
 })();

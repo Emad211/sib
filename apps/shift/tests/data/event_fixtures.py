@@ -40,6 +40,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"item_id": "item-1", "ok": True}
     if event_type == "handover.parcel_handed":
         return {"parcel_id": "parcel-1", "packages": 2}
+    if event_type == "shift.presence_declared":
+        return {"role": "reception"}
     if event_type == "handover.signed":
         return {"signer": "incoming"}
     if event_type == "handover.early_leave_reported":
@@ -79,6 +81,76 @@ def default_payload(event_type: str) -> dict[str, Any]:
         }
     if event_type in {"event.released", "event.hold_rejected"}:
         return {"event_id": "event-held-1"}
+    if event_type == "order_drafted":
+        return {
+            "order_id": "order-1",
+            "lines": [{"item_id": "item-1", "location_id": "location-1", "quantity": 3}],
+            "note": None,
+        }
+    if event_type == "order_decided":
+        return {"order_id": "order-1", "decision": "approved", "note": None}
+    if event_type == "order_placed":
+        return {"order_id": "order-1", "vendor": "داروخانهٔ نمونه", "reference": None}
+    if event_type == "delivery_received":
+        return {
+            "delivery_id": "delivery-1",
+            "order_id": "order-1",
+            "invoice_reference": "فاکتور ۱",
+            "lines": [{"item_id": "item-1", "location_id": "location-1", "quantity": 3}],
+            "packages": 1,
+        }
+    if event_type == "delivery_flagged":
+        return {"delivery_id": "delivery-1", "reason": "short", "note": None}
+    if event_type == "delivery_transferred":
+        return {"delivery_id": "delivery-1", "to_staff_id": "staff-2", "to_kind": "storekeeper", "packages": 1}
+    if event_type == "invoice_digitized":
+        return {
+            "delivery_id": "delivery-1",
+            "lines": [{"item_id": "item-1", "quantity": 3, "unit_price_toman": 10_000}],
+            "reference": None,
+        }
+    if event_type == "payment_recorded":
+        return {
+            "delivery_id": "delivery-1",
+            "amount_toman": 30_000,
+            "method": "transfer",
+            "paid_on": "2026-10-28",
+            "receipt_reference": None,
+        }
+    if event_type == "vendor_return":
+        return {
+            "delivery_id": "delivery-1",
+            "lines": [{"item_id": "item-1", "quantity": 1}],
+            "reason": "بار شکسته بود",
+        }
+    if event_type == "vendor_credit":
+        return {"delivery_id": "delivery-1", "amount_toman": 10_000, "note": None}
+    if event_type == "restock_confirmed":
+        return {
+            "item_id": "item-1",
+            "from_location_id": "location-1",
+            "to_location_id": "location-2",
+            "quantity": 4,
+            "confirmer_id": "staff-2",
+        }
+    if event_type == "expiry_flagged":
+        return {"item_id": "item-1", "location_id": "location-1", "note": None}
+    if event_type == "delivery_confirmed":
+        return {"delivery_id": "delivery-1", "lines": [{"item_id": "item-1", "quantity": 3}]}
+    if event_type == "restock_offered":
+        return {
+            "item_id": "item-1",
+            "from_location_id": "location-1",
+            "to_location_id": "location-2",
+            "quantity": 2,
+            "confirmer_id": "staff-2",
+        }
+    if event_type == "stock.store_baselined":
+        return {"lines": [{"item_id": "item-1", "quantity": 7}]}
+    if event_type == "stock.sample_count":
+        return {"item_id": "item-1", "location_id": "location-1", "counted": 7, "month": "2026-10"}
+    if event_type == "manager.reviewed":
+        return {"decision": "approved", "note": None}
     kind = kind_for(event_type)
     if kind is not None:
         return kind.sample()

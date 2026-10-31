@@ -34,8 +34,9 @@ from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.domain.event_types import EventType
 from shift.domain.events import validate_payload
-from shift.domain.occurred_time import OccurredVerdict
+from shift.domain.occurred_time import OFF_SHIFT_REASON, OccurredVerdict
 from shift.domain.occurred_time import verdict as occurred_verdict
+from shift.domain.on_shift import effective_permissions, has_bound_role
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import SettingKey, ShiftKey
 from shift.domain.shift_clock import covering
@@ -57,6 +58,7 @@ from shift.services.catalog import CatalogService, ItemKind
 from shift.services.event_store import EventStore, EventValidationError
 from shift.services.held_events import HeldEvents
 from shift.services.late_cash import notice_late_cash
+from shift.services.on_shift import on_shift_roles_at
 from shift.services.outbox import EventSubmission, OutboxService, OutboxValidationError, SubmissionResult
 from shift.services.projections import ProjectionEngine
 from shift.services.settings import SettingsService
@@ -169,13 +171,25 @@ class ShiftEventService:
         offline record is refused with a 422 the phone treats as final, and the clinic loses it (F5).
         """
         kind = kind_for(submission.type)
+        needed = Permission.EVENTS_APPEND if kind is None else kind.permission
+        if needed not in principal.permissions and not held_checked:
+            # R-15: the record is judged at the moment it happened, not when it arrived. Someone who was
+            # on shift then gets their record applied normally even if they have since signed over; one
+            # who was off shift then is kept for the manager, never dropped with a refusal.
+            worked_then = has_bound_role(principal.roles) and needed in self._permissions_at(principal, submission)
+            if not worked_then:
+                kept = None
+                # Only what the person's own role could record on shift waits for the manager; a kind
+                # the role never holds, such as a nurse's cash deposit, stays the plain refusal.
+                if needed in effective_permissions(principal.roles, principal.roles):
+                    kept = self._hold_off_shift(submission, principal, shift)
+                if kept is None:
+                    raise ShiftEventRuleError("نقش شما اجازهٔ ثبت این رویداد را ندارد.")
+                return kept
         if kind is None:
             # Handover, accounting mirror and legacy stock types keep the outbox path and its
             # ADR-016 refusal for anything live-only.
             return self._outbox.record_event(submission)
-
-        if kind.permission not in principal.permissions:
-            raise ShiftEventRuleError("نقش شما اجازهٔ ثبت این رویداد را ندارد.")
 
         try:
             payload = validate_payload(submission.type, submission.payload)
@@ -221,6 +235,35 @@ class ShiftEventService:
         return SubmissionResult(
             result.event.seq, result.event.event_id, result.created, "recorded" if result.created else "replayed"
         )
+
+    def _permissions_at(self, principal: Principal, submission: EventSubmission) -> frozenset[Permission]:
+        """The effective permissions this person had at the record's own instant (R-15, ADR-021)."""
+        occurred = submission.client_at
+        if isinstance(occurred, str):
+            try:
+                occurred = parse_iso(occurred)
+            except ValueError:
+                return frozenset()
+        with self._database.read() as connection:
+            working = on_shift_roles_at(
+                connection, staff_id=principal.staff_id, roles=principal.roles, instant=occurred
+            )
+        return effective_permissions(principal.roles, working)
+
+    def _hold_off_shift(
+        self, submission: EventSubmission, principal: Principal, shift: ShiftKey
+    ) -> SubmissionResult | None:
+        """Keep a record made while its owner was off shift for the manager (R-15, ADR-021).
+
+        200 with `held`, never a 403: a nurse who signed over at 22:00 and whose phone then syncs a
+        record from last evening must not lose it at the door. Nothing moves on the box or the shelves;
+        the manager releases or rejects it on the daily card. Only a shift-bound role has an off shift,
+        so a free role's missing permission stays the refusal it always was.
+        """
+        if self._held is None or not has_bound_role(principal.roles):
+            return None
+        happened = _occurred_shift(submission) or shift
+        return self._held.hold(submission, reason=OFF_SHIFT_REASON, shift=happened)
 
     def _hold_if_implausible(
         self, submission: EventSubmission, principal: Principal, shift: ShiftKey
@@ -320,11 +363,10 @@ class ShiftEventService:
         def staff_roles(staff_id: str) -> frozenset[str] | None:
             with self._database.read() as connection:
                 person = staff_repo.find(connection, staff_id)
-                roles = staff_repo.roles_for(connection, staff_id) if person is not None else ()
+                roles = staff_repo.roles_for(connection, staff_id, shift.text) if person is not None else ()
             if person is None or not person.active:
                 return None
-            # The login session's roles are the authority here (R-07/R-08); the catalog role
-            # versions are the manager's next-shift preview, not the running credential.
+            # One source of truth (ADR-022): the roles that shift sees, the same ones login grants.
             return frozenset(roles)
 
         def find_event(event_id: str) -> EventView | None:
@@ -509,7 +551,7 @@ class ShiftEventService:
         items = self._catalog.items(shift)
         locations = self._catalog.locations(shift)
         with self._database.read() as connection:
-            people = staff_repo.list_with_roles(connection)
+            people = staff_repo.list_with_roles(connection, shift.text)
         campaigns = [] if self._campaigns is None else self._campaigns.active_on(shift.work_date)
         # The owner's rule: outside a manager-defined campaign there is no discount button at all.
         campaign_available = bool(campaigns)
@@ -553,6 +595,12 @@ class ShiftEventService:
                 for item in items
             ],
             "counted_items": [item.item_id for item in items if item.kind is ItemKind.COUNTED],
+            # E1 (owner decision 11): the manager's own numbers; a None never suggests anything.
+            "thresholds": {
+                "sugar": self._settings.optional_number(SettingKey.SUGAR_THRESHOLD, shift),
+                "systolic": self._settings.optional_number(SettingKey.SYSTOLIC_THRESHOLD, shift),
+                "diastolic": self._settings.optional_number(SettingKey.DIASTOLIC_THRESHOLD, shift),
+            },
             "locations": [{"id": place.location_id, "name": place.name} for place in locations],
             "staff": [
                 {"id": person.staff.staff_id, "name": person.staff.full_name, "roles": list(person.roles)}
@@ -598,6 +646,9 @@ def _may_decide(kind: KindSpec, event: EventRecord, principal: Principal) -> boo
     by itself. When the person a withdrawal named is its own recorder, any other staff member answers
     for it instead — the session proves the caller is an active staff member (`AuthService` refuses a
     deactivated one) — and the manager may always decide an open record, whatever its kind.
+
+    The person a record pays is never its decider either, whatever their role: a manager who also
+    works a shift cannot confirm the reward his own work earned (SHF-5, P-05).
     """
     if event.actor_id == principal.staff_id:
         return False
@@ -605,6 +656,9 @@ def _may_decide(kind: KindSpec, event: EventRecord, principal: Principal) -> boo
     # caused the loss never confirms it, manager or not (E-05).
     culprit = event.payload.get("culprit_id")
     if culprit is not None and str(culprit) == principal.staff_id:
+        return False
+    beneficiary = None if kind.beneficiary_field is None else event.payload.get(kind.beneficiary_field)
+    if beneficiary is not None and str(beneficiary) == principal.staff_id:
         return False
     roles = set(principal.roles)
     if kind.manager_only_when is not None and kind.manager_only_when(event.payload):
