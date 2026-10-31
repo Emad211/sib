@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — رویدادهای شیفت{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/shift-events.css">
+{% endblock %}
+
+{% block content %}
+<div class="se-page">
+  <header class="se-head">
+    <h1 class="se-title">ثبت رویداد شیفت</h1>
+    <p class="se-intro">هر اتفاقی که بیرون از حسابداری رخ می‌دهد، همین‌جا با یک دکمه ثبت می‌شود؛ اپ فقط چند سؤال لازم را یکی‌یکی می‌پرسد. بدون اتصال هم ثبت می‌شود و پس از اتصال به سرور می‌رود.</p>
+  </header>
+
+  {# The app's own feedback line (app.js fills it): a queued event never claims success. #}
+  <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
+
+  {# One big button per kind, grouped money/stock/care/equipment; the script draws them. #}
+  <section id="shift-event-groups" class="se-groups" aria-label="نوع رویداد"></section>
+
+  <section id="shift-event-step" class="se-panel hidden" aria-labelledby="shift-step-question">
+    <p id="shift-step-progress" class="se-kicker"></p>
+    <h2 id="shift-step-question" class="se-question"></h2>
+    <div id="shift-step-field" class="se-field"></div>
+    <p id="shift-step-error" class="se-error hidden" role="alert"></p>
+    <div class="se-actions">
+      <button type="button" id="shift-step-back" class="btn btn-secondary">قبلی</button>
+      <button type="button" id="shift-step-next" class="btn btn-primary">بعدی</button>
+    </div>
+  </section>
+
+  <section id="shift-event-review" class="se-panel hidden" aria-labelledby="shift-review-title">
+    <h2 id="shift-review-title" class="se-question">بازبینی رویداد</h2>
+    <dl id="shift-review-list" class="se-review-list"></dl>
+    <p class="se-hint">تا وقتی «ثبت رویداد» را نزنید چیزی فرستاده نمی‌شود.</p>
+    <div class="se-actions">
+      <button type="button" id="shift-review-back" class="btn btn-secondary">اصلاح</button>
+      <button type="button" id="shift-submit" class="btn btn-primary">ثبت رویداد</button>
+    </div>
+  </section>
+
+  {# Filled from `pending_url` by the script; the cached shell ships no approval row (ADR-016). #}
+  <section class="card" aria-labelledby="shift-pending-title">
+    <h2 id="shift-pending-title" class="card-title">تأییدهای در انتظار</h2>
+    <p id="shift-pending-note" class="se-hint">در حال خواندن تأییدهای در انتظار…</p>
+    <ul id="shift-pending-list" class="se-pending-list" role="list"></ul>
+  </section>
+
+  <!-- Outbox Card (hidden when 0 items) — the same card the home shell shows. -->
+  <section id="outbox-card" class="card hidden" aria-labelledby="outbox-card-title">
+    <h2 id="outbox-card-title" class="card-title">صف رویدادهای محلی (Outbox)</h2>
+    <p class="card-subtitle">رویدادهایی که در دستگاه ذخیره شده و پس از اتصال بازپخش می‌شوند.</p>
+
+    <ul id="outbox-list" class="outbox-list" role="list">
+      <!-- Populated dynamically by app.js -->
+    </ul>
+  </section>
+
+  {# The wizard's vocabulary: JSON-safe, permission-filtered, and free of any reference number. #}
+  <script id="shift-event-catalog" type="application/json">{{ wizard_json | safe }}</script>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/shift-events.js"></script>
+{% endblock %}

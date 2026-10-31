@@ -103,8 +103,9 @@ describe("Outbox Record Creation & Invariants", () => {
       /online-only event type/
     );
     assert.strictEqual(isOfflineEventTypeAllowed("stock.waste_reported"), true);
+    assert.strictEqual(isOfflineEventTypeAllowed("cash.withdrawn"), true);
+    assert.strictEqual(isOfflineEventTypeAllowed("event.approved"), true);
     assert.strictEqual(isOfflineEventTypeAllowed("handover.cash_counted"), false);
-    assert.strictEqual(isOfflineEventTypeAllowed("cash.withdrawn"), false);
   });
 });
 

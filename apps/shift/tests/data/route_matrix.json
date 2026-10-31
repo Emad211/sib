@@ -252,6 +252,20 @@
    "storekeeper": 200
   }
  },
+ "GET /events [get_events_page]": {
+  "guard": "permission:events.append",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /handover [get_handover_page]": {
   "guard": "permission:handover.count.submit",
   "note": "the phone handover screen: a receptionist and a nurse both open it (H-10, H-12)",

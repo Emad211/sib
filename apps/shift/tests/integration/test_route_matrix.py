@@ -114,7 +114,7 @@ BODIES = {
     "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
 }
-PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns"}
+PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns", "GET /events"}
 
 
 def _rows() -> dict[str, dict[str, object]]:

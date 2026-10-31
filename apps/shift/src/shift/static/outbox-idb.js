@@ -10,12 +10,27 @@ const EVENTS_URL = "/api/v1/events";
 const SYNC_TAG = "replay-outbox";
 const SW_READY_TIMEOUT_MS = 3000;
 
-// ADR-016: handover and blind counts are online-only; only current-shift
-// stock events may enter the offline queue.
+// ADR-016: handover and blind counts are online-only; every shift event of
+// S01 §3 may enter the offline queue. The set stays explicit (no build step),
+// so an online-only type is refused by default instead of by name.
 const OFFLINE_EVENT_TYPES = new Set([
+  "card.transfer_reported",
+  "refund.requested",
+  "campaign.discount_applied",
+  "cash.withdrawn",
   "stock.waste_reported",
-  "stock.emergency_withdrawal",
   "stock.shelf_restocked",
+  "patient.item_held",
+  "patient.item_delivered",
+  "stock.emergency_withdrawal",
+  "equipment.fault_reported",
+  "equipment.fault_assigned",
+  "equipment.fault_fixed",
+  "vitals.recorded",
+  "vitals.followup_opened",
+  "cleaning.confirmed",
+  "event.approved",
+  "event.rejected",
 ]);
 
 // These statuses describe the request itself, not a transient server state.

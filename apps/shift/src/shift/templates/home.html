@@ -49,6 +49,14 @@
   {% endif %}
 </section>
 
+{% if show_events_link %}
+<section class="card" aria-labelledby="events-link-title">
+  <h2 id="events-link-title" class="card-title">رویدادهای شیفت</h2>
+  <p class="card-subtitle">ضایعات، کارت‌به‌کارت، امانت بیمار، خرابی و بقیهٔ رویدادهای امروز، با یک دکمه.</p>
+  <a class="btn btn-primary btn-block" href="/events">ثبت رویداد شیفت</a>
+</section>
+{% endif %}
+
 {% if show_manager_link %}
 <section class="card" aria-labelledby="manager-link-title">
   <h2 id="manager-link-title" class="card-title">کارت روزانهٔ مدیر</h2>
