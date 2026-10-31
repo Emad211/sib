@@ -1,6 +1,6 @@
 # راهنمای بهره‌برداری اپ شیفت
 
-> نسخه 1.1 · ۱۴۰۵/۰۸/۰۹ · مبنا: `docs/shift/S02` (بخش ۴ و ۵)، `docs/ops/O01` (ADR-008)، ADR-014 و ADR-015، گام ۱۴ طراحی
+> نسخه 1.2 · ۱۴۰۵/۰۸/۰۹ · مبنا: `docs/shift/S02` (بخش ۴ و ۵)، `docs/ops/O01` (ADR-008)، ADR-014 و ADR-015، گام ۱۴ طراحی
 > دامنه: `apps/shift` روی رایانهٔ درمانگاه. همهٔ دستورها از پوشهٔ `apps/shift` اجرا می‌شوند.
 
 ## ۱. پیش‌نیازها
@@ -28,12 +28,30 @@
    | `SHIFT_SECRET_FILE` | `<SHIFT_HOME>/.shift_secret_key` | کلید امضای نشست؛ یک‌بار ساخته می‌شود |
    | `SHIFT_HOST` / `SHIFT_PORT` | `127.0.0.1` / `8443` | آدرس شنود |
    | `SHIFT_HASH_CHAIN` | `1` | زنجیرهٔ هش رویدادها |
+   | `SHIFT_ENV` | `production` | پیش‌فرض تولید است: کوکی‌ها `Secure` می‌شوند و `/docs` و `/openapi.json` خاموش‌اند. فقط برای آزمون روی HTTP خام و بدون Caddy مقدار `development` بدهید؛ روی رایانهٔ درمانگاه هرگز |
 
-3. سرویس را اجرا کنید: `./dev.ps1 run`. در استارت، migrationها خودکار اجرا می‌شوند (`PRAGMA user_version`).
+3. دیتابیس و فهرست مرجع را بسازید (یک‌بار؛ پوشهٔ خالی کافی است). این دستور schema را migrate می‌کند و ۶ محل و ۸۳ قلم مرجع را می‌ریزد؛ اجرای دوباره بی‌خطر است:
+
+   ```powershell
+   .venv/Scripts/python.exe tools/seed_reference_data.py --db shift.db
+   ```
+
+   حداقل موجودی و کد حسابداری هر قلم را مدیر بعداً در `/manager/items` پر می‌کند (Q-17).
+4. **نخستین مدیر** را بسازید. PIN را خود ابزار دو بار و پنهان می‌پرسد (از خط فرمان گرفته نمی‌شود و جایی چاپ یا لاگ نمی‌شود)؛ شش رقم و غیرقابل‌حدس باشد. ابزار را با همان متغیرهای `SHIFT_*` سرویس اجرا کنید تا همان دیتابیس و همان `.shift_secret_key` استفاده شود:
+
+   ```powershell
+   .venv/Scripts/python.exe tools/create_staff.py --name "<نام و نام خانوادگی>" --mobile 09xxxxxxxxx --role manager --staff-id manager
+   ```
+
+   `--role` تکراری می‌تواند چند نقش بدهد (`reception`, `nurse`, `storekeeper`, `purchaser`, `accountant`, `shift_doctor`, `manager`). موبایل نام ورود است و یکتاست. بقیهٔ پرسنل را همین ابزار می‌سازد (مدیر فعلاً صفحهٔ ساخت کارمند ندارد؛ فقط بازنشانی PIN، قفل‌گشایی و ثبت گوشی دارد).
+5. سرویس را اجرا کنید: `./dev.ps1 run` (یا `.venv/Scripts/python.exe start.py`). در استارت، migrationها خودکار اجرا می‌شوند (`PRAGMA user_version`).
    اگر دیتابیس از قبل داده داشته باشد، **پیش از** هر migration یک snapshot در `backups/shift_pre_migration_<UTC>.db` گرفته می‌شود؛
    اگر backup یا migration شکست بخورد، سرویس بالا نمی‌آید (`MigrationError`) و هیچ تغییری نیمه‌کاره نمی‌ماند.
-4. بررسی سلامت: `GET /healthz` باید `{"status": "ok", "version": "..."}` برگرداند.
-5. برای اجرای دائمی، سرویس را با NSSM (یا Task Scheduler با گزینهٔ «Run whether user is logged on or not») ثبت کنید (S02 بخش ۵).
+6. بررسی سلامت: `GET /healthz` باید `{"status": "ok", "version": "..."}` برگرداند؛ `/docs` و `/openapi.json` باید ۴۰۴ بدهند.
+7. با سرویس روشن، گوشی مدیر را جفت کنید (بخش ۲.۱): `tools/print_enroll_qr.py --staff-id manager --origin https://<host>:8443 --out manager.svg`، سپس QR را روی گوشی باز کنید.
+8. برای اجرای دائمی، سرویس را با NSSM (یا Task Scheduler با گزینهٔ «Run whether user is logged on or not») ثبت کنید (S02 بخش ۵).
+
+> **HTTPS:** سرویس خودش روی `127.0.0.1` HTTP ساده حرف می‌زند و Caddy (CA داخلی، ADR-015) روی همان رایانه HTTPS را به آن می‌رساند. کوکی‌های نشست در حالت تولید همیشه `Secure` هستند، پس بدون Caddy مرورگرِ گوشی ورود را نمی‌پذیرد؛ فقط Chrome روی `127.0.0.1` همان رایانه استثناست. فایل Caddyfile و نصب گواهی ریشه هنوز در مخزن نیست (بخش ۱۱).
 
 ## ۲.۱ ثبت گوشی پرسنل با QR (device enrollment)
 
@@ -170,6 +188,8 @@
 | `chain broken at seq <n>` | دست‌کاری یا بازگردانی ناقص | همان seq را با پشتیبان‌ها مقایسه کنید؛ حادثه S1 (O02) |
 | `MigrationError` در استارت | migration شکست خورده | سرویس بالا نمی‌آید؛ snapshot پیش از migration را بررسی/بازیابی کنید |
 | نبود `logs/audit.log` | مسیر `SHIFT_AUDIT_LOG` اشتباه یا بی‌مجوز | مسیر و دسترسی کاربر سرویس را درست کنید |
+| `database not found: ...; run tools/seed_reference_data.py` | هنوز دیتابیس ساخته نشده | بند ۳ بخش ۲ |
+| `refused: that staff id or mobile already exists` | موبایل یا شناسه قبلاً ثبت شده | موبایل دیگر یا `--staff-id` دیگر؛ برای بازنشانی PIN از صفحهٔ مدیر |
 | `cannot mint an enrollment token: ...` | کارمند غیرفعال است یا `--staff-id` غلط | شناسه را در فهرست `/admin/devices` ببینید و درست بدهید (بخش ۲.۱) |
 | `/enroll` می‌گوید «این صفحه باید روی نشانی امن (HTTPS) باز شود» | گوشی روی HTTP خام است یا گواهی ریشه نصب نیست | نشانی HTTPS با CA داخلی (ADR-015)؛ بخش ۲.۱ |
 | `enrollment token rejected: expired` یا `used` | توکن ۱۰ دقیقه‌ای گذشته یا یک‌بار مصرف شده | از مدیر کد تازه بگیرید؛ هر QR فقط یک گوشی |
@@ -180,9 +200,13 @@
 |---|---|
 | `services/scheduler.py` | ساخته شد؛ اجرای زمان‌بند از داخل اپ در SHF-6.x وصل می‌شود |
 | `services/audit.py` | ساخته شد؛ مسیرها/سرویس‌های حساس در گام‌های بعد آن را صدا می‌زنند |
+| Caddyfile و گواهی ریشهٔ داخلی (ADR-015) | هنوز نوشته نشده؛ بدون آن گوشی نمی‌تواند وارد شود |
+| ثبت سرویس ویندوز (NSSM) | دستی؛ فایل پیکربندی در مخزن نیست |
+| ساخت کارمند از صفحهٔ مدیر | ندارد؛ فعلاً فقط `tools/create_staff.py` |
 | پشتیبان خودکار | فعلاً با Task Scheduler ویندوز و `tools/backup_now.py`؛ زمان‌بند داخلی در گام‌های بعد |
 
 ## تاریخچه
 
 - 1.0، ۱۴۰۵/۰۸/۰۶: نسخهٔ اول — نصب، پشتیبان، بازیابی، بازسازی projectionها، بازبینی زنجیره.
 - 1.1، ۱۴۰۵/۰۸/۰۹: افزودن بخش ۲.۱ (ثبت گوشی پرسنل با QR، از صفحهٔ مدیر یا `tools/print_enroll_qr.py`) و سه ردیف عیب‌یابی ثبت دستگاه.
+- 1.2، ۱۴۰۵/۰۸/۰۹: پیش‌فرض `SHIFT_ENV` شد `production`؛ افزودن `tools/create_staff.py` (نخستین مدیر با PIN پرسیده‌شده) و ترتیب راه‌اندازی از پوشهٔ خالی (بخش ۲، بندهای ۳ تا ۶).

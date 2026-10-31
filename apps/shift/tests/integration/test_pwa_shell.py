@@ -192,6 +192,13 @@ def test_pages_name_held_records_in_persian_and_never_in_english(client: TestCli
     assert "<code>" not in client.get("/no-such-page", headers={"accept": "text/html"}).text
 
 
+def test_production_marks_the_csrf_cookie_secure_even_when_caddy_forwards_plain_http(settings: Settings) -> None:
+    for environment, expected in (("production", True), ("development", False)):
+        with TestClient(create_app(replace(settings, environment=environment))) as client:
+            cookie = client.get("/").headers["set-cookie"]
+        assert ("Secure" in cookie) is expected, environment
+
+
 def test_the_install_defaults_to_production() -> None:
     """An install with no SHIFT_ENV must get Secure cookies and no development help."""
     assert Settings.from_env({}).environment == "production"

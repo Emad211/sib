@@ -79,7 +79,8 @@ def _shell_page(
             path="/",
             httponly=True,
             samesite="strict",
-            secure=request.url.scheme == "https",
+            # Caddy terminates HTTPS and talks plain HTTP to 127.0.0.1, so production decides, not the hop.
+            secure=request.url.scheme == "https" or request.app.state.settings.environment == "production",
         )
     response.headers.update(_SECURITY_HEADERS)
     response.headers["Cache-Control"] = cache_control
