@@ -60,6 +60,15 @@ def test_reception_keeps_the_counter_and_loses_the_store() -> None:
     assert Permission.CASH_DEPOSIT_RECORD not in granted
 
 
+def test_the_nurse_starts_and_signs_the_nursing_flow_but_never_the_cash() -> None:
+    """H-12 gives the nursing flow its own two signatures, so a nurse holds start and sign (H-10)."""
+    granted = ROLE_PERMISSIONS[Role.NURSE]
+
+    assert Permission.HANDOVER_START in granted
+    assert Permission.HANDOVER_SIGN in granted
+    assert Permission.HANDOVER_CASH_SUBMIT not in granted, "only the reception flow counts the box"
+
+
 def test_multi_role_staff_get_the_union_and_not_more() -> None:
     combined = permissions_for(["reception", "accountant"])
 

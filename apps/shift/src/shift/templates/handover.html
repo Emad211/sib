@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — تحویل شیفت{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/handover.css">
+{% endblock %}
+
+{% block content %}
+<div id="handover-app" class="handover">
+  <!-- ADR-016: a handover needs the clinic server; without it the phone offers nothing to tap. -->
+  <section id="handover-offline" class="ho-screen hidden" role="alert" aria-labelledby="handover-offline-title">
+    <h1 id="handover-offline-title" class="ho-title">بدون اتصال</h1>
+    <p class="ho-text">تحویل شیفت نیازمند اتصال به سرور درمانگاه است.</p>
+    <p class="ho-hint">شمارش کور فقط روی سرور مقایسه می‌شود و در صف آفلاین ذخیره نمی‌شود. به شبکهٔ درمانگاه وصل شوید.</p>
+    <button id="handover-retry" class="ho-action ho-action-primary" type="button">تلاش دوباره</button>
+  </section>
+
+  <section id="handover-start" class="ho-screen" aria-labelledby="handover-start-title">
+    <h1 id="handover-start-title" class="ho-title">تحویل شیفت</h1>
+    <p class="ho-text">کدام تحویل را برمی‌دارید؟</p>
+    <button id="handover-start-reception" class="ho-action ho-action-primary" type="button">تحویل پذیرش</button>
+    <button id="handover-start-nursing" class="ho-action ho-action-primary" type="button">تحویل پرستاری</button>
+    <p id="handover-refusal" class="ho-error hidden" role="alert"></p>
+  </section>
+
+  <!-- H-10: one responsible person starts each flow of a shift; the second person records events. -->
+  <section id="handover-exists" class="ho-screen hidden" aria-labelledby="handover-exists-title">
+    <h1 id="handover-exists-title" class="ho-title">این تحویل باز شده است</h1>
+    <p id="handover-exists-message" class="ho-text"></p>
+    <p class="ho-hint">فقط مسئول همین تحویل آن را شروع می‌کند. اگر نفر دوم پذیرش هستید، فقط رویدادهای شیفت را ثبت کنید.</p>
+    <button id="handover-exists-back" class="ho-action" type="button">بازگشت</button>
+  </section>
+
+  <section id="handover-wizard" class="ho-screen hidden" data-step="" data-flow="">
+    <div class="ho-progress">
+      <p id="handover-progress" class="ho-kicker"></p>
+      <ol id="handover-steps" class="ho-steps" role="list"></ol>
+    </div>
+    <p id="handover-message" class="ho-message hidden" role="status"></p>
+    <div id="handover-step" class="ho-step"></div>
+    <button id="handover-early-leave" class="ho-link" type="button">خروج زودهنگام نفر خروجی</button>
+    <div id="handover-early-leave-confirm" class="ho-confirm hidden">
+      <p class="ho-hint">اگر نفر خروجی رفته است، تحویل تا تأیید تلفنی مدیر ادامه پیدا نمی‌کند.</p>
+      <button id="handover-early-leave-yes" class="ho-action" type="button">بله، نفر خروجی رفته است</button>
+      <button id="handover-early-leave-no" class="ho-link" type="button">نه، برگرد</button>
+    </div>
+  </section>
+
+  <!-- H-08: the outgoing person has gone; nothing continues until the manager confirms by phone. -->
+  <section id="handover-waiting" class="ho-screen hidden" aria-labelledby="handover-waiting-title">
+    <h1 id="handover-waiting-title" class="ho-title">نفر خروجی رفته است</h1>
+    <p class="ho-text">نفر خروجی رفته است؛ تا تأیید تلفنی مدیر صبر کنید.</p>
+    <p class="ho-hint">تحویل تا تأیید مدیر ادامه پیدا نمی‌کند.</p>
+    <button id="handover-manager-button" class="ho-action ho-action-primary" type="button">مدیر تأیید کرد</button>
+    <div id="handover-manager-picker" class="hidden">
+      <label class="ho-label" for="handover-manager">نام مدیر</label>
+      <select id="handover-manager" class="ho-select"></select>
+      <button id="handover-manager-confirm" class="ho-action ho-action-primary" type="button">ثبت تأیید مدیر</button>
+      <p id="handover-manager-message" class="ho-error hidden" role="alert"></p>
+    </div>
+  </section>
+
+  <section id="handover-done" class="ho-screen hidden" aria-labelledby="handover-done-title">
+    <h1 id="handover-done-title" class="ho-title">تحویل ثبت شد</h1>
+    <p class="ho-text">این تحویل بسته شد.</p>
+    <a class="ho-action" href="/">بازگشت به خانه</a>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/static/handover.js"></script>
+{% endblock %}

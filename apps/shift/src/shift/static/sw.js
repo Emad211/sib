@@ -19,6 +19,8 @@ const PRECACHE_URLS = [
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
+  "/static/handover.css",
+  "/static/handover.js",
   "/static/home.js",
   "/static/offline.js",
   "/static/outbox-idb.js",
@@ -73,6 +75,13 @@ self.addEventListener("fetch", (event) => {
 
   // The outbox owns POSTs: never fabricate a "queued" response here.
   if (req.method !== "GET") {
+    return;
+  }
+
+  // API answers are live-only (ADR-016). A handover status replayed from a cache would be a
+  // stale screen next morning, and R-02 keeps every count answer out of any store on the phone.
+  if (url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(req));
     return;
   }
 

@@ -209,6 +209,21 @@
    "storekeeper": 200
   }
  },
+ "GET /handover [get_handover_page]": {
+  "guard": "permission:handover.count.submit",
+  "note": "the phone handover screen: a receptionist and a nurse both open it (H-10, H-12)",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 403,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /healthz [healthz]": {
   "guard": "public",
   "roles": {
@@ -372,7 +387,7 @@
    "accountant": 403,
    "manager": 422,
    "multi_role": 422,
-   "nurse": 403,
+   "nurse": 422,
    "purchaser": 403,
    "reception": 422,
    "shift_doctor": 403,
@@ -428,7 +443,7 @@
    "accountant": 403,
    "manager": 404,
    "multi_role": 404,
-   "nurse": 403,
+   "nurse": 404,
    "purchaser": 403,
    "reception": 404,
    "shift_doctor": 403,
@@ -456,7 +471,7 @@
    "accountant": 404,
    "manager": 404,
    "multi_role": 404,
-   "nurse": 403,
+   "nurse": 404,
    "purchaser": 403,
    "reception": 404,
    "shift_doctor": 403,
