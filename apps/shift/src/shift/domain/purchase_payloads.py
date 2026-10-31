@@ -17,7 +17,7 @@ from typing import Annotated, Final, Literal
 from pydantic import Field
 
 from shift.domain.money import Toman
-from shift.domain.payloads import Identifier, Note, Payload
+from shift.domain.payloads import Identifier, Note, Payload, PhotoHash
 
 Quantity = Annotated[int, Field(strict=True, ge=1)]
 PositiveToman = Annotated[int, Field(strict=True, gt=0)]
@@ -80,6 +80,9 @@ class DeliveryReceived(Payload):
     invoice_reference: DocumentText
     lines: tuple[DeliveryLine, ...] = Field(min_length=1, max_length=MAX_LINES)
     packages: Quantity | None = None
+    # The invoice photo is mandatory for a new receipt (the service refuses without it); the field stays
+    # optional in the model so a receipt written before the owner's rule still reads back (decision 6).
+    invoice_photo_sha256: PhotoHash | None = None
 
 
 class DeliveryFlagged(Payload):
@@ -123,6 +126,7 @@ class PaymentRecorded(Payload):
     method: PaymentMethod
     paid_on: date | None = None
     receipt_reference: OptionalText = None
+    receipt_photo_sha256: PhotoHash | None = None
 
 
 class VendorReturnLine(Payload):
@@ -156,6 +160,8 @@ class RestockConfirmed(Payload):
     to_location_id: Identifier
     quantity: Quantity
     confirmer_id: Identifier
+    # The offer this confirmation closes (G3); a charge recorded in one step before the two-sided rule has none.
+    offer_id: Identifier | None = None
 
 
 class ExpiryFlagged(Payload):

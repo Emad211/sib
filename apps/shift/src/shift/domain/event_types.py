@@ -75,6 +75,14 @@ class EventType(StrEnum):
     VENDOR_CREDIT = "vendor_credit"
     RESTOCK_CONFIRMED = "restock_confirmed"
     EXPIRY_FLAGGED = "expiry_flagged"
+    # The main store's own records (B1, G3, C1): the receiver's count that lets a parcel join the store, the
+    # giver's half of a shelf charge, the storekeeper's opening count, the accountant's monthly sample
+    # and the manager's answer on a card row that is not an approvable record.
+    DELIVERY_CONFIRMED = "delivery_confirmed"
+    RESTOCK_OFFERED = "restock_offered"
+    STOCK_STORE_BASELINED = "stock.store_baselined"
+    STOCK_SAMPLE_COUNT = "stock.sample_count"
+    MANAGER_REVIEWED = "manager.reviewed"
 
 
 class UnknownEventType(ValueError):
