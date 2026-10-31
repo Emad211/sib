@@ -41,6 +41,7 @@ class ItemSeed(NamedTuple):
     minimum: int
     acc_code: str | None
     stock_factor: int
+    responsible_role: str | None = None
 
 
 LOCATIONS: tuple[LocationSeed, ...] = (
@@ -63,8 +64,8 @@ ITEMS: tuple[ItemSeed, ...] = (
     ItemSeed("speculum", "اسپکولوم", ItemKind.COUNTED, "doctor_room", "عدد", 2, "10008", 1),
     ItemSeed("paper_towel", "دستمال کاغذی", ItemKind.COUNTED, "public_area", "بسته", 2, "10009", 1),
     ItemSeed("sharps_box", "باکس اجسام تیز", ItemKind.COUNTED, "public_area", "عدد", 1, "10010", 1),
-    ItemSeed("fridge_temperature", "دمای یخچال دارو", ItemKind.READING, "main_store", "درجه", 0, None, 1),
-    ItemSeed("store_lock_ok", "قفل انبار سالم است", ItemKind.YES_NO, "main_store", "وضعیت", 0, None, 1),
+    ItemSeed("fridge_temperature", "دمای یخچال دارو", ItemKind.READING, "main_store", "درجه", 0, None, 1, "reception"),
+    ItemSeed("store_lock_ok", "قفل انبار سالم است", ItemKind.YES_NO, "main_store", "وضعیت", 0, None, 1, "reception"),
 )
 
 
@@ -134,6 +135,7 @@ def _install_item(connection: Connection, seed: ItemSeed, changed_at: str) -> No
         effective_from_shift=BASELINE_SHIFT,
         changed_at=changed_at,
         changed_by=SEEDED_BY,
+        responsible_role=seed.responsible_role,
     )
 
 

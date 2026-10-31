@@ -4,10 +4,15 @@ Only rules live here, never defaults: a value is a row in `setting_versions`, ef
 """
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 from enum import StrEnum
+
+# The setting vocabulary lives in `setting_keys` (it grew past this file's size cap); the names stay here.
+from shift.domain.setting_keys import SETTING_SPECS as SETTING_SPECS
+from shift.domain.setting_keys import SettingKey as SettingKey
+from shift.domain.setting_keys import SettingKind as SettingKind
+from shift.domain.setting_keys import SettingSpec as SettingSpec
 
 PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 SHIFT_RANKS = (1, 2, 3)  # morning 07:30, evening 13:30, night 19:30 (accounting schedule)
@@ -16,44 +21,6 @@ _CLOCK = re.compile(r"(\d{1,2}):(\d{2})")
 
 class PolicyError(ValueError):
     """A value violates clinic policy; callers reject it instead of clamping it."""
-
-
-class SettingKey(StrEnum):
-    """Settings a manager may change; the values are the keys stored in the database."""
-
-    CARD_TIME = "card_time"
-    TAKEOVER_WINDOW_MINUTES = "takeover_window_minutes"
-    WITHDRAWAL_CAP_TOMAN = "withdrawal_cap_toman"
-    SESSION_TTL_HOURS = "session_ttl_hours"
-    WEEKLY_COUNT_TIME = "weekly_count_time"
-    WEEKLY_COUNT_WEEKDAY = "weekly_count_weekday"
-
-
-class SettingKind(StrEnum):
-    """How a value is read. A `WEEKDAY` is `date.weekday()` (Monday=0 … Sunday=6), not the Persian week."""
-
-    CLOCK_TIME = "clock_time"
-    INTEGER = "integer"
-    WEEKDAY = "weekday"
-
-
-@dataclass(frozen=True, slots=True)
-class SettingSpec:
-    """The kind of value a setting takes and the bounds policy allows for it."""
-
-    kind: SettingKind
-    minimum: int | None = None
-    maximum: int | None = None
-
-
-SETTING_SPECS: Mapping[SettingKey, SettingSpec] = {
-    SettingKey.CARD_TIME: SettingSpec(SettingKind.CLOCK_TIME),
-    SettingKey.TAKEOVER_WINDOW_MINUTES: SettingSpec(SettingKind.INTEGER, 0, 180),
-    SettingKey.WITHDRAWAL_CAP_TOMAN: SettingSpec(SettingKind.INTEGER, 0, 100_000_000),
-    SettingKey.SESSION_TTL_HOURS: SettingSpec(SettingKind.INTEGER, 1, 24),
-    SettingKey.WEEKLY_COUNT_TIME: SettingSpec(SettingKind.CLOCK_TIME),
-    SettingKey.WEEKLY_COUNT_WEEKDAY: SettingSpec(SettingKind.WEEKDAY, 0, 6),
-}
 
 
 class Role(StrEnum):
@@ -103,8 +70,18 @@ def parse_setting(key: SettingKey | str, raw: object) -> int | time:
     return number
 
 
+def optional_number(key: SettingKey | str, stored: str) -> int | None:
+    """The whole number an optional setting holds, or None while the manager has set no number (E1)."""
+    if not spec_for(key).optional or stored.strip() == "":
+        return None
+    value = parse_setting(key, stored)
+    return value if isinstance(value, int) else None
+
+
 def canonical_setting(key: SettingKey | str, raw: object) -> str:
-    """The stored text form of a setting: stable, comparable and re-parsable."""
+    """The stored text form of a setting: stable, comparable and re-parsable; an optional one may be empty."""
+    if spec_for(key).optional and str(raw).strip() == "":
+        return ""
     value = parse_setting(key, raw)
     return f"{value.hour:02d}:{value.minute:02d}" if isinstance(value, time) else str(value)
 

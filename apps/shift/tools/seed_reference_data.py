@@ -171,7 +171,7 @@ def _install_location(connection: Connection, seed: LocationSeed, changed_at: st
     )
 
 
-def _install_item(connection: Connection, seed: ItemSeed, changed_at: str) -> None:
+def _install_item(connection: Connection, seed: ItemSeed, changed_at: str, position: int) -> None:
     requested = (
         seed.name,
         seed.kind.value,
@@ -219,6 +219,7 @@ def _install_item(connection: Connection, seed: ItemSeed, changed_at: str) -> No
         effective_from_shift=BASELINE_SHIFT,
         changed_at=changed_at,
         changed_by=SEEDED_BY,
+        sort_order=position,
     )
 
 
@@ -228,8 +229,9 @@ def seed(database: Database) -> tuple[int, int]:
     with database.write() as connection:
         for location in LOCATIONS:
             _install_location(connection, location, changed_at)
-        for item in ITEMS:
-            _install_item(connection, item, changed_at)
+        for position, item in enumerate(ITEMS, start=1):
+            # The list is in shelf order (the owner's appendix); the position keeps it that way in the app.
+            _install_item(connection, item, changed_at, position * 10)
         locations = catalog_repo.list_locations_effective(connection, BASELINE_SHIFT)
         items = catalog_repo.list_items_effective(connection, BASELINE_SHIFT)
     return len(locations), len(items)

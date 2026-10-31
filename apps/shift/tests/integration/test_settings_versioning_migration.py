@@ -10,7 +10,12 @@ from sqlalchemy.exc import IntegrityError
 
 from shift.adapters.db import migrations
 from shift.adapters.db.core import Database
-from shift.adapters.db.migrations import m0004_settings_and_catalog, m0007_catalog_fixes, m0008_schedule_settings
+from shift.adapters.db.migrations import (
+    m0004_settings_and_catalog,
+    m0007_catalog_fixes,
+    m0008_schedule_settings,
+    m0020_catalog_lists,
+)
 from shift.domain.policy import Role, SettingKey, ShiftKey
 from shift.services.catalog import ItemKind
 
@@ -184,6 +189,7 @@ def test_the_migrations_seed_the_setting_defaults(database: Database) -> None:
 def test_the_migrations_seed_every_known_setting_key(database: Database) -> None:
     seeded = {key for key, _ in m0004_settings_and_catalog.DEFAULTS}
     seeded |= {key for key, _ in m0008_schedule_settings.DEFAULTS}
+    seeded |= set(m0020_catalog_lists.THRESHOLDS)
 
     assert {key.value for key in SettingKey} <= seeded, "every policy key must have a seeded row"
     # ADR-018 retired `daily_card_skip_weekday`; its seeded row stays as history (R-03).

@@ -44,6 +44,7 @@ from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.cash_box import CashBox
 from shift.domain.cash_cutoff import CashMovement, signed_cash, windows
+from shift.domain.checklist_rules import Frequency
 from shift.domain.events import EventType
 from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
@@ -56,6 +57,7 @@ from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.catalog import CatalogService, Item, ItemKind
+from shift.services.checklists import ChecklistAsker
 from shift.services.event_store import EventStore, NewEvent
 from shift.services.projections import ProjectionEngine
 
@@ -422,6 +424,9 @@ class HandoverService:
     ) -> HandoverState:
         """Record one checklist answer on the checklists step (H-04); it changes no projection."""
         flow = self._require_step(handover_id, HandoverStep.CHECKLISTS)
+        asked = ChecklistAsker(self._catalog, self._database).owned(flow.row.flow, ShiftKey.parse(flow.row.shift_id))
+        if item_id not in {item.item_id for item in asked}:
+            raise HandoverError("the item is not on this flow's checklist")
         payload = {"item_id": item_id, "ok": ok, "reading": reading, "photo_id": photo_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_CHECKLIST_ANSWERED.value, payload)])
         return self.state(handover_id)
@@ -651,7 +656,11 @@ class HandoverService:
 
     def _counted_items(self, shift: ShiftKey, location: str) -> list[Item]:
         """The countable items of one step's location, as the catalog sees them at the flow's shift."""
-        return [item for item in self._catalog.items(shift, location_id=location) if item.kind is ItemKind.COUNTED]
+        return [
+            item
+            for item in self._catalog.items(shift, location_id=location)
+            if item.kind is ItemKind.COUNTED and item.frequency is Frequency.EVERY_SHIFT
+        ]
 
     def _live(self, handover_id: str) -> _Flow:
         """The flow rebuilt from its log; a closed flow accepts no more work."""
