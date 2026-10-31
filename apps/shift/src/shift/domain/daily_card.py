@@ -16,7 +16,7 @@ from datetime import date, datetime, time, timedelta
 from shift.common.clock import TEHRAN
 
 # Bumped only with the stored payload's shape; a stored card stays readable while the shape grows.
-CARD_SCHEMA_VERSION = 1
+CARD_SCHEMA_VERSION = 2
 FRIDAY = 4
 SATURDAY = 5
 DEFAULT_HORIZON_DAYS = 14

@@ -19,6 +19,7 @@ from event_fixtures import build_event
 from shift.adapters.db import card_repo, handover_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN, tehran_iso
+from shift.domain.daily_card import CARD_SCHEMA_VERSION
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.policy import ShiftKey
 from shift.services.audit import AuditEntry, AuditService
@@ -334,6 +335,9 @@ def test_a_regenerated_card_reports_the_whole_covered_day(
     )
     assert card.discrepancies[1].culprit == Person("staff-out", "Sara Rahimi")
     assert card.discrepancies[1].difference == 91_111
+    # The size alone is not enough for a manager: the card says which way the gap went.
+    assert card.discrepancies[0].direction == "shortage"
+    assert card.discrepancies[1].direction == "surplus"
     assert card.discrepancies[1].at_tehran == tehran_iso(_monday(9, 15))
     # The flows of the covered day only, oldest first, with the two flags the log carries.
     assert [flow.handover_id for flow in card.flows] == ["ho-reception", "ho-nursing", "ho-nursing-2"]
@@ -364,7 +368,7 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
     stored = _stored_payload(database, CARD_DAY)
     document = json.loads(stored)
 
-    assert document["schema"] == 1
+    assert document["schema"] == CARD_SCHEMA_VERSION
     assert set(document) == {"schema", "card_date", "covered_from", "covered_to", "generated_at", "sections"}
     # Stored as canonical JSON, so the keys arrive sorted and the same day always stores the same text.
     assert set(document["sections"]) == {

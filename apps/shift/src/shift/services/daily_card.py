@@ -37,6 +37,9 @@ from shift.services.handover import EXCEPTION_ACTION
 # is the same name, and the card service does not import the asyncio runtime for one string.
 ACTOR = "shift-runtime"
 GENERATED_ACTION = "daily_card.generated"
+# A settled gap's direction: the event log keeps the sign, the card keeps the meaning beside the size.
+SHORTAGE = "shortage"
+SURPLUS = "surplus"
 _EMERGENCY = EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value
 _DISCREPANCY = EventType.DISCREPANCY_RECORDED.value
 _SECONDS_PER_HOUR = 3600
@@ -123,6 +126,7 @@ class DiscrepancyLine:
     flow: str
     at_tehran: str
     difference: int
+    direction: str
     item_id: str | None
     culprit: Person | None
 
@@ -132,6 +136,7 @@ class DiscrepancyLine:
             "flow": self.flow,
             "at_tehran": self.at_tehran,
             "difference": self.difference,
+            "direction": self.direction,
             "item_id": self.item_id,
             "culprit": None if self.culprit is None else self.culprit.to_payload(),
         }
@@ -145,6 +150,7 @@ class DiscrepancyLine:
             flow=str(payload["flow"]),
             at_tehran=str(payload["at_tehran"]),
             difference=int(payload["difference"]),
+            direction=str(payload["direction"]),
             item_id=None if item_id is None else str(item_id),
             culprit=None if culprit is None else Person.from_payload(culprit),
         )
@@ -447,10 +453,12 @@ def _cash_exceptions(connection: Connection, window: CardWindow) -> tuple[CashEx
 
 
 def _discrepancies(connection: Connection, window: CardWindow, names: _Names) -> tuple[DiscrepancyLine, ...]:
-    """Every recorded gap of the window, newest first, rendered as a magnitude.
+    """Every recorded gap of the window, newest first, with its size and which way it went.
 
     `payload["difference"]` is signed (positive a shortage, negative a surplus) because the log keeps
-    the direction; the card shows the size of the gap, and the direction stays in the event log.
+    the direction; the card keeps the size as a positive figure and states the direction beside it, so
+    a manager reading «۹۱٬۱۱۱» also reads whether the clinic was short or over, never what it was
+    compared against.
     """
     events = _window_events(connection, window, _DISCREPANCY)
     return tuple(
@@ -459,6 +467,7 @@ def _discrepancies(connection: Connection, window: CardWindow, names: _Names) ->
             flow=_flow_of(connection, event.handover_id),
             at_tehran=event.at_tehran,
             difference=abs(int(event.payload["difference"])),
+            direction=SURPLUS if int(event.payload["difference"]) < 0 else SHORTAGE,
             item_id=None if event.payload.get("item_id") is None else str(event.payload["item_id"]),
             culprit=None if event.payload.get("culprit_id") is None else names.person(str(event.payload["culprit_id"])),
         )
