@@ -12,6 +12,12 @@ The figures are invented and distinctive, so a substring search cannot false-pos
 identifier or a file size. The test is allowed to know them (it reads them back from the projections
 at the moment the flow starts); the client is not, and that is exactly what is asserted.
 
+The manager's side of the same promise (SHF-6.1) runs after the flows: the scheduler's own builder
+stores the day's card, the card's four pages are read as a manager and scanned for every reference
+the audit trail froze, a receptionist and a nurse are refused with a `403` whose raw bytes carry no
+figure or name of the card at all, and the document the engine stored is scanned as well — because
+`audit_log` is the only sink allowed to rest a reference in (R-02, ADR-011).
+
 Everything is synthetic: accounting comes from `tools/make_synthetic_acc_db.py` (emptied of
 invoices), staff and phones from `tests/data/auth_fixtures.py`.
 """
@@ -19,6 +25,7 @@ invoices), staff and phones from `tests/data/auth_fixtures.py`.
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -31,11 +38,15 @@ from synthetic_accounting import empty_accounting
 import shift as shift_package
 from shift.adapters.db import projections_repo
 from shift.app import create_app
+from shift.common.clock import TEHRAN, to_tehran
 from shift.config.settings import Settings
+from shift.domain.daily_card import FRIDAY, window_for
 from shift.domain.handover_counts import CountStatus
 from shift.domain.handover_fsm import HandoverFlow
+from shift.services.audit import AuditEntry
 from shift.services.auth import SESSION_COOKIE
-from shift.services.handover import REFERENCE_ACTION
+from shift.services.daily_card import GENERATED_ACTION, Card
+from shift.services.handover import EXCEPTION_ACTION, REFERENCE_ACTION
 
 CASH_REFERENCE = 2_468_913  # what the box should hold when the flow starts (N0 of the baseline)
 CASH_FIRST = 2_469_500  # a blind cash count, off by a little
@@ -76,6 +87,31 @@ FIGURES: tuple[int, ...] = (
     SALINE_COUNT,
     OXYGEN_REFERENCE,
 )
+# The two gaps a card exists to report (S01 §6): a manager's own page may show these and the receipt
+# below, and nothing else the server holds. The saline gap is not in `FIGURES` because no API answer
+# ever carried it; it is still a card figure, so it is asserted by value where the card holds it.
+CARD_GAPS: tuple[int, ...] = (abs(CASH_REFERENCE - CASH_JOINT), abs(DICLO_REFERENCE - DICLO_JOINT))
+# What the card and its stored document may never carry: every figure the server keeps to itself —
+# the five frozen references (`CASH_REFERENCE`, `SHELF_REFERENCE`, `DICLO_REFERENCE`,
+# `SALINE_REFERENCE`, `OXYGEN_REFERENCE`) and the blind and joint counts behind them — except the
+# gaps the card is written to report.
+FORBIDDEN_FIGURES: tuple[int, ...] = tuple(figure for figure in FIGURES if figure not in CARD_GAPS)
+# A receipt the audit trail reports as landed inside the flow: the manager's card shows this total.
+CASH_EXCEPTION = 4_512_309
+INCOMING = ROLES["reception"].staff_id
+CARD_PATH = "/manager/card"
+HISTORY_PATH = "/manager/cards"
+SETTINGS_PATH = "/manager/settings"
+REFUSAL = "نقش شما اجازهٔ این کار را ندارد."
+CARD_HEADINGS = (
+    "شروع اضطراری تحویل",
+    "نقد ثبت‌شده در تحویل",
+    "مغایرت‌ها",
+    "شیفت‌ها و تحویل‌های روز",
+    "تحویل‌های باز",
+)
+# Anything of the card's own page: a 403 may not be that page with its values stripped in the template.
+CARD_MARKUP = ("mg-page", "mg-section", "mg-amount", "mg-alert-row", "کارت روزانهٔ مدیر")
 _PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 _STATUSES = {status.value for status in CountStatus}
 
@@ -104,6 +140,9 @@ class Scanner:
     """Every response of the run, searched for every figure after each request."""
 
     responses: list[str] = field(default_factory=list)
+    # The manager's own card is allowed to show the gaps it reports, so its pages scan the rest of
+    # the server's figures; every response outside the card keeps the full `FIGURES`.
+    figures: tuple[int, ...] = FIGURES
 
     @property
     def count(self) -> int:
@@ -117,7 +156,7 @@ class Scanner:
         cookies = "\n".join(f"{name}={value}" for name, value in response.cookies.items())
         status_line = f"{response.status_code} {response.reason_phrase}"
         surfaces = {"body": text, "headers": headers, "cookies": cookies, "status line": status_line}
-        for figure in FIGURES:
+        for figure in self.figures:
             for variant in _variants(figure):
                 for surface, content in surfaces.items():
                     assert not _appears(variant, content), f"{label}: figure {figure} leaked into the {surface}"
@@ -521,6 +560,202 @@ def _scan_the_shell(client: TestClient, scanner: Scanner, headers: dict[str, str
         assert response.status_code == 200, url
 
 
+# --- the manager's side of the promise (SHF-6.1) ---------------------------------------------------
+
+
+def _record_a_receipt_inside_the_flow(client: TestClient, handover_id: str, amount: int) -> None:
+    """The audit row `HandoverService._report_carry` writes when a receipt lands inside a flow.
+
+    A real receipt is an accounting close stamped inside the flow's own window (H-11); that scenario
+    belongs to the accounting and handover tests. This gate records the row through the same audit
+    service call the production path makes, with the same action and detail, so the card's cash block
+    really holds a figure that a non-manager page must never show.
+    """
+    client.app.state.audit.record(
+        AuditEntry(
+            actor_id=INCOMING,
+            action=EXCEPTION_ACTION,
+            subject_id=handover_id,
+            detail={"flow": "reception", "amount": amount},
+        )
+    )
+
+
+def _card_day_for(moment: datetime) -> date:
+    """The card date whose window covers `moment`'s Tehran day: the next run the scheduler makes.
+
+    A card reports the day before it (S01 §6), so today's work is on tomorrow's card. When tomorrow
+    is Friday there is no card at all and Saturday's card covers Thursday and Friday (ADR-018),
+    which still contains today.
+    """
+    today = to_tehran(moment).date()
+    run_day = today + timedelta(days=1)
+    return run_day + timedelta(days=1) if run_day.weekday() == FRIDAY else run_day
+
+
+def _generate_the_card(client: TestClient) -> Card:
+    """Store the card through the scheduler's own entry point, then prove it covers the work above."""
+    now = client.app.state.clock.now_utc()
+    run_day = _card_day_for(now)
+    stored = client.app.state.daily_card.generate_due(datetime.combine(run_day, time(7, 30), tzinfo=TEHRAN))
+    assert [card.card_date for card in stored] == [run_day], "the scheduler path stored no card for the day"
+    window = window_for(run_day)
+    assert window is not None and window.covered_from <= to_tehran(now).date() <= window.covered_to, (
+        "the generated card does not cover the day the flows were recorded on"
+    )
+    return stored[0]
+
+
+def _manager_urls(card: Card) -> tuple[str, ...]:
+    """The four manager pages, the stored card's own day among them."""
+    return (CARD_PATH, HISTORY_PATH, f"{CARD_PATH}/{card.card_date.isoformat()}", SETTINGS_PATH)
+
+
+def _card_amounts(card: Card) -> tuple[int, ...]:
+    """The money the card carries: every settled gap and every receipt total, no clock reading."""
+    sections = card.to_payload()["sections"]
+    amounts = {
+        int(entry[key])
+        for section in sections.values()
+        for entry in section
+        for key in ("difference", "amount")
+        if key in entry
+    }
+    return tuple(sorted(amounts))
+
+
+def _card_identities(card: Card) -> tuple[str, ...]:
+    """Every name and handover id the card carries — the emergency actor's name among them."""
+    found: set[str] = set()
+
+    def walk(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                if key in {"name", "handover_id"} and isinstance(child, str):
+                    found.add(child)
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(card.to_payload()["sections"])
+    return tuple(sorted(found))
+
+
+def _assert_the_card_really_carries(card: Card) -> None:
+    """Fail closed: the card really holds the receipt, the three gaps and the emergency start."""
+    assert [entry.amount for entry in card.cash_exceptions] == [CASH_EXCEPTION], "the card held no receipt"
+    assert {entry.difference for entry in card.discrepancies} == {
+        abs(CASH_REFERENCE - CASH_JOINT),
+        abs(DICLO_REFERENCE - DICLO_JOINT),
+        abs(SALINE_REFERENCE - SALINE_COUNT),
+    }, "the card held no gap"
+    assert [entry.recorded_by.name for entry in card.emergency_starts] == [ROLES["reception"].full_name]
+    assert [entry.manager.name for entry in card.emergency_starts] == [ROLES["manager"].full_name]
+    unnamed = [entry for entry in card.discrepancies if entry.difference == abs(SALINE_REFERENCE - SALINE_COUNT)]
+    assert [entry.culprit for entry in unnamed] == [None], "the emergency path's gap stays unnamed (H-08)"
+
+
+def _scan_the_manager_pages(client: TestClient, session: Session, card: Card) -> int:
+    """The manager's four pages: 200, the card's own figures rendered, and no server figure among them.
+
+    Scanned with `FORBIDDEN_FIGURES`, not `FIGURES`: a card's job is to show the gap it settled and
+    the receipt it was told about, so those two gaps are the only figures allowed on its pages. The
+    rendered amounts are asserted first, so a page that quietly stopped showing the card cannot make
+    this scan pass by rendering nothing.
+    """
+    references = Scanner(figures=FORBIDDEN_FIGURES)
+    headers = _act(client, session)
+    urls = _manager_urls(card)
+    card_page = _call(client, references, "GET", urls[0], headers=headers)
+    assert card_page.status_code == 200, card_page.text
+    for amount in _card_amounts(card):
+        assert f"{amount:,}" in card_page.text, f"the card page rendered no {amount}, so scanning for it proves nothing"
+    for url in urls[1:]:
+        response = _call(client, references, "GET", url, headers=headers)
+        assert response.status_code == 200, url
+    return references.count
+
+
+def _assert_no_card_data(response, card: Card, label: str) -> None:
+    """The raw body, every header and every cookie: no reference, no count, no gap, no name, no id."""
+    surfaces = {
+        "body": response.content.decode("utf-8", "replace"),
+        "headers": "\n".join(f"{name}: {value}" for name, value in response.headers.items()),
+        "cookies": "\n".join(f"{name}={value}" for name, value in response.cookies.items()),
+    }
+    for figure in (*FIGURES, *_card_amounts(card)):
+        for variant in _variants(figure):
+            for surface, content in surfaces.items():
+                assert not _appears(variant, content), f"{label}: figure {figure} reached the 403 {surface}"
+    for identity in _card_identities(card):
+        for surface, content in surfaces.items():
+            assert identity not in content, f"{label}: {identity!r} reached the 403 {surface}"
+
+
+def _scan_as_non_managers(client: TestClient, scanner: Scanner, card: Card, sessions: tuple[Session, ...]) -> int:
+    """The same four pages as people who may not open them: a 403, and not one figure of the card."""
+    scanned = 0
+    for session in sessions:
+        headers = {**_act(client, session), "Accept": "text/html"}
+        for url in _manager_urls(card):
+            response = _call(client, scanner, "GET", url, headers=headers)
+            scanned += 1
+            assert response.status_code == 403, url
+            body = response.content.decode("utf-8", "replace")
+            assert REFUSAL in body, url
+            # The raw bytes are the shared refusal page, never the card with its values stripped in
+            # the template: neither its markup nor one of its headings may survive at all.
+            for marker in (*CARD_MARKUP, *CARD_HEADINGS):
+                assert marker not in body, f"{url}: the 403 page still carries {marker!r}"
+            _assert_no_card_data(response, card, url)
+    return scanned
+
+
+def _assert_the_stored_card_holds_no_leaked_figure(client: TestClient, card: Card) -> None:
+    """The document the engine wrote: the gaps and the receipt it means to hold, never a server figure."""
+    with client.app.state.database.read() as connection:
+        payload = str(
+            connection.exec_driver_sql(
+                "SELECT payload FROM daily_cards WHERE card_date = ?", (card.card_date.isoformat(),)
+            ).scalar_one()
+        )
+    for figure in FORBIDDEN_FIGURES:
+        for variant in _variants(figure):
+            assert not _appears(variant, payload), f"the stored card carries the figure {figure}"
+    for amount in _card_amounts(card):
+        assert _appears(str(amount), payload), f"the stored card does not hold {amount}, so its absence proves nothing"
+
+
+def _assert_the_generated_row_holds_no_figure(client: TestClient, settings: Settings, card: Card) -> None:
+    """The card's own audit row names the window it built and restates no figure of the card.
+
+    `audit.log` is the only sink allowed to carry a number (R-02, ADR-011) and the frozen reference
+    map is the only row that may carry one: a generation row says which day it built, nothing about
+    what it found.
+    """
+    figures = (*FIGURES, *_card_amounts(card))
+    with client.app.state.database.read() as connection:
+        rows = [
+            dict(row)
+            for row in connection.exec_driver_sql(
+                "SELECT subject_id, detail FROM audit_log WHERE action = ? ORDER BY id", (GENERATED_ACTION,)
+            ).mappings()
+        ]
+    assert rows, "generating a card left no audit row"
+    assert str(rows[-1]["subject_id"]) == card.card_date.isoformat()
+    lines = [
+        line
+        for line in (settings.log_dir / "audit.log").read_text(encoding="utf-8").splitlines()
+        if GENERATED_ACTION in line
+    ]
+    assert lines, "the card generation reached no audit log line"
+    for text in (*[f"{row['subject_id']} {row['detail']}" for row in rows], *lines):
+        for figure in figures:
+            for variant in _variants(figure):
+                assert not _appears(variant, text), f"the card's audit row carries the figure {figure}"
+
+
 def test_the_reference_never_leaves_the_server_in_a_whole_handover(
     app_client: TestClient, leak_settings: Settings
 ) -> None:
@@ -565,7 +800,22 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
     assert other_event.status_code == 200, other_event.text
     _scan_the_shell(app_client, scanner, _act(app_client, incoming))
 
-    assert scanner.count >= 30, f"the scan covered only {scanner.count} responses"
+    # The manager's side (SHF-6.1): the day's settled gaps and a receipt are in the audit trail, the
+    # scheduler's builder stores the card, and from here the manager's pages, the two refusals and
+    # the stored document are scanned for the figures the server really held.
+    _record_a_receipt_inside_the_flow(app_client, closed, CASH_EXCEPTION)
+    manager = _sign_in(app_client, scanner, "manager")
+    card = _generate_the_card(app_client)
+    _assert_the_card_really_carries(card)
+    assert _scan_the_manager_pages(app_client, manager, card) == len(_manager_urls(card))
+    nurse = _sign_in(app_client, scanner, "nurse")
+    assert _scan_as_non_managers(app_client, scanner, card, (incoming, nurse)) == 2 * len(_manager_urls(card))
+    _assert_the_stored_card_holds_no_leaked_figure(app_client, card)
+    _assert_the_generated_row_holds_no_figure(app_client, leak_settings, card)
+
+    # 75 answers through the full `FIGURES` scan, plus the four manager pages the card's own scanner
+    # reads: nothing may silently stop being scanned without failing here.
+    assert scanner.count >= 75, f"the scan covered only {scanner.count} responses"
     _assert_only_the_audit_trail_holds_a_figure(app_client, leak_settings, closed, emergency)
 
 
