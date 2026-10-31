@@ -19,11 +19,14 @@ from shift.services.projections import ProjectionEngine
 NIGHT_SHIFT_END = time(7, 30)
 
 # ADR-016: a handover runs against the live server, where the blind comparison happens, so its
-# vocabulary never arrives from the offline queue. The handover service is its only writer.
+# vocabulary never arrives from the offline queue. The handover service is its only writer, and the
+# refusal is written for the person holding the phone (Persian, no numbers) while keeping the ADR
+# token the operator scripts and the older tests look for.
 LIVE_ONLY = frozenset(
     {event_type.value for event_type in EventType if event_type.value.startswith("handover.")}
     | {EventType.DISCREPANCY_RECORDED.value}
 )
+LIVE_ONLY_REFUSAL = "رویدادهای تحویل شیفت فقط روی سرور درمانگاه ثبت می‌شوند و از صف آفلاین پذیرفته نمی‌شوند (ADR-016)."
 
 
 class OutboxValidationError(ValueError):
@@ -135,10 +138,7 @@ class OutboxService:
             raise OutboxValidationError(str(exc)) from exc
 
         if submission.type in LIVE_ONLY:
-            raise OutboxValidationError(
-                "handover events are recorded by the handover screen against the live server, "
-                "never from the offline queue (ADR-016)"
-            )
+            raise OutboxValidationError(LIVE_ONLY_REFUSAL)
 
         try:
             validate_payload(submission.type, submission.payload)

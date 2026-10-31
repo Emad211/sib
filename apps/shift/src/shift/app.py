@@ -9,7 +9,16 @@ from fastapi.staticfiles import StaticFiles
 
 from shift.__version__ import __version__
 from shift.adapters.db.core import Database
-from shift.api import deps, routes_auth, routes_catalog, routes_devices, routes_events, routes_settings, routes_web
+from shift.api import (
+    deps,
+    routes_auth,
+    routes_catalog,
+    routes_devices,
+    routes_events,
+    routes_handover,
+    routes_settings,
+    routes_web,
+)
 from shift.api.errors import install_error_handlers
 from shift.common.clock import Clock, SystemClock
 from shift.config.logging import configure_logging
@@ -23,6 +32,7 @@ from shift.services.backup import BackupService
 from shift.services.catalog import CatalogService
 from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
+from shift.services.handover import HandoverService
 from shift.services.projections import ProjectionEngine
 from shift.services.scheduler import PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
@@ -39,20 +49,22 @@ def _settings_service(request: Request) -> SettingsService:
 
 
 def _background_jobs(
-    settings: Settings, database: Database, *, clock: Clock, services: SettingsService, audit: AuditService
+    settings: Settings,
+    database: Database,
+    *,
+    clock: Clock,
+    services: SettingsService,
+    audit: AuditService,
+    bridge: AccountingBridge | None,
 ) -> BackgroundJobs | None:
     """The jobs a serving process runs, or `None` when this process only answers requests.
 
     Backups follow ADR-008: one snapshot at startup and one a day at 04:00 Tehran. The accounting
-    bridge is only built when an accounting copy is configured, and it reads that copy read-only.
+    bridge is the one the handover service also reads through, and it only exists when a copy is
+    configured; it reads that copy read-only.
     """
     if not settings.background_jobs:
         return None
-    bridge = None
-    if settings.accounting_db_path is not None:
-        bridge = AccountingBridge(
-            database, EventStore(database, clock=clock, hash_chain=settings.hash_chain), clock=clock
-        )
     return BackgroundJobs(
         clock=clock,
         scheduler=Scheduler(PolicySchedule(services), clock=clock),
@@ -91,8 +103,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.devices = DeviceService(database, clock=clock, audit=audit)
         application.state.catalog = CatalogService(database, clock=clock)
         application.state.settings_service = SettingsService(database, clock=clock)
+        # One bridge for the process: the handover start reads accounting through it, and the
+        # background poll keeps the mirror live. Without an accounting copy the bridge stays None
+        # and a handover start is refused (H-03), never silently allowed.
+        accounting_path = resolved.accounting_db_path
+        bridge = None
+        if accounting_path is not None:
+            bridge = AccountingBridge(database, application.state.events, clock=clock)
+        application.state.handover = HandoverService(
+            database,
+            application.state.events,
+            projections=application.state.projections,
+            catalog=application.state.catalog,
+            audit=audit,
+            clock=clock,
+            bridge=bridge,
+            accounting_path=None if accounting_path is None else str(accounting_path),
+        )
         jobs = _background_jobs(
-            resolved, database, clock=clock, services=application.state.settings_service, audit=audit
+            resolved,
+            database,
+            clock=clock,
+            services=application.state.settings_service,
+            audit=audit,
+            bridge=bridge,
         )
         application.state.jobs = jobs
         if jobs is not None:
@@ -136,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(routes_events.router)
+    app.include_router(routes_handover.router)
     app.include_router(routes_web.router)
 
     @app.get("/healthz", tags=["ops"])
