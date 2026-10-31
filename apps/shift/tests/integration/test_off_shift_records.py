@@ -57,10 +57,10 @@ def _headers(client: TestClient, key: str) -> dict[str, str]:
     return {"X-CSRFToken": issued.json()["csrf_token"]}
 
 
-def _post(client: TestClient, headers: dict[str, str], *, client_at: datetime):
+def _post(client: TestClient, headers: dict[str, str], *, client_at: datetime, body: dict | None = None):
     return client.post(
         "/api/v1/events",
-        json={**VITALS, "client_at": client_at.isoformat(), "client_event_id": new_ulid(client_at)},
+        json={**(body or VITALS), "client_at": client_at.isoformat(), "client_event_id": new_ulid(client_at)},
         headers=headers,
     )
 
@@ -111,7 +111,9 @@ def test_the_manager_card_shows_the_presence_and_the_kept_record(tmp_path: Path)
         headers = _headers(client, "multi_role")
         declared = client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
         assert declared.status_code == 201, declared.text
-        kept = _post(client, headers, client_at=NOW - timedelta(minutes=5))
+        # A reception kind: a record outside the person's own grants is refused, not held.
+        card = {"type": "card.transfer_reported", "payload": {"amount": 150_000, "admission_no": "A-1001"}}
+        kept = _post(client, headers, client_at=NOW - timedelta(minutes=5), body=card)
         assert kept.json()["held"] is True
 
         # The card that covers today is built tomorrow (it reports the day that just ended).
