@@ -65,22 +65,19 @@ def test_a_restart_backfills_every_missed_day_after_the_newest_card() -> None:
 
 
 def test_the_backfill_never_reaches_further_back_than_the_horizon() -> None:
-    """A fresh install produces a fortnight of cards, not a history it never had."""
+    """A long outage backfills a bounded stretch, not the whole history it missed."""
     today = date(2026, 11, 10)  # Tuesday
 
-    days = due_card_days(today, newest=None, horizon=5)
+    days = due_card_days(today, newest=today - timedelta(days=30), horizon=5)
 
     assert days == (date(2026, 11, 5), date(2026, 11, 7), date(2026, 11, 8), date(2026, 11, 9), today)
     assert min(days) == today - timedelta(days=5)
 
 
-def test_a_fresh_install_skips_fridays_and_never_repeats_a_date() -> None:
-    days = due_card_days(WEDNESDAY, newest=None, horizon=14)
-
-    assert len(days) == len(set(days))
-    assert all(day.weekday() != FRIDAY for day in days)
-    assert days == tuple(sorted(days))
-    assert days[-1] == WEDNESDAY
+def test_a_fresh_install_gets_todays_card_only() -> None:
+    """No stored card means the history begins today: no fortnight of empty cards on first run."""
+    assert due_card_days(WEDNESDAY, newest=None, horizon=14) == (WEDNESDAY,)
+    assert due_card_days(FRIDAY_DATE, newest=None, horizon=14) == ()
 
 
 def test_friday_itself_produces_no_card_even_when_the_backlog_is_clear() -> None:

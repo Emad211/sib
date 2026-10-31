@@ -68,11 +68,14 @@ def due_card_days(today: date, *, newest: date | None, horizon: int = DEFAULT_HO
     Today's card is due when today is not Friday and no card for today is stored yet. A run also
     backfills the card dates missed since `newest`, so a restart — or a server that was off at 07:30 —
     leaves no silent gap; Fridays are skipped because they never have a card. The backfill never
-    reaches further back than `horizon` days, so a fresh install does not replay a month of cards,
-    and every date appears once.
+    reaches further back than `horizon` days, so a long outage does not replay a month of cards, and
+    every date appears once. With no stored card at all (`newest is None`) the history begins today:
+    a fresh install gets today's card only, not a fortnight of empty ones.
     """
     if horizon < 1:
         raise ValueError("the backfill horizon is at least one day")
+    if newest is None:
+        return () if today.weekday() == FRIDAY else (today,)
     first = today - timedelta(days=horizon)
     if newest is not None and newest >= first:
         first = newest + timedelta(days=1)
