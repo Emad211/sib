@@ -143,6 +143,32 @@ def test_a_second_receptionist_declares_presence(off_shift_client: TestClient) -
     assert "parcel.handle" in after["permissions"]
 
 
+def test_the_presence_button_is_on_the_home_screen_until_it_is_pressed(
+    off_shift_client: TestClient,
+) -> None:
+    """ADR-021 in the UI: the second receptionist presses one button and her shift opens."""
+    headers, me = _session(off_shift_client, "multi_role")
+    assert me["on_shift"] == []
+    home = off_shift_client.get("/")
+    assert "حضور در شیفت" in home.text
+    assert 'data-presence-role="reception"' in home.text
+
+    declared = off_shift_client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
+
+    assert declared.status_code == 201, declared.text
+    assert declared.json()["message"] == "حضور شما در این شیفت ثبت شد."
+    after = off_shift_client.get("/")
+    assert 'data-presence-role="reception"' not in after.text, "the button is done once she is on shift"
+    assert OFF_SHIFT_MESSAGE not in after.text
+
+
+def test_a_nurse_has_no_presence_button(off_shift_client: TestClient) -> None:
+    """A nurse comes on shift by taking over, so the home screen offers her no shortcut."""
+    _session(off_shift_client, "nurse")
+
+    assert 'data-presence-role=' not in off_shift_client.get("/").text
+
+
 def test_the_shift_doctor_declares_presence_and_nobody_else_does(off_shift_client: TestClient) -> None:
     doctor = ROLES["shift_doctor"]
     issued = login(off_shift_client, mobile=doctor.mobile, device_id=doctor.device_id, pin=PIN)

@@ -204,8 +204,29 @@ def get_home(request: Request) -> HTMLResponse:
     return _shell_page(
         request,
         "home.html",
-        {"tiles": tiles, "shift_notice": notice},
+        {
+            "tiles": tiles,
+            "shift_notice": notice,
+            # ADR-021: the second receptionist and the shift doctor come on shift with one button.
+            "presence_options": _presence_options(principal),
+        },
     )
+
+
+# ADR-021: the two roles whose shift opens with «حضور در شیفت» instead of taking the box over.
+_PRESENCE_LABELS = {"reception": "پذیرش (شیفت دوم)", "shift_doctor": "پزشک شیفت"}
+
+
+def _presence_options(principal: Principal | None) -> list[dict[str, str]]:
+    """The «حضور در شیفت» buttons this person may still press, one per bound role not yet on shift."""
+    if principal is None or Permission.SHIFT_PRESENCE_DECLARE not in principal.permissions:
+        return []
+    working = set(principal.on_shift_roles)
+    return [
+        {"role": role, "label": label}
+        for role, label in _PRESENCE_LABELS.items()
+        if role in principal.roles and role not in working
+    ]
 
 
 @router.get("/events", response_class=HTMLResponse, summary="Serve the staff shift-event screen")

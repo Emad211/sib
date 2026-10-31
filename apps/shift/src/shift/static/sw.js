@@ -24,6 +24,8 @@ const PRECACHE_URLS = [
   "/static/offline.js",
   "/static/outbox-idb.js",
   "/static/csrf.js",
+  "/static/presence.js",
+  "/static/manager-staff.js",
   "/static/shift-events.css",
   "/static/shift-events.js",
   "/static/fonts/Vazirmatn-Regular.woff2",
