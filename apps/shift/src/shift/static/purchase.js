@@ -979,7 +979,7 @@
 
   /** The storekeeper's vendor return, and the accountant's credit note for it (P-09). */
   function renderReturn() {
-    var canReturn = clinic.deliveries !== null && may("purchase.delivery.receive");
+    var canReturn = clinic.deliveries !== null && clinic.is_storekeeper === true;
     var canCredit = clinic.invoices !== null && may("purchase.payment.record");
     showSection("purchase-return", canReturn || canCredit);
     if (!canReturn && !canCredit) return;

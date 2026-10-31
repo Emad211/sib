@@ -9,9 +9,10 @@ Monday. `weekly_count_time` is the clock time that day stops being on time.
 A day after the window's last day still belongs to the window that just closed, so the morning after a
 missed Monday reads `overdue` until the next count lands, instead of quietly becoming "due" again.
 
-Everything is Tehran time (UTC+03:30, fixed): a count is inside the window when its Tehran date is, and
-the deadline is the window's last day at `weekly_count_time`. Pure by design — no clock, no database
-and no Persian text; the caller supplies the moment.
+Everything is Tehran time (UTC+03:30, fixed): a count at or after the moment the window opened settles
+it — a late count is late, not absent — and the deadline is the window's last day at
+`weekly_count_time`. Pure by design — no clock, no database and no Persian text; the caller supplies
+the moment.
 """
 
 from dataclasses import dataclass

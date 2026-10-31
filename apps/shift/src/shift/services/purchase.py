@@ -82,6 +82,7 @@ UNKNOWN_DELIVERY = "این بار پیدا نشد."
 CANNOT_FLAG = "برچسب مشکل یک بار و روی باری ثبت می‌شود که پذیرش گرفته است."
 CANNOT_TRANSFER = "این بار در وضعیتی نیست که دست‌به‌دست شود."
 NOT_A_STOREKEEPER = "تحویل به انبار فقط به کارمند دارای نقش انباردار ثبت می‌شود."
+RETURN_STOREKEEPER = "مرجوعی به فروشنده را فقط انباردار ثبت می‌کند."
 CANNOT_DIGITIZE = "فاکتور یک بار و برای باری ثبت می‌شود که پذیرش گرفته است."
 NO_INVOICE = "اول فاکتور این بار را دیجیتال کنید."
 PAYMENT_LOCKED = "پرداخت این فاکتور تا تصمیم مدیر دربارهٔ بار مشکل‌دار قفل است."
@@ -197,6 +198,8 @@ class PurchaseState:
     invoices: tuple[DeliveryState, ...] | None
     warehouse: Warehouse | None
     permissions: tuple[str, ...]
+    # P-09: only the storekeeper records a vendor return, so the page may draw its form for them alone.
+    is_storekeeper: bool = False
 
     def to_payload(self) -> dict[str, Any]:
         """The JSON the route answers with; prices appear in the invoices section only."""
@@ -216,6 +219,7 @@ class PurchaseState:
             "invoices": (None if self.invoices is None else [_invoice_payload(delivery) for delivery in self.invoices]),
             "warehouse": None if self.warehouse is None else _warehouse_payload(self.warehouse),
             "permissions": list(self.permissions),
+            "is_storekeeper": self.is_storekeeper,
         }
 
 
@@ -274,6 +278,7 @@ class PurchaseService:
             invoices=tuple(parcels.values()) if Permission.PURCHASE_PAYMENT_RECORD in held else None,
             warehouse=(self._warehouse(items, shift, log) if Permission.STOCK_RESTOCK_CONFIRM in held else None),
             permissions=tuple(sorted(item.value for item in PURCHASE_PERMISSIONS if item in held)),
+            is_storekeeper=Role.STOREKEEPER.value in principal.roles,
         )
 
     def pending(self, shift: ShiftKey) -> PendingPurchase:
@@ -423,7 +428,7 @@ class PurchaseService:
     def _return_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
         """P-09: one return per delivery, recorded by the storekeeper who lets the goods out."""
         if not self._is_storekeeper(principal.staff_id):
-            raise PurchaseRuleError(NOT_A_STOREKEEPER)
+            raise PurchaseRuleError(RETURN_STOREKEEPER)
         returned = self._body(VendorReturn, data)
         if self._require_delivery(returned.delivery_id).returned:
             raise PurchaseRuleError(CANNOT_RETURN)

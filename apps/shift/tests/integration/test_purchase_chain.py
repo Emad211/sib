@@ -11,7 +11,9 @@ Every value here is the synthetic reference catalog plus made-up staff; no produ
 patient data is read (ADR-006).
 """
 
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -704,10 +706,15 @@ def test_a_count_of_an_item_that_is_not_counted_there_is_refused(desk: Desk) -> 
 
 def test_a_shelf_count_never_marks_the_week_done(desk: Desk) -> None:
     """The weekly status is about the main store, so a shelf count is not a weekly count at all."""
+    # A window the desk's own store counts do not cover: Saturday opens it, so nothing has counted yet.
+    desk.clock.now = datetime(2026, 10, 31, 6, 30, tzinfo=UTC)  # Saturday 10:00 in Tehran
+    assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "due"
+
     with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
         _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=LOCATION, counted=SHELF_BEFORE)
 
     assert _log(desk, EventType.STOCK_WEEKLY_COUNT)[-1].payload["location_id"] == STORE, "only the store counts land"
+    assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "due", "a shelf count leaves the week open"
 
 
 def test_the_store_list_holds_what_the_store_holds(desk: Desk) -> None:
@@ -780,7 +787,7 @@ def test_the_manager_card_sees_the_open_items_and_no_figure(desk: Desk) -> None:
     assert [parcel.delivery_id for parcel in pending.undelivered] == [delivery_id]
     assert pending.locked_deliveries == ()
     assert {row.item_id for row in pending.below_minimum} >= {ITEM}
-    assert pending.weekly.state in {"done", "due", "overdue"}
+    assert pending.weekly.state == "done", "the desk's store counts settle the week they landed in"
 
 
 def test_the_card_carries_the_waiting_order_the_locked_parcel_and_the_warehouse_work(desk: Desk) -> None:
@@ -834,7 +841,12 @@ def test_the_handover_hands_a_real_parcel_and_stops_listing_it_once_the_store_ta
 
 def test_the_chain_never_moves_the_cash_box(desk: Desk) -> None:
     """P-08 and S03 §5: invoices, payments and credits are accounting figures, not box movements."""
+    desk.store.append(
+        build_event(EventType.HANDOVER_STARTED.value, payload={"opening_cash": 1_000_000}, shift_id=SHIFT.text)
+    )
+    desk.projections.sync()
     before = _cash_rows(desk)
+    assert [(row["expected"], row["counted"]) for row in before] == [(1_000_000, 1_000_000)], "a real box to keep"
     delivery_id = _digitized_delivery(desk)
     _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=10_000, method="cash")
     _act(
@@ -877,3 +889,40 @@ def test_a_shelf_charge_moves_stock_only_from_the_main_store(desk: Desk) -> None
             to_location_id="cpr_room",
             quantity=1,
         )
+
+
+def test_two_payments_at_once_cannot_pass_the_invoice_balance(desk: Desk) -> None:
+    """P-08: the balance check and its append are one critical section, so a double-click cannot double-pay.
+
+    The lock lives on the service module, so two service instances in one process are enough to show it:
+    without it both threads fold the pre-payment log, both pass the check and the log keeps 120,000.
+    """
+    delivery_id = _digitized_delivery(desk, unit_price=25_000, quantity=4)  # a 100,000 Toman invoice
+    barrier = threading.Barrier(2)
+
+    def pay() -> str:
+        service = PurchaseService(
+            desk.database,
+            desk.store,
+            desk.projections,
+            desk.catalog,
+            SettingsService(desk.database),
+            clock=desk.clock,
+        )
+        barrier.wait(timeout=10)
+        try:
+            service.perform(
+                desk.accountant,
+                desk.shift,
+                "payment.record",
+                {"delivery_id": delivery_id, "amount_toman": 60_000, "method": "cash"},
+            )
+        except PurchaseRuleError:
+            return "refused"
+        return "recorded"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = [future.result(timeout=30) for future in [pool.submit(pay) for _ in range(2)]]
+
+    assert sorted(outcomes) == ["recorded", "refused"], "one payment lands and the other sees the new balance"
+    assert len(_log(desk, EventType.PAYMENT_RECORDED)) == 1
