@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Optional, List
 
 import bcrypt
 from werkzeug.security import check_password_hash
@@ -10,6 +9,22 @@ from src.common.utils import iran_now
 # The only login roles. The old "doctor" login was retired (Q-19); doctors remain as
 # medical_staff rows, which visits, procedures and payroll depend on.
 USER_ROLES = ("manager", "reception")
+
+# SEC-07: a floor for any password that is WRITTEN (created or changed) — never checked at
+# login, so an account created before this rule keeps working with its short password.
+# E02 lists SEC-07 but names no number; 8 characters is the chosen minimum.
+MIN_PASSWORD_LENGTH = 8
+
+SHORT_PASSWORD_MESSAGE = f"رمز عبور باید حداقل {MIN_PASSWORD_LENGTH} نویسه باشد.".translate(
+    str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+)
+
+
+def password_length_error(password: str) -> str | None:
+    """The Persian refusal for a too-short password, or None when it is acceptable."""
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        return SHORT_PASSWORD_MESSAGE
+    return None
 
 
 class AuthService:
@@ -31,7 +46,7 @@ class AuthService:
 
     def _increment_failed(self, user_row: dict):
         new_val = (user_row.get("failed_attempts") or 0) + 1
-        lock_until: Optional[str] = None
+        lock_until: str | None = None
         if new_val >= 5:
             lock_until = (iran_now() + timedelta(minutes=15)).isoformat(timespec="seconds")
             new_val = 0
@@ -41,7 +56,9 @@ class AuthService:
         self.repo.reset_failed_attempts(user_row["id"])
 
     # ---- Core login attempt ----
-    def _attempt_login(self, username: str, password: str, expected_role: str) -> Optional[dict]:
+    def _attempt_login(self, username: str, password: str, expected_role: str) -> dict | None:
+        # SEC-07 is NOT checked here on purpose: an account created before the minimum length
+        # existed must keep logging in with its short password.
         username = username.strip()
         user = self.repo.get_raw_by_username(username)
 
@@ -69,7 +86,6 @@ class AuthService:
             stored_hash = stored_hash.encode("utf-8")
 
         password_ok = False
-        migrated = False
         try:
             # If stored value is bytes and looks like bcrypt ($2...), use bcrypt
             if stored_hash and isinstance(stored_hash, (bytes, bytearray)) and stored_hash.startswith(b"$2"):
@@ -83,11 +99,10 @@ class AuthService:
                         # If legacy check succeeded, migrate to bcrypt for uniformity
                         if password_ok:
                             salt = bcrypt.gensalt()
-                            new_hash = bcrypt.hashpw(password.encode('utf-8'), salt)
+                            new_hash = bcrypt.hashpw(password.encode("utf-8"), salt)
                             # Update DB using repo method
                             try:
-                                self.repo.update_user_password(user_dict['id'], new_hash)
-                                migrated = True
+                                self.repo.update_user_password(user_dict["id"], new_hash)
                             except Exception:
                                 pass
                     except Exception:
@@ -110,14 +125,14 @@ class AuthService:
         return user_dict
 
     # ---- Public API (manager) ----
-    def validate_manager(self, username: str, password: str) -> Optional[dict]:
+    def validate_manager(self, username: str, password: str) -> dict | None:
         return self._attempt_login(username, password, "manager")
 
     # ---- Reception ----
-    def get_reception_users(self) -> List[str]:
+    def get_reception_users(self) -> list[str]:
         return self.repo.get_reception_usernames()
 
-    def validate_reception(self, username: str, password: str) -> Optional[dict]:
+    def validate_reception(self, username: str, password: str) -> dict | None:
         return self._attempt_login(username, password, "reception")
 
     # ---- User creation for CLI / setup ----
@@ -129,8 +144,9 @@ class AuthService:
         full_name: str | None = None,
         staff_id: int | None = None,
     ) -> bool:
-        # Reuse low-level repo + bcrypt like desktop app
-        if role not in USER_ROLES or self.repo.get_raw_by_username(username):
+        # Reuse low-level repo + bcrypt like desktop app. SEC-07: a new password must reach
+        # the minimum length, so the create-user CLI refuses a short one too.
+        if role not in USER_ROLES or password_length_error(password) or self.repo.get_raw_by_username(username):
             return False
 
         salt = bcrypt.gensalt()

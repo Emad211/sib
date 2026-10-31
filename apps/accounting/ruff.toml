@@ -5,6 +5,7 @@ target-version = "py313"
 include = [
     "tools/**/*.py",
     "tests/test_route_matrix.py",
+    "tests/test_acc_audit_fixes.py",
     "tests/test_prod_snapshot.py",
     "tests/test_migrations.py",
     "tests/test_backup.py",
@@ -54,6 +55,8 @@ include = [
     "src/api/manager/settings.py",
     "src/api/manager/tariffs.py",
     "src/api/manager/users.py",
+    "src/services/auth_service.py",
+    "tests/test_users_deactivation.py",
 ]
 
 [lint]

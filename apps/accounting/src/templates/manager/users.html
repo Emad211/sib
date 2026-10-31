@@ -356,12 +356,12 @@
                     </form>
                     {% endif %}
                     <button type="button" class="btn-edit" onclick='openUserModal({{ u.id }}, {{ u.username|tojson }}, {{ u.full_name|tojson }}, {{ u.role|tojson }}, {{ u.is_active }})'>ویرایش</button>
-                    {% if u.id != g.user.id %}
-                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                    {% if u.id != g.user.id and u.is_active %}
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا از غیرفعال‌سازی این کاربر مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="entity_type" value="user">
                       <input type="hidden" name="user_id" value="{{ u.id }}">
-                      <button type="submit" class="btn-delete">حذف</button>
+                      <button type="submit" class="btn-delete">غیرفعال‌سازی</button>
                     </form>
                     {% endif %}
                   </td>
@@ -428,12 +428,14 @@
                     </form>
                     {% endif %}
                     <button type="button" class="btn-edit" onclick='openUserModal({{ u.id }}, {{ u.username|tojson }}, {{ u.full_name|tojson }}, {{ u.role|tojson }}, {{ u.is_active }})'>ویرایش</button>
-                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا مطمئن هستید؟');">
+                    {% if u.is_active %}
+                    <form method="post" style="display:inline;" onsubmit="return confirm('آیا از غیرفعال‌سازی این کاربر مطمئن هستید؟');">
                       <input type="hidden" name="action" value="delete">
                       <input type="hidden" name="entity_type" value="user">
                       <input type="hidden" name="user_id" value="{{ u.id }}">
-                      <button type="submit" class="btn-delete">حذف</button>
+                      <button type="submit" class="btn-delete">غیرفعال‌سازی</button>
                     </form>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}

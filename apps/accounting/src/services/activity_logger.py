@@ -94,6 +94,7 @@ class ActionType:
     DATABASE_RESET = 'database_reset'
     SETTINGS_CHANGE = 'settings_change'
     USER_UNLOCK = 'user_unlock'
+    USER_DEACTIVATE = 'user_deactivate'
     EXPENSE_ADD = 'expense_add'
     EXPENSE_VOID = 'expense_void'
     INVOICE_VOID = 'invoice_void'
@@ -126,6 +127,7 @@ ACTION_DESCRIPTIONS = {
     ActionType.DATABASE_RESET: 'ریست کامل دیتابیس',
     ActionType.SETTINGS_CHANGE: 'تغییر تنظیمات',
     ActionType.USER_UNLOCK: 'باز کردن قفل حساب',
+    ActionType.USER_DEACTIVATE: 'غیرفعال‌سازی کاربر',
     ActionType.EXPENSE_ADD: 'ثبت هزینه',
     ActionType.EXPENSE_VOID: 'ابطال هزینه',
     ActionType.INVOICE_VOID: 'ابطال/بازپرداخت فاکتور',
@@ -187,7 +189,8 @@ def log_activity(
     old_value: str = None,
     new_value: str = None,
     user_id: int = None,
-    username: str = None
+    username: str = None,
+    atomic: bool = False,
 ):
     """
     ثبت فعالیت در جدول لاگ
@@ -207,6 +210,8 @@ def log_activity(
         new_value: مقدار جدید (برای ویرایش)
         user_id: شناسه کاربر (اگر ندهید از g.user می‌گیرد)
         username: نام کاربر (اگر ندهید از g.user می‌گیرد)
+        atomic: اگر True، commit نمی‌کند و خطا را بالا می‌دهد تا فراخواننده لاگ و تغییر اصلی را
+                در یک تراکنش commit/rollback کند (ابطال و بازگشایی فاکتور)
     """
     try:
         db = get_db()
@@ -249,9 +254,12 @@ def log_activity(
             patient_name, amount, old_value, new_value, ip_address,
             user_agent, created_at
         ))
-        db.commit()
-        
+        if not atomic:
+            db.commit()
+
     except Exception as e:
+        if atomic:
+            raise
         # لاگ نباید خطا ایجاد کند - فقط چاپ می‌کنیم
         print(f"[ActivityLogger] Error logging activity: {e}")
 

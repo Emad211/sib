@@ -10,11 +10,33 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
+from src.services.activity_logger import ActionCategory, ActionType, log_activity
 
 from . import bp
 from ._common import jalali_to_start_end, manager_required
 
 logger = logging.getLogger(__name__)
+
+
+def log_report_access(action_type: str, report: str) -> None:
+    """ثبت «چه کسی کدام گزارش را دید یا خروجی گرفت» (E02).
+
+    فقط نام گزارش و بازهٔ درخواستی ثبت می‌شود؛ هرگز نام یا مشخصات بیمار، عبارت جستجو یا
+    محتوای گزارش. لاگ هرگز نباید گزارش را بشکند: log_activity خطای خودش را می‌بلعد و
+    این تابع هر خطای دیگری را هم می‌گیرد.
+    """
+    try:
+        date_from = request.args.get("from", "") or "—"
+        date_to = request.args.get("to", "") or "—"
+        log_activity(
+            action_type,
+            ActionCategory.REPORT,
+            target_type="report",
+            target_name=report,
+            new_value=f"{date_from}..{date_to}",
+        )
+    except Exception:
+        logger.warning("report access log failed for %s", report, exc_info=True)
 
 
 @bp.route("/reports")
@@ -31,6 +53,7 @@ def reports():
 def invoices_report():
     """گزارش فاکتورها با فیلترهای دقیق و تاریخ شمسی شش‌تایی."""
 
+    log_report_access(ActionType.REPORT_VIEW, "invoices")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -149,6 +172,7 @@ def invoices_report():
 def visits_report():
     """گزارش مدیریتی ویزیت‌ها با فیلترهای تاریخ، پزشک، بیمه، پذیرش و شیفت."""
 
+    log_report_access(ActionType.REPORT_VIEW, "visits")
     db = get_db()
 
     # دریافت فیلترها
@@ -279,6 +303,7 @@ def visits_report():
 def nursing_report():
     """گزارش مدیریتی خدمات پرستاری (تزریقات/سرم‌ها) با فیلترهای غنی."""
 
+    log_report_access(ActionType.REPORT_VIEW, "nursing")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -397,6 +422,7 @@ def nursing_report():
 def procedures_report():
     """گزارش مدیریتی کارهای عملی با فیلترهای تاریخ، نوع کار، انجام‌دهنده، پزشک/پرستار و شیفت."""
 
+    log_report_access(ActionType.REPORT_VIEW, "procedures")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -516,6 +542,7 @@ def procedures_report():
 def users_report():
     """گزارش عملکرد کاربران (پزشکان، پرستاران، پذیرش) با فیلترهای تاریخ، نقش و کاربر."""
 
+    log_report_access(ActionType.REPORT_VIEW, "users")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -828,6 +855,7 @@ def users_report():
 def consumables_report():
     """گزارش مدیریتی مصرفی‌ها (دارو و عمومی) با فیلترهای غنی."""
 
+    log_report_access(ActionType.REPORT_VIEW, "consumables")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -1059,6 +1087,7 @@ def _patients_report_rows(db, start_date, end_date, search_name=None, insurance_
 def patients_report():
     """گزارش مدیریتی بیماران با آمار مراجعات و پرداخت‌ها."""
 
+    log_report_access(ActionType.REPORT_VIEW, "patients")
     db = get_db()
 
     date_from = request.args.get("from", "")
@@ -1147,6 +1176,7 @@ def staff_performance_report():
     if start_dt > end_dt:
         start_dt, end_dt = end_dt, start_dt
     d1, d2 = start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+    log_report_access(ActionType.REPORT_VIEW, "staff")
     db = get_db()
     j1 = Gregorian(start_dt.date()).persian_tuple()
     j2 = Gregorian(end_dt.date()).persian_tuple()

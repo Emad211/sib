@@ -11,10 +11,12 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
+from src.services.activity_logger import ActionType
 
 from . import bp
 from ._common import manager_api_required, manager_required
 from .exports import make_csv_response
+from .reports import log_report_access
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ def _nursing_exclusion_pairs(db):
 def insurance_arrears():
     """صفحه معوقات بیمه - نمایش مطالبات از بیمه‌ها"""
 
+    log_report_access(ActionType.REPORT_VIEW, "insurance_arrears")
     db = get_db()
 
     # Jalali ranges for date picker
@@ -132,6 +135,7 @@ def insurance_arrears():
         JOIN patients p ON v.patient_id = p.id
         JOIN invoices inv ON v.invoice_id = inv.id
         WHERE v.insurance_type IS NOT NULL AND v.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     params = []
 
@@ -159,6 +163,7 @@ def insurance_arrears():
         JOIN patients p ON i.patient_id = p.id
         JOIN invoices inv ON i.invoice_id = inv.id
         WHERE inv.insurance_type IS NOT NULL AND inv.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     inj_params = []
 
@@ -399,6 +404,7 @@ def insurance_arrears():
 def export_insurance_arrears():
     """خروجی CSV معوقات بیمه"""
 
+    log_report_access(ActionType.REPORT_EXPORT, "insurance_arrears")
     db = get_db()
 
     # دریافت فیلترها - تاریخ شمسی
@@ -458,6 +464,7 @@ def export_insurance_arrears():
         JOIN patients p ON v.patient_id = p.id
         JOIN invoices inv ON v.invoice_id = inv.id
         WHERE v.insurance_type IS NOT NULL AND v.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     params = []
     if date_from_gregorian:
@@ -480,6 +487,7 @@ def export_insurance_arrears():
         JOIN patients p ON i.patient_id = p.id
         JOIN invoices inv ON i.invoice_id = inv.id
         WHERE inv.insurance_type IS NOT NULL AND inv.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     inj_params = []
     if date_from_gregorian:

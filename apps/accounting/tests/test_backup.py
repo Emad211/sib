@@ -11,6 +11,7 @@ import pytest
 from conftest import login_as
 
 from src.services import backup as bk
+from tools.make_synthetic_db import TEST_PASSWORD
 
 # --------------------------------------------------------------------------- service
 
@@ -208,7 +209,9 @@ def test_manager_can_create_list_download_and_delete_a_backup(synthetic_app):
     r = c.get(f"/manager/settings/download/{files[0].name}")
     assert r.status_code == 200 and r.data[:16] == b"SQLite format 3\x00"
     r.close()  # release the file handle (Windows) before deleting
-    c.post("/manager/settings", data={"action": "delete_backup", "backup_name": files[0].name})
+    c.post(
+        "/manager/settings", data={"action": "delete_backup", "backup_name": files[0].name, "password": TEST_PASSWORD}
+    )
     assert not files[0].exists()
 
 
@@ -229,8 +232,8 @@ def test_backup_actions_cannot_reach_the_live_database(synthetic_app, evil):
             conn.close()
 
     before = snapshot()
-    c.post("/manager/settings", data={"action": "delete_backup", "backup_name": evil})
-    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": evil})
+    c.post("/manager/settings", data={"action": "delete_backup", "backup_name": evil, "password": TEST_PASSWORD})
+    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": evil, "password": TEST_PASSWORD})
     assert live.exists() and snapshot() == before
     r = c.get(f"/manager/settings/download/{evil}")
     assert r.status_code in (302, 404) and r.data[:16] != b"SQLite format 3\x00"
@@ -267,7 +270,7 @@ def test_restore_from_screen_restores_data_and_keeps_pre_restore_copy(synthetic_
     conn.execute("INSERT INTO patients(name, family_name) VALUES ('تازه', 'بعد از پشتیبان')")
     conn.commit()
     conn.close()
-    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": name})
+    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": name, "password": TEST_PASSWORD})
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT COUNT(*) FROM patients").fetchone()[0] == n
     conn.close()
@@ -300,7 +303,7 @@ def test_restoring_an_old_schema_backup_is_migrated_immediately(synthetic_app):
     dst.execute("PRAGMA user_version = 0")
     dst.commit()
     dst.close()
-    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": old.name})
+    c.post("/manager/settings", data={"action": "restore_backup", "backup_name": old.name, "password": TEST_PASSWORD})
     conn = sqlite3.connect(synthetic_app.config["DATABASE_PATH"])
     assert conn.execute("PRAGMA user_version").fetchone()[0] == LATEST
     assert conn.execute("SELECT 1 FROM sqlite_master WHERE name='idx_invoices_work_date_status'").fetchone()

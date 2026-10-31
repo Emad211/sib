@@ -350,6 +350,29 @@
             gap: 0.5rem;
         }
 
+        .backup-actions form {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .backup-password {
+            width: 94px;
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            color: #f1f5f9;
+            font-family: inherit;
+            font-size: 0.75rem;
+        }
+
+        .backup-password:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+        }
+
         .no-backups {
             text-align: center;
             padding: 2rem;
@@ -588,6 +611,10 @@
                         <h3 class="card-title">لیست پشتیبان‌ها</h3>
                     </div>
 
+                    <p style="color: #94a3b8; font-size: 0.78rem; margin-bottom: 0.75rem;">
+                        برای بازگردانی یا حذف هر پشتیبان، رمز عبور مدیر را در کادر کنار دکمه بنویسید.
+                    </p>
+
                     <div class="backup-list">
                         {% if backups %}
                             {% for backup in backups %}
@@ -603,16 +630,18 @@
                                     <a href="{{ url_for('manager.download_backup', backup_name=backup.name) }}" class="btn btn-secondary btn-sm" title="دانلود">
                                         ⬇️
                                     </a>
-                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را بازگردانی کنید؟ دیتابیس فعلی جایگزین می‌شود.');">
+                                    <form method="post" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را بازگردانی کنید؟ دیتابیس فعلی جایگزین می‌شود.');">
                                         <input type="hidden" name="action" value="restore_backup">
                                         <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <input type="password" name="password" class="backup-password" placeholder="رمز مدیر" aria-label="رمز عبور مدیر" title="رمز عبور مدیر" autocomplete="current-password" required>
                                         <button type="submit" class="btn btn-primary btn-sm" title="بازگردانی">
                                             🔄
                                         </button>
                                     </form>
-                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را حذف کنید؟');">
+                                    <form method="post" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را حذف کنید؟');">
                                         <input type="hidden" name="action" value="delete_backup">
                                         <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <input type="password" name="password" class="backup-password" placeholder="رمز مدیر" aria-label="رمز عبور مدیر" title="رمز عبور مدیر" autocomplete="current-password" required>
                                         <button type="submit" class="btn btn-danger btn-sm" title="حذف">
                                             🗑️
                                         </button>
@@ -642,6 +671,7 @@
 
                     <form method="post">
                         <input type="hidden" name="action" value="save_settings">
+                        <input type="hidden" name="section" value="clinic">
 
                         <div class="form-group">
                             <label>نام کلینیک / درمانگاه</label>
@@ -877,6 +907,7 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
 
                     <form method="post">
                         <input type="hidden" name="action" value="save_settings">
+                        <input type="hidden" name="section" value="backup">
 
                         <div class="toggle-group">
                             <span class="toggle-label">پشتیبان خودکار روزانه</span>
@@ -926,6 +957,59 @@ New-NetFirewallRule -DisplayName "Clinic" -Direction Inbound -Protocol TCP -Loca
                             🗑️ ریست کامل دیتابیس
                         </button>
                     </div>
+                </div>
+
+                <div class="card full-width">
+                    <div class="card-header">
+                        <div class="card-icon blue">🕒</div>
+                        <h3 class="card-title">ساعت شروع شیفت‌ها و آستانه‌های توجه</h3>
+                    </div>
+
+                    <form method="post">
+                        <input type="hidden" name="action" value="save_settings">
+                        <input type="hidden" name="section" value="schedule">
+
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                            <div class="form-group">
+                                <label for="shift_start_morning">ساعت شروع شیفت صبح</label>
+                                <input type="time" id="shift_start_morning" name="shift_start_morning" value="{{ effective['shift_start_morning'] }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="shift_start_evening">ساعت شروع شیفت عصر</label>
+                                <input type="time" id="shift_start_evening" name="shift_start_evening" value="{{ effective['shift_start_evening'] }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="shift_start_night">ساعت شروع شیفت شب</label>
+                                <input type="time" id="shift_start_night" name="shift_start_night" value="{{ effective['shift_start_night'] }}" required>
+                            </div>
+                        </div>
+
+                        <div class="info-box" style="margin: 0 0 1.25rem;">
+                            <span class="icon">ℹ️</span>
+                            قالب ساعت HH:MM است (مثلاً ۰۷:۳۰) و ترتیب باید صبح، عصر، شب باشد. این ساعت‌ها مبنای «شروع شیفت» در پذیرش‌اند و دادهٔ قبلی را تغییر نمی‌دهند.
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                            <div class="form-group">
+                                <label for="stale_open_hours">آستانهٔ فاکتور باز (ساعت)</label>
+                                <input type="number" id="stale_open_hours" name="stale_open_hours" min="1" max="72" step="1" inputmode="numeric" value="{{ effective['stale_open_hours'] }}" required>
+                                <p style="color: #64748b; font-size: 0.75rem; margin-top: 0.35rem;">
+                                    فاکتور بازی که بیش از این تعداد ساعت باز مانده باشد در «نیاز به توجه» می‌آید. بازهٔ مجاز: ۱ تا ۷۲.
+                                </p>
+                            </div>
+                            <div class="form-group">
+                                <label for="anomaly_delete_threshold">آستانهٔ حذف غیرعادی (تعداد در روز)</label>
+                                <input type="number" id="anomaly_delete_threshold" name="anomaly_delete_threshold" min="1" max="500" step="1" inputmode="numeric" value="{{ effective['anomaly_delete_threshold'] }}" required>
+                                <p style="color: #64748b; font-size: 0.75rem; margin-top: 0.35rem;">
+                                    اگر یک کاربر در یک روز بیش از این تعداد آیتم حذف کند، هشدار «حذف غیرعادی» ثبت می‌شود. بازهٔ مجاز: ۱ تا ۵۰۰.
+                                </p>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <span>💾</span> ذخیرهٔ ساعت‌ها و آستانه‌ها
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

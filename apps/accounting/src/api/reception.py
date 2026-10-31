@@ -217,7 +217,7 @@ def new_visit():
             name=name,
             family_name=family_name,
             phone=phone if phone else None,
-            national_id=national_id if not is_foreign else None,
+            national_id=national_id,  # foreigners keep their validated universal code / passport (FB-03, FB-04)
             insurance_type=insurance_type,
             supplementary_insurance=supp_insurance if supp_insurance and supp_insurance != 'ندارد' else None,
             opened_by=g.user['username'],
@@ -253,7 +253,8 @@ def new_visit():
 @bp.route('/search_patient')
 @login_required
 def search_patient():
-    national_id = request.args.get('national_id')
+    from src.domain import identity
+    national_id = identity.normalize_foreign_id(request.args.get('national_id'))  # also right for 10-digit IDs
     if not national_id:
         return jsonify({'found': False})
         
