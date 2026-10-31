@@ -84,6 +84,15 @@ def test_service_worker_serves_api_answers_network_only(client: TestClient) -> N
     assert "/static/handover.css" in _precache_urls(sw_text)
 
 
+def test_service_worker_never_stores_a_manager_page(client: TestClient) -> None:
+    """S01 §6: the card is manager-only, so no manager path may enter the phone's cache."""
+    sw_text = _service_worker(client)
+
+    assert 'url.pathname === "/manager"' in sw_text
+    assert 'url.pathname.startsWith("/manager/")' in sw_text
+    assert not [url for url in _precache_urls(sw_text) if url.startswith("/manager")]
+
+
 def test_declared_font_weights_are_all_precached(client: TestClient) -> None:
     """Every @font-face URL in app.css must survive an offline reload."""
     css = (_STATIC_DIR / "app.css").read_text(encoding="utf-8")
