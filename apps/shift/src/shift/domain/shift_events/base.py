@@ -51,6 +51,9 @@ class FieldKind(StrEnum):
     DATE = "date"
     BOOLEAN = "boolean"
     MULTI = "multi"
+    # An optional receipt photo: the phone downscales it, stores the blob and puts its content hash
+    # in the payload (SHF-7). The wizard never types a hash by hand.
+    PHOTO = "photo"
 
 
 @dataclass(frozen=True, slots=True)

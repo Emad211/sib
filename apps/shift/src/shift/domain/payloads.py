@@ -13,6 +13,9 @@ ReversalReason = Literal["reclosed", "voided", "refunded"]
 WasteKind = Literal["broken", "expired", "damaged"]
 RestockSource = Literal["store", "vendor"]
 Note = Annotated[str, Field(max_length=500)]
+# The content hash of a receipt photo the server stores (SHF-7): one file per hash and never a path
+# in the payload, so an event can only point at a photo the clinic's own store holds.
+PhotoHash = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class Payload(BaseModel):
@@ -41,6 +44,7 @@ class CashWithdrawn(CashAmount):
     recipient_id: Identifier | None = None
     reason: Note | None = None
     manager_id: Identifier | None = None
+    photo_sha256: PhotoHash | None = None
 
 
 class CashDeposited(CashAmount):
@@ -81,6 +85,7 @@ class ShelfRestocked(StockDelta):
 
     source: RestockSource | None = None
     reference: Annotated[str, Field(max_length=200)] | None = None
+    photo_sha256: PhotoHash | None = None
 
 
 class EmergencyWithdrawal(StockDelta):
@@ -96,6 +101,7 @@ class WasteReported(StockDelta):
     waste_kind: WasteKind | None = None
     culprit_id: Identifier | None = None
     confirmer_id: Identifier | None = None
+    photo_sha256: PhotoHash | None = None
 
 
 class ConsumptionRecorded(StockDelta):

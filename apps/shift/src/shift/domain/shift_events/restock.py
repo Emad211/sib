@@ -44,6 +44,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("quantity", "تعداد", FieldKind.QUANTITY, minimum=1),
     FieldSpec("source", "منبع", FieldKind.CHOICE, options=SOURCES),
     FieldSpec("reference", "مرجع (فاکتور یا حواله)", FieldKind.TEXT, required=False, max_length=200),
+    FieldSpec("photo_sha256", "عکس فاکتور (اختیاری)", FieldKind.PHOTO, required=False),
 )
 
 # What the phone shows the person whose entry was refused.
@@ -67,17 +68,27 @@ def validate(payload: ShelfRestocked, context: ShiftEventContext) -> None:
 
 def sample() -> dict[str, Any]:
     """A complete example of the kind, for the contract fixtures and the wizard's preview."""
-    return {"item_id": "item-1", "location_id": "location-1", "quantity": 5, "source": "store", "reference": None}
+    return {
+        "item_id": "item-1",
+        "location_id": "location-1",
+        "quantity": 5,
+        "source": "store",
+        "reference": None,
+        "photo_sha256": None,
+    }
 
 
 def summarize(payload: ShelfRestocked) -> dict[str, Any]:
     """The card row of one entry: how many, of what, from where and on which document."""
-    return {
+    summary: dict[str, Any] = {
         "quantity": payload.quantity,
         "item_id": payload.item_id,
         "source": dict(SOURCES).get(payload.source or "", payload.source),
         "reference": payload.reference,
     }
+    if payload.photo_sha256 is not None:
+        summary["photo_sha256"] = payload.photo_sha256
+    return summary
 
 
 KIND = KindSpec(
@@ -93,7 +104,7 @@ KIND = KindSpec(
     summarize=summarize,
     validate=validate,
     approvable_by=(Role.STOREKEEPER, Role.RECEPTION),
-    card_fields=("quantity", "item_id", "source", "reference"),
+    card_fields=("quantity", "item_id", "source", "reference", "photo_sha256"),
 )
 
 register(KIND)

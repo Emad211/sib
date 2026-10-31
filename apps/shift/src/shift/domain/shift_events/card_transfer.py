@@ -1,7 +1,7 @@
 """«ک» card-to-card transfer (S01 §3): what reception sent, waiting for the accountant."""
 
 from shift.domain.effects import no_effects
-from shift.domain.payloads import Identifier, Payload, Toman
+from shift.domain.payloads import Identifier, Payload, PhotoHash, Toman
 from shift.domain.permissions import Permission, Role
 from shift.domain.shift_events.base import (
     FieldKind,
@@ -19,6 +19,8 @@ class CardTransferReported(Payload):
 
     amount: Toman
     admission_no: Identifier
+    # The bank receipt the accountant matches against; optional, and only ever a content hash.
+    photo_sha256: PhotoHash | None = None
 
 
 def _validate(payload: CardTransferReported, _context: ShiftEventContext) -> None:
@@ -27,7 +29,11 @@ def _validate(payload: CardTransferReported, _context: ShiftEventContext) -> Non
 
 
 def _summary(payload: CardTransferReported) -> dict[str, object]:
-    return {"amount": payload.amount, "admission_no": payload.admission_no}
+    """The card row, with the receipt's hash only when the person actually attached one."""
+    summary: dict[str, object] = {"amount": payload.amount, "admission_no": payload.admission_no}
+    if payload.photo_sha256 is not None:
+        summary["photo_sha256"] = payload.photo_sha256
+    return summary
 
 
 KIND = KindSpec(
@@ -38,15 +44,16 @@ KIND = KindSpec(
     fields=(
         FieldSpec("amount", "مبلغ (تومان)", FieldKind.AMOUNT),
         FieldSpec("admission_no", "شماره پذیرش", FieldKind.TEXT, max_length=64),
+        FieldSpec("photo_sha256", "عکس رسید (اختیاری)", FieldKind.PHOTO, required=False),
     ),
     permission=Permission.CARD_TRANSFER_REPORT,
     payload_model=CardTransferReported,
     effects=no_effects,
-    sample=lambda: {"amount": 150_000, "admission_no": "A-1001"},
+    sample=lambda: {"amount": 150_000, "admission_no": "A-1001", "photo_sha256": None},
     summarize=_summary,
     validate=_validate,
     approvable_by=(Role.ACCOUNTANT,),
-    card_fields=("amount", "admission_no"),
+    card_fields=("amount", "admission_no", "photo_sha256"),
 )
 
 register(KIND)

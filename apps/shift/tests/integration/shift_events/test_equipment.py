@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 from auth_fixtures import ROLES, SPARE, Seeded, seed_roster
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
 from shift.adapters.db import events_repo, projections_repo
@@ -160,7 +160,7 @@ def test_the_chain_records_three_notes_moves_nothing_and_never_pends(clinic: Dat
         (ASSIGNED, reported.event_id),
         (FIXED, reported.event_id),
     ]
-    assert rows[0].payload == FAULT
+    assert rows[0].payload == {**FAULT, "photo_sha256": None}
     assert rows[1].payload == {"assignee_id": nurse.staff_id, "due_on": WORK_DATE.isoformat()}
     assert rows[2].payload == {"note": "کابل دستگاه تعویض و دستگاه آزمایش شد"}
     # H-01, H-02: an equipment note is neither stock nor money.

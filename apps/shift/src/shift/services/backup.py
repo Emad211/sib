@@ -17,6 +17,7 @@ from pathlib import Path
 from shift.adapters.db.sqlite_copy import CopyRejected, copy_database
 from shift.common.clock import Clock, SystemClock
 from shift.services.mirror import SnapshotMirror
+from shift.services.photos import copy_missing_photos
 from shift.services.snapshot import (
     PARTIAL_SUFFIX,
     BackupRejected,
@@ -43,6 +44,8 @@ class BackupReport:
     mirror: Path | None
     pruned: tuple[Path, ...]
     mirror_error: str | None = None
+    # Receipt photos the backup did not hold yet (SHF-7); they are immutable, so each is copied once.
+    photos_copied: int = 0
 
 
 class BackupService:
@@ -55,13 +58,16 @@ class BackupService:
         backup_dir: str | Path,
         keep_snapshots: int,
         mirror_dir: str | Path | None = None,
+        photos_dir: str | Path | None = None,
         clock: Clock | None = None,
     ) -> None:
         if keep_snapshots < 1:
             raise ValueError("keep_snapshots must be at least 1")
         self._database_path = Path(database_path)
         self._backup_dir = Path(backup_dir)
+        self._mirror_dir = None if mirror_dir is None else Path(mirror_dir)
         self._mirror = None if mirror_dir is None else SnapshotMirror(mirror_dir, keep=keep_snapshots)
+        self._photos_dir = None if photos_dir is None else Path(photos_dir)
         self._keep = keep_snapshots
         self._clock = clock or SystemClock()
 
@@ -81,6 +87,13 @@ class BackupService:
             raise
         partial.replace(target)
         snapshot = replace(verified, path=target)
+        # The photos are content-addressed and immutable: whatever a backup does not hold yet is
+        # copied once, in both locations, and never pruned — the event log still points at them.
+        photos_copied = 0
+        if self._photos_dir is not None:
+            photos_copied += copy_missing_photos(self._photos_dir, self._backup_dir / "photos")
+            if self._mirror_dir is not None:
+                photos_copied += copy_missing_photos(self._photos_dir, self._mirror_dir / "photos")
         # Retention runs before the second copy: an unreachable mirror must not spool the primary.
         pruned = prune_snapshots(self._backup_dir, keep=self._keep)
         mirror = None
@@ -88,10 +101,11 @@ class BackupService:
             mirror = self._mirror.copy(snapshot)
             pruned += self._mirror.prune()
         log.info(
-            "snapshot %s: %s events, %s bytes, mirror=%s",
+            "snapshot %s: %s events, %s bytes, %s photos, mirror=%s",
             target.name,
             snapshot.events,
             snapshot.size_bytes,
+            photos_copied,
             mirror,
         )
         return BackupReport(
@@ -99,6 +113,7 @@ class BackupService:
             mirror=mirror,
             pruned=tuple(pruned),
             mirror_error=None if self._mirror is None else self._mirror.error,
+            photos_copied=photos_copied,
         )
 
     def retry_mirror(self) -> Path | None:

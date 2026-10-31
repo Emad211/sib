@@ -20,6 +20,7 @@ from shift.api import (
     routes_handover,
     routes_held,
     routes_manager,
+    routes_photos,
     routes_settings,
     routes_web,
 )
@@ -41,6 +42,7 @@ from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
+from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
@@ -124,6 +126,7 @@ def _background_jobs(
             backup_dir=settings.resolved_backup_dir,
             keep_snapshots=settings.backup_keep,
             mirror_dir=settings.backup_mirror_dir,
+            photos_dir=settings.resolved_photos_dir,
             clock=clock,
         ),
         audit=audit,
@@ -154,6 +157,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.devices = DeviceService(database, clock=clock, audit=audit)
         application.state.catalog = CatalogService(database, clock=clock)
         application.state.settings_service = SettingsService(database, clock=clock)
+        # The receipt photos (SHF-7): files on this PC, one per content hash, never an external service.
+        application.state.photos = PhotoStore(resolved.resolved_photos_dir)
         # The manager's campaign calendar is the only source of a «ت» discount (S01 §3).
         application.state.campaigns = CampaignService(database, clock=clock)
         # F5: a record whose own instant is implausible is kept with the manager, never dropped.
@@ -250,6 +255,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(routes_events.router)
+    # The receipt photos (SHF-7): upload by the recorder, read by the manager and the approvers.
+    app.include_router(routes_photos.router)
     app.include_router(routes_handover.router)
     app.include_router(routes_held.router)
     app.include_router(routes_web.router)

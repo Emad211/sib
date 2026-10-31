@@ -22,11 +22,13 @@ const {
   classifyHttpStatus,
   refusalReason,
   nextRetryDelayMs,
+  photoHashesIn,
   MAX_TRIES,
   MAX_BACKOFF_SECONDS,
 } = require(outboxPath);
 
 const EVENT_ID = "01JABCDEFGHJKMNPQRSTVWXYZ1";
+const PHOTO_SHA = "a".repeat(64);
 
 describe("Outbox Exponential Backoff Logic", () => {
   it("caps exponential backoff at min(2^tries, 300) seconds", () => {
@@ -226,5 +228,29 @@ describe("A held record is kept, not failed (F5)", () => {
     const held = { seq: 7, event_id: EVENT_ID, created: true, status: "held", held: true };
     assert.strictEqual(isValidIngestResponse(held, EVENT_ID), true);
     assert.strictEqual(isValidIngestResponse({ ...held, event_id: "other" }, EVENT_ID), false);
+  });
+});
+
+describe("The receipt photo travels with its event (SHF-7)", () => {
+  it("collects the content hash of a receipt and of a fault photo", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { amount: 1000, photo_sha256: PHOTO_SHA } }), [PHOTO_SHA]);
+    assert.deepStrictEqual(photoHashesIn({ payload: { device: "مونیتور", photo_sha256: PHOTO_SHA } }), [PHOTO_SHA]);
+  });
+
+  it("never treats a path or a short value as a photo reference", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { photo_sha256: "../../app.db" } }), []);
+    assert.deepStrictEqual(photoHashesIn({ payload: { photo_sha256: "abc" } }), []);
+    assert.deepStrictEqual(photoHashesIn({ payload: { note: PHOTO_SHA } }), []);
+  });
+
+  it("is empty for an event with no photo and for a body without a payload", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { amount: 1000 } }), []);
+    assert.deepStrictEqual(photoHashesIn(null), []);
+    assert.deepStrictEqual(photoHashesIn({}), []);
+  });
+
+  it("keeps one copy of a hash two fields happen to share", () => {
+    const body = { payload: { photo_sha256: PHOTO_SHA, backup_sha256: PHOTO_SHA } };
+    assert.deepStrictEqual(photoHashesIn(body), [PHOTO_SHA]);
   });
 });

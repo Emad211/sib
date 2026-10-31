@@ -7,6 +7,7 @@ const MAX_TRIES = 10;
 const MAX_BACKOFF_SECONDS = 300;
 const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const EVENTS_URL = "/api/v1/events";
+const PHOTO_URL_PREFIX = "/api/v1/photos/";
 const SYNC_TAG = "replay-outbox";
 const SW_READY_TIMEOUT_MS = 3000;
 
@@ -249,8 +250,10 @@ function createOutboxRecord({ idempotency_key, url = EVENTS_URL, body, now = Dat
 // Browser IndexedDB Runtime
 // ==========================================
 const DB_NAME = "shift_pwa_db";
-const DB_VERSION = 1;
+// v2 adds the receipt photos (SHF-7): a blob per content hash, waiting for its event to replay.
+const DB_VERSION = 2;
 const STORE_NAME = "outbox";
+const PHOTO_STORE = "photos";
 
 let idbPromise = null;
 let replayTimer = null;
@@ -269,6 +272,9 @@ function getDb() {
           const store = db.createObjectStore(STORE_NAME, { keyPath: "idempotency_key" });
           store.createIndex("status", "status", { unique: false });
           store.createIndex("next_try_at", "next_try_at", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+          db.createObjectStore(PHOTO_STORE, { keyPath: "sha" });
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -292,6 +298,97 @@ async function withStore(mode, mutate) {
   const result = mutate(tx.objectStore(STORE_NAME));
   await transactionDone(tx);
   return result;
+}
+
+async function withPhotoStore(mode, mutate) {
+  const db = await getDb();
+  const tx = db.transaction(PHOTO_STORE, mode);
+  const result = mutate(tx.objectStore(PHOTO_STORE));
+  await transactionDone(tx);
+  return result;
+}
+
+/**
+ * Every receipt photo an event points at, by content hash (SHF-7). The phone uploads each blob
+ * before it replays the event, so the server never stores a hash it cannot serve back.
+ * @param {Object} body
+ * @returns {string[]} unique 64-hex hashes
+ */
+function photoHashesIn(body) {
+  const payload = body && body.payload;
+  if (!payload || typeof payload !== "object") return [];
+  const found = [];
+  for (const key of Object.keys(payload)) {
+    if (!key.endsWith("_sha256")) continue;
+    const value = payload[key];
+    if (typeof value === "string" && /^[0-9a-f]{64}$/.test(value) && found.indexOf(value) === -1) {
+      found.push(value);
+    }
+  }
+  return found;
+}
+
+async function savePhotoBlob(sha, blob) {
+  await withPhotoStore("readwrite", (store) => store.put({ sha: sha, blob: blob, saved_at: Date.now() }));
+}
+
+async function readPhotoBlob(sha) {
+  const db = await getDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PHOTO_STORE, "readonly");
+    let record = null;
+    const req = tx.objectStore(PHOTO_STORE).get(sha);
+    req.onsuccess = () => {
+      record = req.result || null;
+    };
+    tx.oncomplete = () => resolve(record && record.blob ? record.blob : null);
+    tx.onerror = () => reject(tx.error || new Error("IndexedDB read failed"));
+    tx.onabort = () => reject(tx.error || new Error("IndexedDB read aborted"));
+  });
+}
+
+async function deletePhotoBlob(sha) {
+  await withPhotoStore("readwrite", (store) => store.delete(sha));
+}
+
+/**
+ * Send one photo before its event. A terminal refusal becomes the item's own Persian failure;
+ * anything else leaves the event queued and retried, so the pair is never split.
+ */
+async function uploadPhoto(sha) {
+  const blob = await readPhotoBlob(sha);
+  if (!blob) return; // nothing local: the server either holds it already or will refuse the event
+  let resp;
+  try {
+    resp = await fetch(PHOTO_URL_PREFIX + sha, {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: { "Content-Type": "image/jpeg", Accept: "application/json" },
+      body: blob,
+    });
+  } catch (err) {
+    const failure = new Error("عکس رسید ارسال نشد");
+    failure.terminal = false;
+    throw failure;
+  }
+  if (resp.ok) return;
+  const failure = new Error(await refusalReason(resp));
+  failure.terminal = classifyHttpStatus(resp.status) === "terminal";
+  throw failure;
+}
+
+/** Drop the blobs once their event is in, unless another queued event points at the same photo. */
+async function releasePhotos(hashes, idempotencyKey) {
+  if (hashes.length === 0) return;
+  const items = await getQueuedItems();
+  const inUse = new Set();
+  items.forEach((other) => {
+    if (other.idempotency_key === idempotencyKey) return;
+    photoHashesIn(other.body).forEach((sha) => inUse.add(sha));
+  });
+  for (const sha of hashes) {
+    if (!inUse.has(sha)) await deletePhotoBlob(sha);
+  }
 }
 
 async function enqueueOutboxItem(body, url = EVENTS_URL) {
@@ -357,8 +454,27 @@ function scheduleRetry(item, reason) {
   item.next_try_at = Date.now() + calculateBackoffMs(item.tries);
 }
 
-async function replayOne(item) {  const expectedEventId = expectedEventIdFor(item);
+async function replayOne(item) {
+  const expectedEventId = expectedEventIdFor(item);
+  const photos = photoHashesIn(item.body);
   try {
+    // SHF-7: the photo goes first. An event that names a hash the server cannot serve is refused,
+    // so the pair is uploaded in this order on every attempt, online or after a night offline.
+    for (const sha of photos) {
+      try {
+        await uploadPhoto(sha);
+      } catch (err) {
+        if (err && err.terminal) {
+          item.status = "failed";
+          item.last_error = err.message || "عکس رسید پذیرفته نشد";
+          await updateOutboxItem(item);
+          return;
+        }
+        scheduleRetry(item, (err && err.message) || "عکس رسید ارسال نشد");
+        await updateOutboxItem(item);
+        return;
+      }
+    }
     const resp = await fetch(item.url, {
       method: "POST",
       credentials: "same-origin",
@@ -373,6 +489,7 @@ async function replayOne(item) {  const expectedEventId = expectedEventIdFor(ite
       const body = await resp.json().catch(() => null);
       if (isValidIngestResponse(body, expectedEventId)) {
         await removeOutboxItem(item.idempotency_key);
+        await releasePhotos(photos, item.idempotency_key);
         dispatchOutboxSent(item);
         return;
       }
@@ -514,6 +631,7 @@ if (typeof module !== "undefined" && module.exports) {
     classifyHttpStatus,
     refusalReason,
     nextRetryDelayMs,
+    photoHashesIn,
     MAX_TRIES,
     MAX_BACKOFF_SECONDS,
   };
@@ -535,5 +653,10 @@ if (typeof window !== "undefined") {
     replayOutbox,
     retryFailedItem,
     triggerReplay,
+    // SHF-7: the receipt blob waits in its own store until its event has been accepted.
+    savePhotoBlob,
+    readPhotoBlob,
+    deletePhotoBlob,
+    photoHashesIn,
   };
 }

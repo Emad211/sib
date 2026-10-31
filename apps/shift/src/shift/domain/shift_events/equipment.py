@@ -18,7 +18,7 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from shift.domain.effects import no_effects
-from shift.domain.payloads import Identifier, Payload
+from shift.domain.payloads import Identifier, Payload, PhotoHash
 from shift.domain.permissions import Permission, Role
 from shift.domain.shift_events.base import (
     FieldKind,
@@ -47,6 +47,8 @@ class EquipmentFaultReported(Payload):
     device: Device
     description: Description
     location_id: Identifier | None = None
+    # A photo of the broken device; optional, and only ever a content hash (SHF-7).
+    photo_sha256: PhotoHash | None = None
 
 
 class FaultAssigned(Payload):
@@ -84,7 +86,12 @@ def _validate_fix(_payload: FaultFixed, ctx: ShiftEventContext) -> None:
 
 
 def _sample_report() -> dict[str, Any]:
-    return {"device": "دستگاه فشار", "description": "صفحه نمایش روشن نمی‌شود", "location_id": "location-1"}
+    return {
+        "device": "دستگاه فشار",
+        "description": "صفحه نمایش روشن نمی‌شود",
+        "location_id": "location-1",
+        "photo_sha256": None,
+    }
 
 
 def _sample_assignment() -> dict[str, Any]:
@@ -96,7 +103,10 @@ def _sample_fix() -> dict[str, Any]:
 
 
 def _summarise_report(payload: EquipmentFaultReported) -> dict[str, Any]:
-    return {"device": payload.device, "description": payload.description}
+    summary: dict[str, Any] = {"device": payload.device, "description": payload.description}
+    if payload.photo_sha256 is not None:
+        summary["photo_sha256"] = payload.photo_sha256
+    return summary
 
 
 def _summarise_assignment(payload: FaultAssigned) -> dict[str, Any]:
@@ -116,13 +126,14 @@ FAULT_REPORTED = KindSpec(
         FieldSpec("device", "تجهیز", FieldKind.TEXT, max_length=200),
         FieldSpec("description", "شرح خرابی", FieldKind.TEXT, max_length=1000),
         FieldSpec("location_id", "محل", FieldKind.LOCATION, required=False),
+        FieldSpec("photo_sha256", "عکس خرابی (اختیاری)", FieldKind.PHOTO, required=False),
     ),
     permission=Permission.EQUIPMENT_FAULT_REPORT,
     payload_model=EquipmentFaultReported,
     effects=no_effects,
     sample=_sample_report,
     summarize=_summarise_report,
-    card_fields=("device", "description"),
+    card_fields=("device", "description", "photo_sha256"),
 )
 
 FAULT_ASSIGNED = KindSpec(

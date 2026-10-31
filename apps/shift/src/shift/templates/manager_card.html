@@ -11,6 +11,8 @@
   <nav class="mg-nav" aria-label="صفحه‌های مدیر">
     <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
     <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
+    <a class="mg-nav-link" href="/manager/items">اقلام و کد کالا</a>
   </nav>
 
   {% if card %}
@@ -128,6 +130,7 @@
       {% for field in row.fields %}
       <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
       {% endfor %}
+      {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
@@ -146,6 +149,7 @@
       {% for field in row.fields %}
       <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
       {% endfor %}
+      {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
     </article>
     {% else %}
     <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>

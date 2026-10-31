@@ -36,7 +36,7 @@ from shift.domain.event_types import EventType
 from shift.domain.events import validate_payload
 from shift.domain.occurred_time import OccurredVerdict
 from shift.domain.occurred_time import verdict as occurred_verdict
-from shift.domain.permissions import Role
+from shift.domain.permissions import Permission, Role
 from shift.domain.policy import SettingKey, ShiftKey
 from shift.domain.shift_clock import covering
 from shift.domain.shift_events import (
@@ -64,6 +64,37 @@ from shift.services.settings import SettingsService
 
 class ShiftEventRuleError(OutboxValidationError):
     """A shift event the clinic's rules refuse; the route answers 422 with this message."""
+
+
+@dataclass(frozen=True, slots=True)
+class OpenTarget:
+    """One open record this person may act on from the wizard: a fault to assign or fix, or a belonging
+    to deliver. `actions` names the event types the wizard may record against it (SHF-7).
+
+    The list carries the record itself, its actor and its time — never a shift's figures — because an
+    open fault or a kept belonging outlives the shift that opened it (F2).
+    """
+
+    event_id: str
+    type: str
+    code: str
+    label_fa: str
+    at_tehran: str
+    actor: dict[str, str | None]
+    summary: dict[str, Any]
+    actions: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "type": self.type,
+            "code": self.code,
+            "label": self.label_fa,
+            "at_tehran": self.at_tehran,
+            "actor": self.actor,
+            "summary": self.summary,
+            "actions": list(self.actions),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +421,85 @@ class ShiftEventService:
                 )
         return pending
 
+    def open_targets(self, principal: Principal, shift: ShiftKey) -> list[OpenTarget]:
+        """The open records this person may act on in the wizard, whatever shift opened them (SHF-7).
+
+        The phone half of F2: «تعمیر شد», «ارجاع خرابی» and «تحویل امانت بیمار» need the record they
+        close, and until now the wizard had no way to name one. This reads the whole log, oldest
+        first, and keeps only records that are still open and that **this** person may act on:
+
+        - a fault nobody fixed: the manager (the only holder of `FAULT_ASSIGN`) may assign it, and
+          the assignee or the manager may close it, because that is exactly who the fix rule admits;
+        - a kept belonging nobody delivered: any holder of `PATIENT_ITEM_HANDLE` may hand it back;
+        - a vital reading of the running shift: the follow-up a nurse opens points at it, and that
+          reference never leaves its own shift (no `cross_shift` on the follow-up).
+
+        Each row is the record itself, its actor and its time: no cash figure and nothing another
+        person could act on (R-01, R-07).
+        """
+        roles = set(principal.roles)
+        is_manager = Role.MANAGER.value in roles
+        may_assign = Permission.FAULT_ASSIGN in principal.permissions
+        may_fix = Permission.FAULT_FIX in principal.permissions
+        may_deliver = Permission.PATIENT_ITEM_HANDLE in principal.permissions
+        may_follow = Permission.VITALS_RECORD in principal.permissions
+        if not (may_assign or may_fix or may_deliver or may_follow):
+            return []
+
+        reported = EventType.EQUIPMENT_FAULT_REPORTED.value
+        assigned = EventType.EQUIPMENT_FAULT_ASSIGNED.value
+        fixed = EventType.EQUIPMENT_FAULT_FIXED.value
+        held = EventType.PATIENT_ITEM_HELD.value
+        delivered = EventType.PATIENT_ITEM_DELIVERED.value
+        vitals = EventType.VITALS_RECORDED.value
+        followup = EventType.VITALS_FOLLOWUP_OPENED.value
+
+        targets: list[OpenTarget] = []
+        with self._database.read() as connection:
+            events = list(events_repo.iter_events(connection))
+            names = _Names(connection)
+            closed = {
+                event.ref_event_id
+                for event in events
+                if event.ref_event_id is not None and event.type in (fixed, delivered, followup)
+            }
+            assignees: dict[str, str] = {}
+            for event in events:
+                if event.type == assigned and event.ref_event_id is not None:
+                    name = str(event.payload.get("assignee_id", "") or "")
+                    if name:
+                        assignees[event.ref_event_id] = name
+            for event in events:
+                kind = kind_for(event.type)
+                if kind is None:
+                    continue
+                actions: list[str] = []
+                if event.event_id not in closed:
+                    if event.type == reported:
+                        if may_assign:
+                            actions.append(assigned)
+                        if may_fix and (is_manager or assignees.get(event.event_id) == principal.staff_id):
+                            actions.append(fixed)
+                    elif event.type == held and may_deliver:
+                        actions.append(delivered)
+                    elif event.type == vitals and may_follow and event.shift_id == shift.text:
+                        actions.append(followup)
+                if not actions:
+                    continue
+                targets.append(
+                    OpenTarget(
+                        event_id=event.event_id,
+                        type=event.type,
+                        code=kind.code,
+                        label_fa=kind.label_fa,
+                        at_tehran=event.at_tehran,
+                        actor={"id": event.actor_id, "name": names.full_name(event.actor_id)},
+                        summary=summary_for(kind, event.payload),
+                        actions=tuple(actions),
+                    )
+                )
+        return targets
+
     def page_context(self, principal: Principal, shift: ShiftKey) -> dict[str, Any]:
         """The phone's JSON catalogue: only the buttons this person may press, plus their lists.
 
@@ -411,6 +521,8 @@ class ShiftEventService:
                     "label": kind.label_fa,
                     "group": kind.group.value,
                     "needs_approval": kind.requires_approval,
+                    # The wizard picks the open record first for the kinds that close one (SHF-7).
+                    "needs_reference": kind.needs_reference,
                     "fields": [
                         {
                             "key": field.key,
@@ -452,6 +564,7 @@ class ShiftEventService:
                 for campaign in campaigns
             ],
             "pending_url": "/api/v1/shift-events/pending",
+            "open_url": "/api/v1/shift-events/open",
             "approved_type": APPROVED,
             "rejected_type": REJECTED,
         }

@@ -42,6 +42,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("recipient_id", "گیرنده", FieldKind.STAFF),
     FieldSpec("reason", "دلیل", FieldKind.TEXT, max_length=500),
     FieldSpec("manager_id", "مدیر تأییدکننده (بالای سقف)", FieldKind.STAFF, required=False),
+    FieldSpec("photo_sha256", "عکس رسید (اختیاری)", FieldKind.PHOTO, required=False),
 )
 
 # What the phone shows the person whose record was refused. No figure appears in any of them.
@@ -87,12 +88,25 @@ def validate(payload: CashWithdrawn, context: ShiftEventContext) -> None:
 
 def sample() -> dict[str, Any]:
     """A complete example of the kind, for the contract fixtures and the wizard's preview."""
-    return {"amount": 100000, "recipient_id": "staff-2", "reason": "خرید فوری", "manager_id": None}
+    return {
+        "amount": 100000,
+        "recipient_id": "staff-2",
+        "reason": "خرید فوری",
+        "manager_id": None,
+        "photo_sha256": None,
+    }
 
 
 def summarize(payload: CashWithdrawn) -> dict[str, Any]:
-    """The card row of one withdrawal: how much left the box, to whom and why."""
-    return {"amount": payload.amount, "recipient_id": payload.recipient_id, "reason": payload.reason}
+    """The card row of one withdrawal: how much left the box, to whom and why, and its receipt."""
+    summary: dict[str, Any] = {
+        "amount": payload.amount,
+        "recipient_id": payload.recipient_id,
+        "reason": payload.reason,
+    }
+    if payload.photo_sha256 is not None:
+        summary["photo_sha256"] = payload.photo_sha256
+    return summary
 
 
 KIND = KindSpec(
@@ -112,7 +126,7 @@ KIND = KindSpec(
     # record already moved the box (ADR-019). A below-cap one names no manager and waits for nobody.
     approvable_by=(Role.MANAGER,),
     manager_only_when=is_above_cap_payload,
-    card_fields=("amount", "recipient_id", "reason"),
+    card_fields=("amount", "recipient_id", "reason", "photo_sha256"),
 )
 
 register(KIND)

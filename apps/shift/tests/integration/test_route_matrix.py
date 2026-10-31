@@ -14,7 +14,7 @@ import pytest
 from auth_fixtures import PIN, ROLES, SPARE, seed_roster
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.api.deps import declared_guards
 from shift.api.errors import describe_refusal
@@ -46,6 +46,8 @@ PATH_VALUES = {
     "setting": "session_ttl_hours",
     "role": "nurse",
     "campaign_id": "cmp-matrix",
+    # A well-formed hash no photo was ever stored under: the reader routes answer 404 for it.
+    "sha256": "0" * 64,
     # A day the matrix app never generated a card for, so the manager gets the 404 page.
     "card_date": "2026-10-29",
     # An id no flow ever used: every guarded handover route answers 404 for a permitted role.
@@ -115,8 +117,23 @@ BODIES = {
     },
     "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
+    # A flow the vocabulary cannot accept, so probing this cell never records a real baseline.
+    "POST /api/v1/manager/baseline": {
+        "flow": "not-a-flow",
+        "custodian_id": SPARE.staff_id,
+        "opening_cash": 1,
+        "items": [{"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 1}],
+    },
 }
-PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns", "GET /events"}
+PAGES = {
+    "GET /login",
+    "GET /enroll",
+    "GET /admin/devices",
+    "GET /manager/campaigns",
+    "GET /manager/baseline",
+    "GET /manager/items",
+    "GET /events",
+}
 
 
 def _rows() -> dict[str, dict[str, object]]:

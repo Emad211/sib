@@ -98,9 +98,40 @@ class PendingEventOut(BaseModel):
     summary: dict[str, Any]
 
 
+class OpenTargetOut(BaseModel):
+    """One open record the signed-in person may act on from the wizard (SHF-7, F2)."""
+
+    event_id: str
+    type: str
+    code: str
+    label: str
+    at_tehran: str
+    actor: dict[str, str | None]
+    summary: dict[str, Any]
+    actions: list[str]
+
+
 def get_shift_events(request: Request) -> ShiftEventService:
     """The shift-event service created in the lifespan (routes never build their own)."""
     return request.app.state.shift_events
+
+
+PHOTO_MISSING = "عکس رسید پیدا نشد؛ ابتدا عکس را بفرستید."
+
+
+def _require_photo(request: Request, payload: dict[str, Any]) -> None:
+    """An event that names a receipt photo may only point at a photo this server already holds.
+
+    The phone uploads the blob before it replays the event (SHF-7), so a hash with no file behind it
+    is a broken reference on the manager's card, not a record worth keeping: the route refuses it
+    here, before the service applies any projection effect.
+    """
+    sha = payload.get("photo_sha256")
+    if sha is None:
+        return
+    store = getattr(request.app.state, "photos", None)
+    if store is None or not store.exists(str(sha)):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=PHOTO_MISSING)
 
 
 @router.get(
@@ -121,6 +152,24 @@ def get_pending_events(
     return [PendingEventOut(**entry.to_payload()) for entry in service.pending_for(principal)]
 
 
+@router.get(
+    "/shift-events/open",
+    response_model=list[OpenTargetOut],
+    summary="The open records this signed-in person may act on in the wizard",
+)
+def get_open_events(
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    shift: Annotated[ShiftKey, Depends(running_shift)],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
+) -> list[OpenTargetOut]:
+    """The record a closing event points at: a fault to assign or fix, a belonging to deliver.
+
+    Any phone that may append asks; the service answers with the records this person may act on and
+    nothing else, whatever shift opened them (F2, R-01, R-07). No cash figure is in the answer.
+    """
+    return [OpenTargetOut(**entry.to_payload()) for entry in service.open_targets(principal, shift)]
+
+
 @router.post(
     "/events",
     response_model=EventOut,
@@ -129,6 +178,7 @@ def get_pending_events(
 )
 def post_event(
     event_in: EventIn,
+    request: Request,
     response: Response,
     principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
     shift: Annotated[ShiftKey, Depends(running_shift)],
@@ -139,6 +189,7 @@ def post_event(
     Duplicate idempotency_key replays return the existing seq with HTTP 200.
     Invalid payloads or a clinic rule refusal return HTTP 422; anonymous requests fail closed with 401.
     """
+    _require_photo(request, event_in.payload)
     submission = EventSubmission(
         type=event_in.type,
         payload=event_in.payload,

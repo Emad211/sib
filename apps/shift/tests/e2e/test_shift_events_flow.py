@@ -27,7 +27,7 @@ import httpx
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, Seeded, seed_roster
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo
 from shift.adapters.db.core import Database
@@ -228,6 +228,9 @@ def _fill_step(page: Page, field: dict[str, Any], used_staff: list[str], actor_i
         return
     if field["kind"] == "date":
         page.fill(selector, "2026-10-28")
+        return
+    if field["kind"] == "photo":
+        # The receipt photo is optional (SHF-7); this journey leaves it out and answers the rest.
         return
     if field["kind"] in {"amount", "quantity"}:
         page.fill(selector, "2")

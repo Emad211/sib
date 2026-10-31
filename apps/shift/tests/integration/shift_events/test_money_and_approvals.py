@@ -141,7 +141,9 @@ def test_a_card_transfer_is_one_pending_record_for_the_accountant(database: Data
     assert (first.created, first.status) == (True, "recorded")
     assert (replay.created, replay.status) == (False, "replayed"), "a retried outbox item is not a second transfer"
     assert (replay.seq, replay.event_id) == (first.seq, first.event_id)
-    assert [event.payload for event in _events(database, "card.transfer_reported")] == [transfer]
+    assert [event.payload for event in _events(database, "card.transfer_reported")] == [
+        {**transfer, "photo_sha256": None}
+    ], "the stored payload keeps the optional receipt slot empty"
 
     pending = {entry.event_id: entry for entry in service.pending_for(_principal(Role.ACCOUNTANT))}
     assert list(pending) == [first.event_id]

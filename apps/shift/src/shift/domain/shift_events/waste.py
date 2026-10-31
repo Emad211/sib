@@ -46,6 +46,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("waste_kind", "نوع", FieldKind.CHOICE, options=WASTE_KINDS),
     FieldSpec("culprit_id", "مقصر", FieldKind.STAFF),
     FieldSpec("confirmer_id", "تأییدکننده (≠ مقصر)", FieldKind.STAFF),
+    FieldSpec("photo_sha256", "عکس (اختیاری)", FieldKind.PHOTO, required=False),
 )
 
 # What the phone shows the person whose record was refused. No figure appears in any of them.
@@ -85,18 +86,22 @@ def sample() -> dict[str, Any]:
         "waste_kind": "broken",
         "culprit_id": "staff-2",
         "confirmer_id": "staff-3",
+        "photo_sha256": None,
     }
 
 
 def summarize(payload: WasteReported) -> dict[str, Any]:
     """The card row of one waste: what left the shelf, how much and why, and who confirmed it."""
     waste_kind: WasteKind | None = payload.waste_kind
-    return {
+    summary: dict[str, Any] = {
         "quantity": payload.quantity,
         "item_id": payload.item_id,
         "waste_kind": WASTE_KIND_LABELS.get(waste_kind) if waste_kind is not None else None,
         "confirmer_id": payload.confirmer_id,
     }
+    if payload.photo_sha256 is not None:
+        summary["photo_sha256"] = payload.photo_sha256
+    return summary
 
 
 KIND = KindSpec(
@@ -112,7 +117,7 @@ KIND = KindSpec(
     summarize=summarize,
     validate=validate,
     confirmer_field="confirmer_id",
-    card_fields=("quantity", "item_id", "waste_kind", "confirmer_id"),
+    card_fields=("quantity", "item_id", "waste_kind", "confirmer_id", "photo_sha256"),
 )
 
 register(KIND)

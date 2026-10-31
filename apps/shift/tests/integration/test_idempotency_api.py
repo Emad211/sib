@@ -8,16 +8,17 @@ from auth_fixtures import PIN, ROLES, create_device, create_staff, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.api.deps import running_shift
 from shift.api.errors import install_error_handlers
 from shift.api.routes_events import router as events_router
-from shift.common.clock import parse_iso
+from shift.common.clock import parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.policy import ShiftKey
+from shift.domain.shift_clock import covering
 from shift.services.outbox import business_date_for
 
 RUNNING = ShiftKey(date(2026, 10, 28), 2)
@@ -39,7 +40,9 @@ def _event_payload(**overrides: Any) -> dict[str, Any]:
             "culprit_id": "staff-reception",
             "confirmer_id": "staff-spare",
         },
-        "client_at": datetime(2026, 10, 28, 10, 0, tzinfo=UTC).isoformat(),
+        # A fixed 2026-10-28 instant is held once it is more than three days old (F5), so the default
+        # instant is "now": these tests are about identity and idempotency, not about the hold rule.
+        "client_at": datetime.now(UTC).isoformat(),
     }
     payload.update(overrides)
     return payload
@@ -104,8 +107,10 @@ def test_the_session_identity_is_what_gets_recorded(seeded: TestClient) -> None:
     assert event is not None
     assert event.actor_id == ROLES["nurse"].staff_id
     assert event.device_id == ROLES["nurse"].device_id
-    assert event.shift_id == RUNNING.text
-    assert event.work_date == RUNNING.work_date.isoformat()
+    # The shift is the one the record happened in, never the forged one in the body (F5).
+    occurred = covering(to_tehran(parse_iso(body["client_at"])))
+    assert event.shift_id == occurred.text
+    assert event.work_date == occurred.work_date.isoformat()
 
 
 def test_the_double_submit_cookie_is_accepted_for_offline_replays(seeded: TestClient, csrf_headers: Any) -> None:

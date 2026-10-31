@@ -19,6 +19,18 @@
   {# One big button per kind, grouped money/stock/care/equipment; the script draws them. #}
   <section id="shift-event-groups" class="se-groups" aria-label="نوع رویداد"></section>
 
+  {# F2, SHF-7: the open record a closing event points at (a fault to assign or fix, a belonging). #}
+  <section id="shift-event-reference" class="se-panel hidden" aria-labelledby="shift-ref-title">
+    <p class="se-kicker">انتخاب مورد باز</p>
+    <h2 id="shift-ref-title" class="se-question">کدام مورد؟</h2>
+    <p id="shift-ref-note" class="se-hint" role="status">در حال خواندن موردهای باز…</p>
+    <ul id="shift-ref-list" class="se-ref-list" role="list"></ul>
+    <div class="se-actions">
+      <button type="button" id="shift-ref-back" class="btn btn-secondary">بازگشت</button>
+      <button type="button" id="shift-ref-next" class="btn btn-primary" disabled>ادامه</button>
+    </div>
+  </section>
+
   <section id="shift-event-step" class="se-panel hidden" aria-labelledby="shift-step-question">
     <p id="shift-step-progress" class="se-kicker"></p>
     <h2 id="shift-step-question" class="se-question"></h2>
