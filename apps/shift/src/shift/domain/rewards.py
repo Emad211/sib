@@ -150,12 +150,12 @@ class Payroll:
     net_toman: int
 
     def per_staff(self) -> tuple[tuple[str, str, int], ...]:
-        """`(staff_id, name, net)` per person, by name: what the accountant adds to a payslip."""
+        """`(staff_id, name, net)` per person, by name: what the accountant adds to a payslip, zero too."""
         names = {line.staff_id: line.staff_name for line in self.lines}
         nets: dict[str, int] = {}
         for line in self.lines:
             nets[line.staff_id] = nets.get(line.staff_id, 0) + line.amount_toman
-        return tuple(sorted((staff_id, names[staff_id], net) for staff_id, net in nets.items() if net))
+        return tuple(sorted((staff_id, names[staff_id], net) for staff_id, net in nets.items()))
 
 
 @dataclass(frozen=True, slots=True)

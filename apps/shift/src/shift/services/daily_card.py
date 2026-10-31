@@ -1127,9 +1127,13 @@ def _rewards(connection: Connection, window: CardWindow, names: _Names) -> tuple
     """What the day's rewards became, then every record still waiting for the manager (S01 §5).
 
     A record belongs to the day it became what it is: the confirmation or the revocation that moved
-    it, and its own instant while nobody has decided yet. A pending record is on every card until the
-    manager decides it — whatever shift recorded it, the `open_events` rule — and a rejected one is not
-    a row at all: it pays nothing, and the refusal is already the status of its own shift-event row.
+    it, and its own instant while nobody has decided yet. Those are two days, so a reward confirmed
+    and revoked later keeps its confirmation row on the day it was paid and puts the deduction on the
+    day it was taken back — the card counts the same facts the ledger pays and deducts, and a revoked
+    reward never removes a row from a card that already reported it. A pending record is on every card
+    until the manager decides it — whatever shift recorded it, the `open_events` rule — and a rejected
+    one is not a row at all: it pays nothing, and the refusal is already the status of its own
+    shift-event row.
 
     This reads the log and nothing else: `build` never accrues, so a reward only reaches a card because
     the reward service already wrote it, at the rate of the month the work happened in.
@@ -1141,17 +1145,18 @@ def _rewards(connection: Connection, window: CardWindow, names: _Names) -> tuple
     for row in timeline:
         if row.type not in _EARNED_TYPES:
             continue
-        revocation = revocations.get(row.event_id)
         decision = decisions.get(row.event_id)
-        if revocation is not None:
-            rows.append(_reward_row(row, REVOKED, revocation.at_tehran, names, revoked=True))
-        elif row.type == reward_repo.REWARD_CONFIRMED or (decision is not None and decision.type == APPROVED):
+        if row.type == reward_repo.REWARD_CONFIRMED or (decision is not None and decision.type == APPROVED):
             # The manager's own credit for an assigned task carries its confirmation; an earned record
             # is paid in the month its approval landed in, so the row is that day's decision.
             at = row.at_tehran if decision is None else decision.at_tehran
             rows.append(_reward_row(row, CONFIRMED, at, names))
         elif decision is None:
             rows.append(_reward_row(row, PENDING, row.at_tehran, names))
+        # The revocation is a fact of its own day, so it is read beside the confirmation, never instead.
+        revocation = revocations.get(row.event_id)
+        if revocation is not None:
+            rows.append(_reward_row(row, REVOKED, revocation.at_tehran, names, revoked=True))
     kept = [row for row in rows if row.status == PENDING or _inside(window, row.at_tehran)]
     return tuple(sorted(kept, key=lambda row: (row.at_tehran, row.event_id)))
 

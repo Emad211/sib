@@ -96,6 +96,11 @@ def _opened_earlier(hour: int, minute: int = 0) -> datetime:
     return datetime(2026, 10, 23, hour, minute, tzinfo=TEHRAN)
 
 
+def _thursday(hour: int, minute: int = 0) -> datetime:
+    """Two days after the card's Monday: the Saturday card is the one that reports this day."""
+    return datetime(THURSDAY.year, THURSDAY.month, THURSDAY.day, hour, minute, tzinfo=TEHRAN)
+
+
 @pytest.fixture()
 def clock() -> FixedClock:
     """The instant the Tuesday card is built; every append below moves it, the fixture resets it."""
@@ -1092,7 +1097,7 @@ def test_a_revoked_reward_says_which_month_the_deduction_leaves_the_payslip(
     clock: FixedClock,
     synthetic_day: None,
 ) -> None:
-    """S01 §5: a revocation is taken from the next month's payslip, and the card says which one."""
+    """S01 §5: the confirmation and the revocation are two rows of the day, each on its own instant."""
     store = EventStore(database, clock=clock)
     earned = _reward(store, clock, _monday(9, 30), staff_id="nurse-in")
     _decide(store, clock, _monday(9, 40), "event.approved", earned)
@@ -1102,9 +1107,40 @@ def test_a_revoked_reward_says_which_month_the_deduction_leaves_the_payslip(
     card = service.regenerate(CARD_DAY)
 
     assert card is not None
-    assert [(row.status, row.amount, row.deduction_month) for row in card.rewards] == [
+    assert [(row.event_id, row.status, row.amount, row.deduction_month) for row in card.rewards] == [
+        (earned, CONFIRMED, REWARD_VITALS, None),
+        (earned, REVOKED, -REWARD_VITALS, "1405-09"),
+    ]
+    assert [row.at_tehran for row in card.rewards] == [tehran_iso(_monday(9, 40)), tehran_iso(_monday(9, 50))]
+
+
+def test_a_revocation_days_later_keeps_the_confirmation_on_the_day_that_paid_it(
+    service: DailyCardService,
+    database: Database,
+    clock: FixedClock,
+    synthetic_day: None,
+) -> None:
+    """A card regenerated after a later revocation still shows what its own day paid (S01 §5, M-01)."""
+    store = EventStore(database, clock=clock)
+    earned = _reward(store, clock, _monday(9, 30), staff_id="nurse-in")
+    _decide(store, clock, _monday(9, 40), "event.approved", earned)
+    revoked_at = _thursday(10, 0)
+    _decide(store, clock, revoked_at, "reward.revoked", earned, {"reason": "ثبت تکراری بود"})
+    clock.moment = GENERATED_AT
+
+    paid = service.regenerate(CARD_DAY)
+    # Saturday's card is the one that reports Thursday, the day the manager took the reward back.
+    deducted = service.regenerate(SATURDAY)
+
+    assert paid is not None and deducted is not None
+    assert [(row.status, row.amount, row.deduction_month) for row in paid.rewards] == [
+        (CONFIRMED, REWARD_VITALS, None)
+    ]
+    assert paid.rewards[0].at_tehran == tehran_iso(_monday(9, 40))
+    assert [(row.status, row.amount, row.deduction_month) for row in deducted.rewards] == [
         (REVOKED, -REWARD_VITALS, "1405-09")
     ]
+    assert deducted.rewards[0].at_tehran == tehran_iso(revoked_at)
 
 
 def _section_html(page: str, anchor: str) -> str:

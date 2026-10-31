@@ -315,6 +315,29 @@ def test_a_pending_record_is_never_revoked(
         _decide(approvals, MANAGER, REVOKED, service.pending()[0].event_id, {"reason": "ثبت جعلی بود"})
 
 
+def test_a_person_whose_reward_and_deduction_cancel_is_still_a_row_of_the_payroll(
+    roster: Database, service: RewardsService, approvals: ShiftEventService, clock: FixedClock
+) -> None:
+    """The accountant's per-person list keeps a net of zero: the reward and its deduction are two facts."""
+    _rates(service)
+    _vital(roster, injection_id=9951, acc_user=NURSE_ACC)
+    service.accrue(MONTH)
+    taken_back = service.pending()[0]
+    _decide(approvals, MANAGER, APPROVED, taken_back.event_id)
+    _decide(approvals, MANAGER, REVOKED, taken_back.event_id, {"reason": "ثبت تکراری بود"})
+
+    _vital(roster, injection_id=9952, acc_user=NURSE_ACC, closed_at="2026-11-25 09:00:00")  # 1405-09
+    service.set_rate("vitals", NEXT_MONTH, VITALS_RATE, principal=MANAGER)
+    assert service.accrue(NEXT_MONTH).created == 1
+    clock.moment = datetime(2026, 11, 25, 11, 0, tzinfo=TEHRAN)
+    _decide(approvals, MANAGER, APPROVED, service.pending()[0].event_id)
+
+    payroll = service.payroll(NEXT_MONTH)
+
+    assert (payroll.earned_toman, payroll.deducted_toman, payroll.net_toman) == (VITALS_RATE, VITALS_RATE, 0)
+    assert payroll.per_staff() == ((ROLES["nurse"].staff_id, ROLES["nurse"].full_name, 0),)
+
+
 def test_a_receptionist_cannot_confirm_and_reads_only_their_own_standing(
     roster: Database, service: RewardsService, approvals: ShiftEventService
 ) -> None:
