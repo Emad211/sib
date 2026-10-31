@@ -17,8 +17,8 @@ from typing import Any
 import pytest
 from clocks import FixedClock
 from make_synthetic_acc_db import build
-from synthetic_catalog import seed
 from synthetic_accounting import close_open_invoices, empty_accounting
+from synthetic_catalog import seed
 
 from event_fixtures import build_event
 from shift.adapters.accounting.views import parse_time

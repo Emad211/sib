@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 from clocks import FixedClock
-from synthetic_catalog import seed
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed
 
 from event_fixtures import build_event
 from shift.adapters.db import projections_repo

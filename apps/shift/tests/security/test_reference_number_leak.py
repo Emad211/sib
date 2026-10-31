@@ -32,8 +32,8 @@ from typing import Any
 import pytest
 from auth_fixtures import PIN, ROLES, seed_roster
 from fastapi.testclient import TestClient
-from synthetic_catalog import seed as seed_catalog
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed as seed_catalog
 
 import shift as shift_package
 from shift.adapters.db import projections_repo

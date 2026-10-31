@@ -67,7 +67,6 @@ def _open(client: TestClient, role: str) -> list[dict]:
 
 def test_a_fault_is_offered_to_the_manager_and_to_its_assignee_only(staff_client: TestClient) -> None:
     """The manager assigns; the assignee may close it; the reporter is offered nothing."""
-    reporter = ROLES["reception"]
     nurse = ROLES["nurse"]
     reported = _append(
         staff_client,

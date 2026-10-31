@@ -21,8 +21,8 @@ import pytest
 from auth_fixtures import PIN, ROLES, login, seed_roster
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
-from synthetic_catalog import seed as seed_catalog
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import handover_repo
 from shift.app import create_app
