@@ -22,9 +22,10 @@ from shift.api import (
     routes_web,
 )
 from shift.api.errors import install_error_handlers
-from shift.common.clock import Clock, SystemClock
+from shift.common.clock import Clock, SystemClock, to_tehran
 from shift.config.logging import configure_logging
 from shift.config.settings import Settings
+from shift.domain.daily_card import FRIDAY
 from shift.domain.permissions import Permission
 from shift.runtime import BackgroundJobs
 from shift.services.accounting_bridge import AccountingBridge
@@ -67,7 +68,11 @@ def _daily_card_action(cards: DailyCardService) -> Callable[[datetime], str]:
     def generate(moment: datetime) -> str:
         stored = cards.generate_due(moment)
         if not stored:
-            return "no card today (Friday)"
+            # Two different quiet mornings: clinic policy (Friday, ADR-018), or a restart after 07:30
+            # that found today's card already stored. The log line has to say which one happened.
+            if to_tehran(moment).weekday() == FRIDAY:
+                return "no card today (Friday)"
+            return "daily card already up to date"
         newest = stored[-1]
         days = newest.day_count
         message = f"daily card {newest.card_date.isoformat()} stored ({days} day{'s' if days > 1 else ''})"
