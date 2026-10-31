@@ -77,6 +77,11 @@ BODIES = {
     # A body the flow vocabulary cannot accept, so probing the start cell never opens a real flow
     # (a second reception flow of the same shift would answer 409 instead of the recorded status).
     "POST /api/v1/handover/start": {"flow": "not-a-flow"},
+    "POST /api/v1/handover/{handover_id}/checklists": {
+        "item_id": "store_lock_ok",
+        "ok": True,
+        "reading": 6.5,
+    },
     "POST /api/v1/handover/{handover_id}/counts": {
         "scope": "item",
         "item_id": "para_500_amp",
@@ -89,7 +94,7 @@ BODIES = {
         "location_id": "shelf_reception",
         "counted": 1,
     },
-    "POST /api/v1/handover/{handover_id}/sign": {"signer": "incoming"},
+    "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
 }
 PAGES = {"GET /login", "GET /enroll", "GET /admin/devices"}

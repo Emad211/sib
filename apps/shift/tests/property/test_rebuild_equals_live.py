@@ -17,7 +17,7 @@ from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
-from shift.domain.handover_fsm import HandoverFlow, Signer
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.handover_payloads import CountTarget
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
@@ -97,6 +97,8 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
         )
     )
     caller = Caller(actor_id="staff-in", device_id="device-1")
+    # S03 §3: the outgoing person signs from their own phone, with their own caller.
+    outgoing_caller = Caller(actor_id="staff-out", device_id="device-2")
     cash = CountTarget(scope="cash")
     shelf = CountTarget(scope="item", item_id="para_500_amp", location_id="shelf_reception")
     diclo = CountTarget(scope="item", item_id="diclofenac_75_amp", location_id="shelf_reception")
@@ -127,8 +129,8 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
     service.advance(handover_id, caller=caller)
     service.hand_parcel(handover_id, "parcel-1", 2, caller=caller)
     service.advance(handover_id, caller=caller)
-    service.sign(handover_id, Signer.INCOMING, caller=caller)
-    assert service.sign(handover_id, Signer.OUTGOING, caller=caller).closed is True
+    service.sign(handover_id, caller=caller)
+    assert service.sign(handover_id, caller=outgoing_caller).closed is True
 
     with database.read() as connection:
         live = (

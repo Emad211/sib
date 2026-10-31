@@ -41,6 +41,9 @@ MOMENT = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)  # inside the morning shif
 OUTGOING = "staff-out"
 INCOMING = "staff-in"
 CALLER = Caller(actor_id=INCOMING, device_id="device-1")
+# S03 §3: the outgoing person signs from their own phone, so the service sees their own caller.
+OUTGOING_CALLER = Caller(actor_id=OUTGOING, device_id="device-2")
+SECOND_CALLER = Caller(actor_id="staff-in-2", device_id="device-3")
 CASH = CountTarget(scope="cash")
 SHELF = "shelf_reception"
 PARA = "para_500_amp"
@@ -181,15 +184,17 @@ def _settle_cash(service: HandoverService, handover_id: str, counted: int) -> No
     assert service.count(handover_id, CASH, counted, caller=CALLER) is CountStatus.MATCHED
 
 
-def _close_reception(service: HandoverService, handover_id: str) -> None:
+def _close_reception(
+    service: HandoverService, handover_id: str, *, incoming: Caller = CALLER, outgoing: Caller
+) -> None:
     """Walk a reception flow whose cash already settled to its closing signature."""
-    assert service.advance(handover_id, caller=CALLER).step is HandoverStep.SHELF
+    assert service.advance(handover_id, caller=incoming).step is HandoverStep.SHELF
     for item in (PARA, DICLO):
-        assert service.count(handover_id, _item(item), 0, caller=CALLER) is CountStatus.MATCHED
+        assert service.count(handover_id, _item(item), 0, caller=incoming) is CountStatus.MATCHED
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
-        assert service.advance(handover_id, caller=CALLER).step is step
-    service.sign(handover_id, Signer.INCOMING, caller=CALLER)
-    assert service.sign(handover_id, Signer.OUTGOING, caller=CALLER).closed is True
+        assert service.advance(handover_id, caller=incoming).step is step
+    service.sign(handover_id, caller=incoming)
+    assert service.sign(handover_id, caller=outgoing).closed is True
 
 
 def _movement(store: EventStore, projections: ProjectionEngine, event_type: str, amount: int, *, at: datetime) -> None:
@@ -231,8 +236,8 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
     state = service.advance(handover_id, caller=CALLER)
     assert state.step is HandoverStep.DUAL_SIGN
 
-    service.sign(handover_id, Signer.INCOMING, caller=CALLER)
-    state = service.sign(handover_id, Signer.OUTGOING, caller=CALLER)
+    service.sign(handover_id, caller=CALLER)
+    state = service.sign(handover_id, caller=OUTGOING_CALLER)
 
     assert (state.closed, state.step, state.signatures) == (True, None, frozenset(Signer))
     assert _payloads(database, handover_id, "handover.started") == [{"opening_cash": None}]
@@ -364,7 +369,7 @@ def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=CALLER).step is step
 
-    state = service.sign(handover_id, Signer.INCOMING, caller=CALLER)
+    state = service.sign(handover_id, caller=CALLER)
     assert (state.closed, state.signatures) == (True, frozenset({Signer.INCOMING}))
 
 
@@ -496,7 +501,7 @@ def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
     clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
     first = _start(service, opening_cash=1_000_000).handover_id
     _settle_cash(service, first, 1_000_000)
-    _close_reception(service, first)
+    _close_reception(service, first, outgoing=OUTGOING_CALLER)
 
     clock.moment = datetime(2026, 10, 28, 9, 45, tzinfo=TEHRAN)  # after the handover, before any flow
     _movement(store, projections, "acc.cash_receipt", 50_000, at=clock.moment)
@@ -504,14 +509,15 @@ def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
     clock.moment = datetime(2026, 10, 28, 14, 0, tzinfo=TEHRAN)  # the evening shift's own handover
     second = _start(service, opening_cash=None, baseline=False, incoming="staff-in-2").handover_id
     _settle_cash(service, second, 1_050_000)
-    _close_reception(service, second)
+    # The second flow's outgoing person is the first flow's incoming person (custody, SHF-7.1).
+    _close_reception(service, second, incoming=SECOND_CALLER, outgoing=CALLER)
     clock.moment = datetime(2026, 10, 28, 14, 20, tzinfo=TEHRAN)
     _movement(store, projections, "acc.cash_receipt", 30_000, at=clock.moment)
 
     clock.moment = datetime(2026, 10, 28, 20, 0, tzinfo=TEHRAN)  # the night shift
     third = _start(service, opening_cash=None, baseline=False, incoming=INCOMING).handover_id
     _settle_cash(service, third, 1_080_000)
-    _close_reception(service, third)
+    _close_reception(service, third, outgoing=SECOND_CALLER)
 
     for handover_id in (first, second, third):
         assert _payloads(database, handover_id, "discrepancy.recorded") == []

@@ -20,7 +20,7 @@ from shift.adapters.db import events_repo, handover_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
 from shift.domain.handover_formulas import HandoverError
-from shift.domain.handover_fsm import HandoverFlow, HandoverStep, Signer
+from shift.domain.handover_fsm import HandoverFlow, HandoverStep
 from shift.domain.handover_payloads import CountTarget
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
@@ -34,6 +34,8 @@ CUSTODIAN = "staff-out"
 MANAGER = "manager-1"
 INCOMING = "staff-in"
 CALLER = Caller(actor_id=INCOMING, device_id="device-1")
+# S03 §3: the outgoing person signs from their own phone, so the service sees their own caller.
+OUTGOING_CALLER = Caller(actor_id=CUSTODIAN, device_id="device-2")
 SHELF = "shelf_reception"
 PARA = "para_500_amp"
 DICLO = "diclofenac_75_amp"
@@ -185,8 +187,8 @@ def test_the_first_flows_outgoing_person_is_the_custodian_and_a_close_hands_cust
         service.count(state.handover_id, _item(item), quantity, caller=CALLER)
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(state.handover_id, caller=CALLER).step is step
-    service.sign(state.handover_id, Signer.INCOMING, caller=CALLER)
-    assert service.sign(state.handover_id, Signer.OUTGOING, caller=CALLER).closed is True
+    service.sign(state.handover_id, caller=CALLER)
+    assert service.sign(state.handover_id, caller=OUTGOING_CALLER).closed is True
 
     assert service.custodian(HandoverFlow.RECEPTION) == INCOMING
     with database.read() as connection:

@@ -91,6 +91,10 @@ class Caller:
     device_id: str
 
 
+class NotASigner(HandoverError):
+    """The caller is neither the incoming nor the outgoing person of this flow (H-04, R-04)."""
+
+
 @dataclass(frozen=True, slots=True)
 class HandoverState:
     """What a client may know about a flow: where it is, never a reference and never a count."""
@@ -415,9 +419,28 @@ class HandoverService:
         self._append(flow.row, caller, [(EventType.HANDOVER_PARCEL_HANDED.value, payload)])
         return self.state(handover_id)
 
-    def sign(self, handover_id: str, signer: Signer, *, caller: Caller) -> HandoverState:
-        """Record one signature at the dual-sign step; the last required one closes the flow (H-04)."""
+    def open_flows(self, shift_id: str) -> list[HandoverState]:
+        """The flows of one shift still waiting for a signature, each rebuilt from its own log.
+
+        The second person of a handover opens the screen on their own phone and joins the flow the
+        first phone opened (S03 §3); a flow of another shift is never listed, and a closed one is
+        gone. Nothing here carries a reference or a count, only the statuses a client needs.
+        """
+        with self._database.read() as connection:
+            rows = [row for row in handover_repo.open_flows(connection) if row.shift_id == shift_id]
+        return [self.state(row.handover_id) for row in rows]
+
+    def sign(self, handover_id: str, *, caller: Caller) -> HandoverState:
+        """Record the caller's own signature at the dual-sign step; the last one closes the flow.
+
+        H-04's two signatures are each recorded by the person who signed, so the signer is derived
+        from the session rather than typed: a phone can only sign its own side, and the event's actor
+        is the person whose signature it is (R-04). Anyone else is refused (H-09 keeps the block to
+        its two ends). The domain still refuses an absent outgoing person on an emergency flow (H-08)
+        and a second signature from the same side.
+        """
         flow = self._live(handover_id)
+        signer = _signer_of(flow.row, caller)
         signed = flow.handover.sign(signer)
         self._append(flow.row, caller, [(EventType.HANDOVER_SIGNED.value, {"signer": signer.value})])
         if signed.closed:
@@ -702,6 +725,15 @@ class HandoverService:
         # The projection catches up immediately: the next count's step and the next flow's reference
         # are read from it, and a rebuild has to equal what it shows (ADR-010).
         self._projections.sync()
+
+
+def _signer_of(row: FlowRow, caller: Caller) -> Signer:
+    """Which side of this flow the caller is; anyone else may not sign it at all (S03 §3)."""
+    if caller.actor_id == row.incoming_id:
+        return Signer.INCOMING
+    if caller.actor_id == row.outgoing_id:
+        return Signer.OUTGOING
+    raise NotASigner("the caller is not a signer of this handover")
 
 
 def _cash_status(flow: _Flow) -> CountStatus | None:

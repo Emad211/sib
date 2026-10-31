@@ -9,10 +9,14 @@ reference, agreed figure, variance or delta may appear in a field, header, cooki
 
 Who hands over is not typed by staff: the outgoing person is the one who received the newest flow of
 the same kind (custody), or the custodian of the manager's baseline record on a fresh install
-(`HandoverService.custodian`). The body of `start` is only `{flow}`.
+(`HandoverService.custodian`). The body of `start` is only `{flow}`. The signer is not typed either:
+each side signs on its own phone, so the service matches the session's person against the flow's two
+people (S03 §3, H-04), and a phone can only ever sign its own side.
 
 The manager list exists for H-08: the incoming person records the manager's phone confirmation by
-choosing a name, and the manager needs no device of their own.
+choosing a name, and the manager needs no device of their own. The current list is how the second
+phone joins a flow the first one opened, and the checklists and parcels routes record the two middle
+steps of H-04 instead of walking past them.
 """
 
 import logging
@@ -26,14 +30,14 @@ from shift.api.deps import NO_PERMISSION
 from shift.api.errors import ApiError, Conflict, Forbidden, NotFound
 from shift.common.clock import utc_iso
 from shift.domain.handover_formulas import HandoverError
-from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow, Signer
+from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow
 from shift.domain.handover_payloads import CountTarget
 from shift.domain.handover_steps import STEP_LOCATIONS
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
-from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState
+from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +54,7 @@ NO_STORE = {
 # service and reaches the operator's log, not the phone.
 NO_SUCH_HANDOVER = "این تحویل شیفت پیدا نشد."
 GENERIC_REFUSAL = "این کار در وضعیت فعلی تحویل شیفت مجاز نیست؛ صفحه را تازه کنید."
+NOT_A_SIGNER = "این تحویل مال شما نیست؛ فقط نفر ورودی و نفر خروجی همین تحویل امضا می‌کنند."
 _REFUSALS: tuple[tuple[str, str], ...] = (
     ("invoices are open", "تحویل شیفت با صورت‌حساب باز شروع نمی‌شود؛ ابتدا صورت‌حساب‌های باز را ببندید."),
     ("already has a", "این تحویل از قبل برای این شیفت باز شده است."),
@@ -69,6 +74,8 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
     ("recorded through", "این قلم باید با شمارش مشترک ثبت شود."),
     ("already settled", "این قلم قبلاً تسویه شده است."),
     ("signatures belong", "امضا فقط در مرحلهٔ امضای دوطرفه ثبت می‌شود."),
+    ("checklists work belongs", "پاسخ چک‌لیست فقط در مرحلهٔ چک‌لیست ثبت می‌شود."),
+    ("parcels work belongs", "ثبت بسته فقط در مرحلهٔ بسته‌های در راه انجام می‌شود."),
     ("cannot be skipped", "ثبت امضا پایان تحویل است؛ این مرحله رد نمی‌شود."),
     ("already signed", "این نفر قبلاً امضا کرده است."),
     ("signs alone", "نفر خروجی حاضر نیست؛ نفر ورودی تنها امضا می‌کند."),
@@ -116,12 +123,24 @@ class CountIn(BaseModel):
         return CountTarget(scope=self.scope, item_id=self.item_id, location_id=self.location_id)
 
 
-class SignIn(BaseModel):
-    """One side confirms the handover on their own device (H-04)."""
+class ChecklistIn(BaseModel):
+    """One checklist answer: a yes/no, plus the reading or photo its catalog kind asks for (S03 §1)."""
 
     model_config = ConfigDict(extra="forbid")
 
-    signer: Signer
+    item_id: str = Field(min_length=1, max_length=128)
+    ok: bool
+    reading: float | None = Field(default=None, ge=0)
+    photo_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ParcelIn(BaseModel):
+    """One parcel still on its way to the store, and how many packages it holds (H-04)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parcel_id: str = Field(min_length=1, max_length=128)
+    packages: int = Field(strict=True, ge=0)
 
 
 class EmergencyStartIn(BaseModel):
@@ -153,6 +172,9 @@ def _caller(principal: Principal) -> Caller:
 def _refusal(exc: HandoverError) -> ApiError:
     """Translate a service refusal into the one error envelope, in Persian and with no number."""
     reason = str(exc)
+    if isinstance(exc, NotASigner):
+        log.info("handover refusal: %s", reason)
+        return Forbidden(NOT_A_SIGNER)
     if reason == NO_ACCOUNTING:
         return Conflict(NO_ACCOUNTING)
     if reason == NO_BASELINE:
@@ -220,6 +242,28 @@ def list_managers(request: Request, _principal: CountGuard) -> list[dict[str, st
         {"id": entry.staff_id, "name": entry.full_name}
         for entry in entries
         if entry.active and Role.MANAGER.value in entry.roles
+    ]
+
+
+@router.get("/current")
+def current_handovers(
+    request: Request,
+    response: Response,
+    _principal: CountGuard,
+    service: Annotated[HandoverService, Depends(get_handover)],
+) -> list[dict[str, Any]]:
+    """The open flows of this shift, so a second phone joins the flow the first one opened (S03 §3)."""
+    shift = deps.running_shift(request)
+    _no_store(response)
+    return [
+        {
+            "handover_id": state.handover_id,
+            "flow": state.flow.value,
+            "step": None if state.step is None else state.step.value,
+            "signed": sorted(signer.value for signer in state.signatures),
+            "early_left": state.early_left,
+        }
+        for state in service.open_flows(shift.text)
     ]
 
 
@@ -314,16 +358,51 @@ def advance_handover(
     return _state(state)
 
 
+@router.post("/{handover_id}/checklists")
+def answer_checklist(
+    handover_id: str,
+    body: ChecklistIn,
+    response: Response,
+    principal: CountGuard,
+    service: Annotated[HandoverService, Depends(get_handover)],
+) -> dict[str, Any]:
+    """Record one checklist answer on the checklists step (H-04); it belongs to that step alone."""
+    state = _run(
+        service.answer_checklist,
+        handover_id,
+        body.item_id,
+        ok=body.ok,
+        reading=body.reading,
+        photo_id=body.photo_id,
+        caller=_caller(principal),
+    )
+    _no_store(response)
+    return _state(state)
+
+
+@router.post("/{handover_id}/parcels")
+def hand_parcel(
+    handover_id: str,
+    body: ParcelIn,
+    response: Response,
+    principal: CountGuard,
+    service: Annotated[HandoverService, Depends(get_handover)],
+) -> dict[str, Any]:
+    """Record one parcel in transit changing hands on the parcels step (H-04)."""
+    state = _run(service.hand_parcel, handover_id, body.parcel_id, body.packages, caller=_caller(principal))
+    _no_store(response)
+    return _state(state)
+
+
 @router.post("/{handover_id}/sign")
 def sign_handover(
     handover_id: str,
-    body: SignIn,
     response: Response,
     principal: SignGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """Record one signature at the dual-sign step; the last required one closes the flow (H-04)."""
-    state = _run(service.sign, handover_id, body.signer, caller=_caller(principal))
+    """Record the caller's own signature at the dual-sign step; the last required one closes the flow."""
+    state = _run(service.sign, handover_id, caller=_caller(principal))
     _no_store(response)
     return _state(state)
 

@@ -34,6 +34,7 @@ from shift.app import create_app
 from shift.config.settings import Settings
 from shift.domain.handover_counts import CountStatus
 from shift.domain.handover_fsm import HandoverFlow
+from shift.services.auth import SESSION_COOKIE
 from shift.services.handover import REFERENCE_ACTION
 
 CASH_REFERENCE = 2_468_913  # what the box should hold when the flow starts (N0 of the baseline)
@@ -55,7 +56,7 @@ PARA = "para_500_amp"
 DICLO = "diclofenac_75_amp"
 SALINE = "saline_500_bag"
 OXYGEN = "oxygen_mask"
-OUTGOING = "staff-outgoing"
+OUTGOING = ROLES["multi_role"].staff_id  # the custodian signs on their own phone, the second one
 MANAGER = ROLES["manager"].staff_id
 
 FIGURES: tuple[int, ...] = (
@@ -190,9 +191,17 @@ def app_client(leak_settings: Settings) -> Iterator[TestClient]:
         yield client
 
 
-def _sign_in(client: TestClient, scanner: Scanner) -> dict[str, str]:
+@dataclass(frozen=True, slots=True)
+class Session:
+    """One person signed in on their own phone; both sides of a handover hold one (S03 §3)."""
+
+    headers: dict[str, str]
+    token: str
+
+
+def _sign_in(client: TestClient, scanner: Scanner, role: str = "reception") -> Session:
     """The real login handshake, both requests scanned, and the CSRF header for unsafe verbs."""
-    person = ROLES["reception"]
+    person = ROLES[role]
     page = _call(client, scanner, "GET", "/login")
     assert page.status_code == 200
     signed_in = _call(
@@ -204,7 +213,16 @@ def _sign_in(client: TestClient, scanner: Scanner) -> dict[str, str]:
         headers={"X-CSRFToken": client.cookies.get("shift_csrf", "")},
     )
     assert signed_in.status_code == 200, signed_in.text
-    return {"X-CSRFToken": signed_in.json()["csrf_token"]}
+    token = signed_in.cookies.get(SESSION_COOKIE)
+    assert token, "the login handshake issued no session"
+    return Session({"X-CSRFToken": signed_in.json()["csrf_token"]}, token)
+
+
+def _act(client: TestClient, session: Session) -> dict[str, str]:
+    """Act as one signed-in person; the other phone's session stays valid beside it."""
+    client.cookies.clear()
+    client.cookies.set(SESSION_COOKIE, session.token)
+    return session.headers
 
 
 def _baseline(client: TestClient, flow: HandoverFlow, *, opening_cash: int | None, items: list[dict[str, Any]]) -> None:
@@ -221,7 +239,7 @@ def _baseline(client: TestClient, flow: HandoverFlow, *, opening_cash: int | Non
 def _count(
     client: TestClient,
     scanner: Scanner,
-    headers: dict[str, str],
+    session: Session,
     handover_id: str,
     *,
     scope: str,
@@ -233,7 +251,9 @@ def _count(
     if item_id is not None:
         body["item_id"] = item_id
         body["location_id"] = location_id
-    response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/counts", json=body, headers=headers)
+    response = _call(
+        client, scanner, "POST", f"/api/v1/handover/{handover_id}/counts", json=body, headers=_act(client, session)
+    )
     assert response.status_code == 200, response.text
     assert set(response.json()) == {"status"}
     return response.json()["status"]
@@ -242,7 +262,7 @@ def _count(
 def _joint(
     client: TestClient,
     scanner: Scanner,
-    headers: dict[str, str],
+    session: Session,
     handover_id: str,
     counted: int,
     *,
@@ -254,27 +274,66 @@ def _joint(
     if item_id is not None:
         body["item_id"] = item_id
         body["location_id"] = location_id
-    response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/joint", json=body, headers=headers)
+    response = _call(
+        client, scanner, "POST", f"/api/v1/handover/{handover_id}/joint", json=body, headers=_act(client, session)
+    )
     assert response.status_code == 200, response.text
     return response.json()["status"]
 
 
 def _advance(
-    client: TestClient, scanner: Scanner, headers: dict[str, str], handover_id: str, *, expected: str | None
+    client: TestClient, scanner: Scanner, session: Session, handover_id: str, *, expected: str | None
 ) -> dict[str, Any]:
-    response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/advance", headers=headers)
+    response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/advance", headers=_act(client, session))
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["step"] == expected
     return body
 
 
-def _sign(
-    client: TestClient, scanner: Scanner, headers: dict[str, str], handover_id: str, signer: str
+def _checklist(
+    client: TestClient,
+    scanner: Scanner,
+    session: Session,
+    handover_id: str,
+    item_id: str,
+    *,
+    ok: bool,
+    reading: float | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"item_id": item_id, "ok": ok}
+    if reading is not None:
+        body["reading"] = reading
+    response = _call(
+        client,
+        scanner,
+        "POST",
+        f"/api/v1/handover/{handover_id}/checklists",
+        json=body,
+        headers=_act(client, session),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _parcel(
+    client: TestClient, scanner: Scanner, session: Session, handover_id: str, parcel_id: str, packages: int
 ) -> dict[str, Any]:
     response = _call(
-        client, scanner, "POST", f"/api/v1/handover/{handover_id}/sign", json={"signer": signer}, headers=headers
+        client,
+        scanner,
+        "POST",
+        f"/api/v1/handover/{handover_id}/parcels",
+        json={"parcel_id": parcel_id, "packages": packages},
+        headers=_act(client, session),
     )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _sign(client: TestClient, scanner: Scanner, session: Session, handover_id: str) -> dict[str, Any]:
+    """Sign with the session's own side; the request carries no signer at all (H-04, S03 §3)."""
+    response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/sign", headers=_act(client, session))
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -290,9 +349,15 @@ def _read_figures(client: TestClient) -> tuple[int, Mapping[tuple[str, str], int
     return int(cash["expected"]), stock
 
 
-def _reception_flow(client: TestClient, scanner: Scanner, headers: dict[str, str]) -> str:
-    """Start the reception flow and walk it to a closed state; returns its id."""
-    started = _call(client, scanner, "POST", "/api/v1/handover/start", json={"flow": "reception"}, headers=headers)
+def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, outgoing: Session) -> str:
+    """Start the reception flow and walk it to a closed state; returns its id.
+
+    The incoming person opens it on their phone; the outgoing person joins it through the current
+    list on their own phone, and each side signs from the phone it holds (S03 §3).
+    """
+    started = _call(
+        client, scanner, "POST", "/api/v1/handover/start", json={"flow": "reception"}, headers=_act(client, incoming)
+    )
     assert started.status_code == 201, started.text
     state = started.json()
     handover_id = state["handover_id"]
@@ -304,17 +369,17 @@ def _reception_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
     assert stock[(PARA, SHELF)] == SHELF_REFERENCE
     assert stock[(DICLO, SHELF)] == DICLO_REFERENCE
 
-    targets = _call(client, scanner, "GET", f"/api/v1/handover/{handover_id}/targets", headers=headers)
+    targets = _call(client, scanner, "GET", f"/api/v1/handover/{handover_id}/targets", headers=_act(client, incoming))
     assert targets.status_code == 200
     assert {item["item_id"] for item in targets.json()["items"]} == {PARA, DICLO}
 
-    assert _count(client, scanner, headers, handover_id, scope="cash", counted=CASH_FIRST) == "incoming"
+    assert _count(client, scanner, incoming, handover_id, scope="cash", counted=CASH_FIRST) == "incoming"
     assert _read_figures(client)[0] == CASH_REFERENCE, "a blind count never moves the reference (H-11)"
-    assert _count(client, scanner, headers, handover_id, scope="cash", counted=CASH_SECOND) == "joint"
+    assert _count(client, scanner, incoming, handover_id, scope="cash", counted=CASH_SECOND) == "joint"
     assert _read_figures(client)[0] == CASH_REFERENCE, "two blind counts still compare against the reference"
-    assert _joint(client, scanner, headers, handover_id, CASH_JOINT) == "settled"
+    assert _joint(client, scanner, incoming, handover_id, CASH_JOINT) == "settled"
     assert _read_figures(client)[0] == CASH_JOINT, "only the settlement moves the box (H-13)"
-    shelf = _advance(client, scanner, headers, handover_id, expected="shelf")
+    shelf = _advance(client, scanner, incoming, handover_id, expected="shelf")
     assert shelf["cash_status"] == "settled"
     assert shelf["counts"] == {PARA: "first", DICLO: "first"}
 
@@ -322,7 +387,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
         _count(
             client,
             scanner,
-            headers,
+            incoming,
             handover_id,
             scope="item",
             counted=SHELF_REFERENCE,
@@ -333,42 +398,61 @@ def _reception_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
     )
     assert (
         _count(
-            client, scanner, headers, handover_id, scope="item", counted=DICLO_FIRST, item_id=DICLO, location_id=SHELF
+            client, scanner, incoming, handover_id, scope="item", counted=DICLO_FIRST, item_id=DICLO, location_id=SHELF
         )
         == "recount"
     )
     assert (
         _count(
-            client, scanner, headers, handover_id, scope="item", counted=DICLO_SECOND, item_id=DICLO, location_id=SHELF
+            client, scanner, incoming, handover_id, scope="item", counted=DICLO_SECOND, item_id=DICLO, location_id=SHELF
         )
         == "outgoing"
     )
     assert (
         _count(
-            client, scanner, headers, handover_id, scope="item", counted=DICLO_THIRD, item_id=DICLO, location_id=SHELF
+            client, scanner, incoming, handover_id, scope="item", counted=DICLO_THIRD, item_id=DICLO, location_id=SHELF
         )
         == "joint"
     )
     assert (
-        _joint(client, scanner, headers, handover_id, DICLO_JOINT, scope="item", item_id=DICLO, location_id=SHELF)
+        _joint(client, scanner, incoming, handover_id, DICLO_JOINT, scope="item", item_id=DICLO, location_id=SHELF)
         == "settled"
     )
 
-    _advance(client, scanner, headers, handover_id, expected="checklists")
-    _advance(client, scanner, headers, handover_id, expected="parcels")
-    _advance(client, scanner, headers, handover_id, expected="dual_sign")
-    assert _sign(client, scanner, headers, handover_id, "incoming")["closed"] is False
-    assert _sign(client, scanner, headers, handover_id, "outgoing")["closed"] is True
+    _advance(client, scanner, incoming, handover_id, expected="checklists")
+    answered = _checklist(client, scanner, incoming, handover_id, "store_lock_ok", ok=True)
+    reading = _checklist(client, scanner, incoming, handover_id, "fridge_temperature", ok=True, reading=6.5)
+    assert (answered["step"], reading["step"]) == ("checklists", "checklists")
+    _advance(client, scanner, incoming, handover_id, expected="parcels")
+    parcel = _parcel(client, scanner, incoming, handover_id, "parcel-courier-01", 3)
+    assert parcel["step"] == "parcels"
+    _advance(client, scanner, incoming, handover_id, expected="dual_sign")
 
-    final = _call(client, scanner, "GET", f"/api/v1/handover/{handover_id}", headers=headers)
+    # The second phone finds the flow through the join list and signs its own side there.
+    joined = _call(client, scanner, "GET", "/api/v1/handover/current", headers=_act(client, outgoing))
+    assert joined.status_code == 200
+    assert [(row["handover_id"], row["flow"], row["step"]) for row in joined.json()] == [
+        (handover_id, "reception", "dual_sign")
+    ]
+    assert (
+        _call(client, scanner, "GET", f"/api/v1/handover/{handover_id}", headers=_act(client, outgoing)).status_code
+        == 200
+    )
+
+    assert _sign(client, scanner, incoming, handover_id)["closed"] is False
+    assert _sign(client, scanner, outgoing, handover_id)["closed"] is True
+
+    final = _call(client, scanner, "GET", f"/api/v1/handover/{handover_id}", headers=_act(client, outgoing))
     assert (final.json()["closed"], final.json()["step"]) == (True, None)
     assert final.json()["signed"] == ["incoming", "outgoing"]
     return handover_id
 
 
-def _emergency_flow(client: TestClient, scanner: Scanner, headers: dict[str, str]) -> str:
+def _emergency_flow(client: TestClient, scanner: Scanner, incoming: Session) -> str:
     """A nursing flow where the outgoing person left: one person finishes, and no culprit is named."""
-    started = _call(client, scanner, "POST", "/api/v1/handover/start", json={"flow": "nursing"}, headers=headers)
+    started = _call(
+        client, scanner, "POST", "/api/v1/handover/start", json={"flow": "nursing"}, headers=_act(client, incoming)
+    )
     assert started.status_code == 201, started.text
     handover_id = started.json()["handover_id"]
     assert started.json()["cash_status"] is None, "the nursing flow hands over no cash (H-12)"
@@ -377,9 +461,9 @@ def _emergency_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
     assert stock[(SALINE, CPR)] == SALINE_REFERENCE
     assert stock[(OXYGEN, CPR)] == OXYGEN_REFERENCE
 
-    left = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/early-leave", headers=headers)
+    left = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/early-leave", headers=_act(client, incoming))
     assert left.json()["early_left"] is True
-    blocked = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/advance", headers=headers)
+    blocked = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/advance", headers=_act(client, incoming))
     assert blocked.status_code == 409, "an early leave blocks the flow until the manager confirms (H-08)"
 
     confirmed = _call(
@@ -388,7 +472,7 @@ def _emergency_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
         "POST",
         f"/api/v1/handover/{handover_id}/emergency-start",
         json={"manager_id": MANAGER},
-        headers=headers,
+        headers=_act(client, incoming),
     )
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["emergency"]["manager_id"] == MANAGER
@@ -396,13 +480,27 @@ def _emergency_flow(client: TestClient, scanner: Scanner, headers: dict[str, str
 
     assert (
         _count(
-            client, scanner, headers, handover_id, scope="item", counted=SALINE_COUNT, item_id=SALINE, location_id=CPR
+            client,
+            scanner,
+            incoming,
+            handover_id,
+            scope="item",
+            counted=SALINE_COUNT,
+            item_id=SALINE,
+            location_id=CPR,
         )
         == "recount"
     )
     assert (
         _count(
-            client, scanner, headers, handover_id, scope="item", counted=SALINE_COUNT, item_id=SALINE, location_id=CPR
+            client,
+            scanner,
+            incoming,
+            handover_id,
+            scope="item",
+            counted=SALINE_COUNT,
+            item_id=SALINE,
+            location_id=CPR,
         )
         == "settled"
     )
@@ -427,7 +525,8 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
     app_client: TestClient, leak_settings: Settings
 ) -> None:
     scanner = Scanner()
-    headers = _sign_in(app_client, scanner)
+    incoming = _sign_in(app_client, scanner)
+    outgoing = _sign_in(app_client, scanner, "multi_role")
     _baseline(
         app_client,
         HandoverFlow.RECEPTION,
@@ -447,8 +546,8 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
         ],
     )
 
-    closed = _reception_flow(app_client, scanner, headers)
-    emergency = _emergency_flow(app_client, scanner, headers)
+    closed = _reception_flow(app_client, scanner, incoming, outgoing)
+    emergency = _emergency_flow(app_client, scanner, incoming)
 
     other_event = _call(
         app_client,
@@ -461,10 +560,10 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
             "payload": {"item_id": "gauze_roll", "location_id": "doctor_room", "quantity": 2},
             "client_at": "2026-10-28T10:00:00Z",
         },
-        headers=headers,
+        headers=_act(app_client, incoming),
     )
     assert other_event.status_code == 200, other_event.text
-    _scan_the_shell(app_client, scanner, headers)
+    _scan_the_shell(app_client, scanner, _act(app_client, incoming))
 
     assert scanner.count >= 30, f"the scan covered only {scanner.count} responses"
     _assert_only_the_audit_trail_holds_a_figure(app_client, leak_settings, closed, emergency)
