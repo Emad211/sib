@@ -308,33 +308,24 @@ def test_offline_submit_then_replay_records_one_principal_owned_event(
 
 
 @pytest.mark.e2e
-def test_cold_offline_launch_serves_the_shell_for_root_and_start_url(
+def test_cold_offline_launch_of_a_guest_gets_the_offline_page_not_a_stored_guest_home(
     live_server: tuple[str, Database],
     browser: Browser,
 ) -> None:
-    """The manifest start_url is cached, so an installed PWA launches the shell offline."""
+    """A guest home is no-store, so it can't later stand in for a signed-in person's offline home."""
     base_url, _db = live_server
     context, page = _open_page(browser)
     try:
         page.goto(f"{base_url}/?src=pwa", wait_until="domcontentloaded")
         _wait_for_shell(page)
         _wait_for_service_worker(page)
-        _wait_until(
-            page,
-            lambda: page.evaluate("async (url) => !!(await caches.match(url))", "/?src=pwa"),
-            description="cached start_url",
-        )
 
         context.set_offline(True)
 
-        page.goto(f"{base_url}/?src=pwa", wait_until="domcontentloaded")
-        _wait_for_shell(page)
-        assert page.locator("#shift-overview-title").count() == 1
-
-        page.goto(f"{base_url}/", wait_until="domcontentloaded")
-        _wait_for_shell(page)
-        assert page.locator("#shift-overview-title").count() == 1
-        assert page.locator("text=ارتباط با سرور درمانگاه قطع است").count() == 0
+        for path in ("/?src=pwa", "/"):
+            page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+            assert page.locator("text=ارتباط با سرور درمانگاه قطع است").count() == 1
+            assert page.locator("#shift-overview-title").count() == 0
     finally:
         context.close()
 
