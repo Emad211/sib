@@ -270,7 +270,7 @@ def test_the_storekeeper_confirms_an_emergency_withdrawal_afterwards(desk: Desk)
     pending = desk.service.pending_for(desk.storekeeper, desk.shift)
     assert [entry.event_id for entry in pending] == [recorded.event_id]
     entry = pending[0]
-    assert (entry.type, entry.code) == (WITHDRAWN, "ا")
+    assert (entry.type, entry.code) == (WITHDRAWN, "اض")
     assert entry.actor["id"] == desk.nurse.staff_id
     assert entry.summary["quantity"] == 2
 
