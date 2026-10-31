@@ -573,9 +573,25 @@ class HandoverService:
         return replace(flow, cash=adjusted, adjustment=flow.adjustment + delta), [(_ADJUSTED, {"delta": delta})]
 
     def _pending_adjustment(self, flow: _Flow) -> int:
-        """How far the reference still has to move for the pre-cutoff money that arrived late."""
-        split = windows(self._money_movements(flow.start_seq), flow.row.opened_at)
+        """How far the reference still has to move for the pre-cutoff money that arrived late.
+
+        Only money this flow's own cutoff owns may move it. A record that belongs to an earlier flow —
+        money that flow already saw, and whose late-cash reversal put its box back — must never move
+        the next flow's reference: that would count one movement twice and invent a gap against the
+        outgoing person (H-11).
+        """
+        movements = [movement for movement in self._money_movements(flow.start_seq) if self._belongs_to(flow, movement)]
+        split = windows(movements, flow.row.opened_at)
         return split.before_cutoff - flow.adjustment
+
+    def _belongs_to(self, flow: _Flow, movement: CashMovement) -> bool:
+        """Whether one money movement's own cutoff is this flow's, and no late-cash record owns it."""
+        with self._database.read() as connection:
+            row = handover_repo.first_flow_at_or_after(connection, movement.occurred_at, HandoverFlow.RECEPTION)
+            if row is None or row.handover_id != flow.row.handover_id:
+                return False
+            late = events_repo.count_ref(connection, movement.event_id, (EventType.HANDOVER_LATE_CASH_RECORDED.value,))
+        return not late
 
     def _money_movements(self, after_seq: int) -> list[CashMovement]:
         """Every money event appended after a flow started, with when it occurred and what it moved."""
@@ -585,7 +601,14 @@ class HandoverService:
         for record in records:
             amount = signed_cash(record.type, record.payload, record.shift_id)
             if amount:
-                movements.append(CashMovement(seq=record.seq, occurred_at=parse_iso(record.client_at), amount=amount))
+                movements.append(
+                    CashMovement(
+                        seq=record.seq,
+                        event_id=record.event_id,
+                        occurred_at=parse_iso(record.client_at),
+                        amount=amount,
+                    )
+                )
         return movements
 
     def _report_carry(self, flow: _Flow, caller: Caller, carry: _Carry | None) -> None:

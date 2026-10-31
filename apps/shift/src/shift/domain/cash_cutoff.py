@@ -24,9 +24,10 @@ from shift.domain.events import effects_for, spec_for
 
 @dataclass(frozen=True, slots=True)
 class CashMovement:
-    """One cash event as the cutoff sees it: when it happened and how much it moved the box."""
+    """One cash event as the cutoff sees it: which record, when it happened, what it moved."""
 
     seq: int
+    event_id: str
     occurred_at: datetime
     amount: int
 

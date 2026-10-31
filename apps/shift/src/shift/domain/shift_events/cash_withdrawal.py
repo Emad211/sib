@@ -17,6 +17,7 @@ and `manager_id` optional and every old row still replays. The missing pair is r
 which runs for a new record only: the service resolves a replay before it asks this rule.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 from shift.domain.effects import CashOperation, cash_delta
@@ -51,15 +52,21 @@ ABOVE_CAP_WITHOUT_MANAGER = "برداشت بالای سقف بدون تأیید 
 MANAGER_AT_OR_BELOW_CAP = "برداشت تا سقف نیازی به تأیید مدیر ندارد."
 
 
-def is_above_cap(amount: int, cap: int) -> bool:
-    """Whether one withdrawal is over the box's cap.
+def is_above_cap(amount: int, already_withdrawn: int, cap: int) -> bool:
+    """Whether one withdrawal takes the shift's running total over the box's cap (ADR-019).
 
-    The owner is still deciding whether the cap counts each record or a shift's total, and whether an
-    above-cap withdrawal needs a real second signature. This one function is where that answer lands,
-    so the rule stays a one-line change and every caller agrees on it; the projection effect stays
-    immediate either way, because the cash really left the box and waiting would create a false gap.
+    The owner decided the cap counts the shift's withdrawals together, not each record alone, so four
+    small withdrawals cannot empty the box without a manager. A withdrawal counted here is one this
+    shift already recorded, by **its own occurred shift**: an offline queue crossing midnight still
+    counts against the shift it happened in. The projection effect stays immediate either way, because
+    the cash really left the box and waiting for an approval would create a false gap.
     """
-    return amount > cap
+    return already_withdrawn + amount > cap
+
+
+def is_above_cap_payload(payload: Mapping[str, Any]) -> bool:
+    """Whether a stored withdrawal was recorded above the cap, which is why it names a manager."""
+    return payload.get("manager_id") is not None
 
 
 def validate(payload: CashWithdrawn, context: ShiftEventContext) -> None:
@@ -70,7 +77,7 @@ def validate(payload: CashWithdrawn, context: ShiftEventContext) -> None:
         raise ShiftEventError(UNKNOWN_RECIPIENT)
     if payload.amount <= 0:
         raise ShiftEventError(NOT_POSITIVE)
-    if is_above_cap(payload.amount, context.withdrawal_cap):
+    if is_above_cap(payload.amount, context.withdrawn_in_shift(), context.withdrawal_cap):
         approver = None if payload.manager_id is None else context.staff_roles(payload.manager_id)
         if approver is None or Role.MANAGER.value not in approver:
             raise ShiftEventError(ABOVE_CAP_WITHOUT_MANAGER)
@@ -101,6 +108,10 @@ KIND = KindSpec(
     summarize=summarize,
     validate=validate,
     confirmer_field="recipient_id",
+    # An above-cap withdrawal is decided by the manager afterwards, from their own session; the
+    # record already moved the box (ADR-019). A below-cap one names no manager and waits for nobody.
+    approvable_by=(Role.MANAGER,),
+    manager_only_when=is_above_cap_payload,
     card_fields=("amount", "recipient_id", "reason"),
 )
 

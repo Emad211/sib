@@ -151,3 +151,87 @@ def test_a_rejected_record_never_moves_the_shelf(seeded: TestClient) -> None:
     assert rejected.status_code == status.HTTP_200_OK, rejected.text
     assert _qty(seeded) == before
     assert all(row["event_id"] != held.json()["event_id"] for row in seeded.get("/api/v1/manager/held-events").json())
+
+
+def _post(client: TestClient, session: dict[str, Any], body: dict[str, Any]) -> Any:
+    """One ingest request from a signed-in phone."""
+    return client.post("/api/v1/events", json=body, headers=_headers(session))
+
+
+def test_the_same_held_record_is_kept_once(seeded: TestClient) -> None:
+    """A phone that re-sends a kept record must not fill the manager's list with copies of it."""
+    nurse = _login(seeded, "nurse")
+    event_id = new_ulid()
+    body = {
+        "client_event_id": event_id,
+        "idempotency_key": event_id,
+        "type": "stock.waste_reported",
+        "payload": {
+            "item_id": PARA,
+            "location_id": SHELF,
+            "quantity": 1,
+            "waste_kind": "broken",
+            "culprit_id": "staff-nurse",
+            "confirmer_id": "staff-store",
+        },
+        "client_at": (datetime.now(tz=TEHRAN) + timedelta(days=2)).isoformat(),
+    }
+
+    first = _post(seeded, nurse, body)
+    second = _post(seeded, nurse, body)
+
+    assert first.status_code == second.status_code == status.HTTP_200_OK
+    assert second.json()["created"] is False
+    _login(seeded, "manager")
+    rows = [row for row in seeded.get("/api/v1/manager/held-events").json() if row["event_id"] == event_id]
+    assert len(rows) == 1
+
+
+def test_a_held_approval_keeps_its_reference_and_is_released_by_the_manager(seeded: TestClient) -> None:
+    """An approval from a phone whose clock ran ahead still names the record it decides."""
+    receptionist = _login(seeded, "reception")
+    transfer = new_ulid()
+    recorded = _post(
+        seeded,
+        receptionist,
+        {
+            "client_event_id": transfer,
+            "idempotency_key": transfer,
+            "type": "card.transfer_reported",
+            "payload": {"amount": 150_000, "admission_no": "A-1001"},
+            "client_at": datetime.now(tz=TEHRAN).isoformat(),
+        },
+    )
+    assert recorded.status_code == status.HTTP_200_OK, recorded.text
+
+    accountant = _login(seeded, "accountant")
+    approval = new_ulid()
+    held = _post(
+        seeded,
+        accountant,
+        {
+            "client_event_id": approval,
+            "idempotency_key": approval,
+            "type": "event.approved",
+            "payload": {"note": "تأیید شد"},
+            "ref_event_id": recorded.json()["event_id"],
+            "client_at": (datetime.now(tz=TEHRAN) + timedelta(days=1)).isoformat(),
+        },
+    )
+    assert held.status_code == status.HTTP_200_OK, held.text
+    assert held.json()["status"] == "held"
+
+    manager = _login(seeded, "manager")
+    rows = [row for row in seeded.get("/api/v1/manager/held-events").json() if row["event_id"] == approval]
+    assert len(rows) == 1
+    released = seeded.post(f"/api/v1/manager/held-events/{rows[0]['held_event_id']}/release", headers=_headers(manager))
+    assert released.status_code == status.HTTP_200_OK, released.text
+
+    with seeded.app.state.database.read() as connection:
+        decided = events_repo.latest_ref(connection, recorded.json()["event_id"], ("event.approved",))
+        releasing = events_repo.latest_ref(connection, rows[0]["held_event_id"], ("event.released",))
+    assert decided is not None
+    assert decided.actor_id == "staff-accountant"
+    # R-04: the decision that released the record names the manager who made it.
+    assert releasing is not None
+    assert releasing.actor_id == "staff-manager"

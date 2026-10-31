@@ -42,6 +42,8 @@ SHIFT = ShiftKey(date(2026, 10, 28), 2)
 # The synthetic catalog: paracetamol on the reception shelf and the main store, a counted item that
 # lives in the main store, and the store's own location (S03 §1, tools/seed_reference_data.py).
 ITEM = "para_500_amp"
+# A second shelf item the store never held: a charge is what leaves a store row behind for it (P-10).
+OTHER = "diclofenac_75_amp"
 LOCATION = "shelf_reception"
 STORE = "main_store"
 SYRINGE = "syringe_5cc"
@@ -522,6 +524,8 @@ def test_a_vendor_return_lets_the_accountant_credit_up_to_the_invoice(desk: Desk
     invoice = _invoice(desk, delivery_id)
     assert (invoice["returned"], invoice["credit_total"], invoice["remaining"]) == (True, 25_000, 100_000)
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE, "a return is a purchasing document (P-09)"
+    with pytest.raises(PurchaseRuleError, match="مرجوع"):
+        _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=1_000, method="cash")
 
 
 # --- the shelf charge -----------------------------------------------------------------------
@@ -585,6 +589,43 @@ def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE
 
 
+def test_the_charge_names_the_person_who_confirmed_the_count(desk: Desk) -> None:
+    """P-10: the shift lead who counted is the confirmer, and it must be somebody the clinic still has."""
+    _act(
+        desk,
+        desk.storekeeper,
+        "restock.record",
+        item_id=ITEM,
+        from_location_id=STORE,
+        to_location_id=LOCATION,
+        quantity=1,
+        confirmer_id=desk.nurse.staff_id,
+    )
+    with pytest.raises(PurchaseRuleError, match="تأییدکننده"):
+        _act(
+            desk,
+            desk.storekeeper,
+            "restock.record",
+            item_id=ITEM,
+            from_location_id=STORE,
+            to_location_id=LOCATION,
+            quantity=1,
+            confirmer_id="staff-ghost",
+        )
+    _act(
+        desk,
+        desk.storekeeper,
+        "restock.record",
+        item_id=ITEM,
+        from_location_id=STORE,
+        to_location_id=LOCATION,
+        quantity=1,
+    )
+
+    recorded = [event.payload["confirmer_id"] for event in _log(desk, EventType.RESTOCK_CONFIRMED)]
+    assert recorded == [desk.nurse.staff_id, desk.storekeeper.staff_id], "named first, then the caller"
+
+
 # --- the weekly count -----------------------------------------------------------------------
 
 
@@ -627,7 +668,36 @@ def test_the_weekly_status_turns_done_once_the_window_has_a_count(desk: Desk) ->
 
 def test_a_count_of_an_item_that_is_not_counted_there_is_refused(desk: Desk) -> None:
     with pytest.raises(PurchaseRuleError, match="شمارشی"):
-        _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=STORE, counted=1)
+        _act(desk, desk.storekeeper, "weekly.count", item_id="store_lock_ok", location_id=STORE, counted=1)
+
+
+def test_a_shelf_count_never_marks_the_week_done(desk: Desk) -> None:
+    """The weekly status is about the main store, so a shelf count is not a weekly count at all."""
+    with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
+        _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=LOCATION, counted=SHELF_BEFORE)
+
+    assert _log(desk, EventType.STOCK_WEEKLY_COUNT)[-1].payload["location_id"] == STORE, "only the seeds landed"
+    assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "overdue"
+
+
+def test_the_store_list_holds_what_the_store_holds(desk: Desk) -> None:
+    """A shelf charge leaves the item at the store, so the storekeeper can count and re-charge it."""
+    before = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
+    _act(
+        desk,
+        desk.storekeeper,
+        "restock.record",
+        item_id=OTHER,
+        from_location_id=STORE,
+        to_location_id=LOCATION,
+        quantity=2,
+    )
+    after = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
+
+    assert SYRINGE in before, "a counted item whose catalog home is the store"
+    assert OTHER not in before, "its catalog home is the reception shelf, and the store never held it"
+    assert OTHER in after
+    assert {row["location_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]} == {STORE}
 
 
 # --- what each role may see ------------------------------------------------------------------
@@ -658,15 +728,15 @@ def test_the_warehouse_section_carries_no_projected_figure(desk: Desk) -> None:
 
 
 def test_below_minimum_lists_the_items_under_their_catalog_minimum(desk: Desk) -> None:
-    """P-01: a shelf below its own minimum is suggested, a missing row reads as zero, and it clears."""
+    """P-01: a store below its own minimum is suggested, and it clears once the count refills it."""
     below = {row["item_id"] for row in _state(desk, desk.storekeeper)["below_minimum"]}
 
     assert {ITEM, SYRINGE} <= below, "3 on a shelf of 10, and 12 in the store against a floor of 20"
-    assert "stethoscope" not in below
 
-    _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=LOCATION, counted=10)
+    _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=20)
 
-    assert ITEM not in {row["item_id"] for row in _state(desk, desk.storekeeper)["below_minimum"]}
+    assert SYRINGE not in {row["item_id"] for row in _state(desk, desk.storekeeper)["below_minimum"]}
+    assert ITEM in {row["item_id"] for row in _state(desk, desk.storekeeper)["below_minimum"]}
 
 
 def test_the_manager_card_sees_the_open_items_and_no_figure(desk: Desk) -> None:

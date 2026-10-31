@@ -70,6 +70,9 @@ def notice_late_cash(database: Database, store: EventStore, record: EventRecord,
             work_date=date.fromisoformat(record.work_date),
             client_at=moment,
             shift_id=record.shift_id,
+            # The flow's own log has to be able to answer "what did this handover write": the column
+            # links the notice to the flow, and the payload keeps the amount and the instant.
+            handover_id=str(payload["handover_id"]),
             ref_event_id=record.event_id,
         )
     )

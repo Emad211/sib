@@ -24,18 +24,21 @@ same-shift rule: a shift never borrows another shift's records (R-01), and the p
 only each item itself — its summary, its actor and when — never a shift's figures.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
 from shift.adapters.db import events_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
-from shift.common.clock import Clock, SystemClock, parse_iso
+from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
+from shift.domain.event_types import EventType
 from shift.domain.events import validate_payload
 from shift.domain.occurred_time import OccurredVerdict
 from shift.domain.occurred_time import verdict as occurred_verdict
 from shift.domain.permissions import Role
 from shift.domain.policy import SettingKey, ShiftKey
+from shift.domain.shift_clock import covering
 from shift.domain.shift_events import (
     APPROVED,
     DECISION_TYPES,
@@ -128,6 +131,11 @@ class ShiftEventService:
 
         `held_checked` is the manager's release path: the record already waited once, so its own
         instant is no longer a reason to keep it again (F5).
+
+        The shift a record is judged against is the one it **happened** in, not the one that is running
+        when it arrives: settings are versioned per shift (R-09), so a campaign, a cap or the catalog a
+        queue is checked against must be the ones the person actually worked with. Otherwise a legal
+        offline record is refused with a 422 the phone treats as final, and the clinic loses it (F5).
         """
         kind = kind_for(submission.type)
         if kind is None:
@@ -147,8 +155,9 @@ class ShiftEventService:
         if existing is not None:
             return SubmissionResult(existing.seq, existing.event_id, False, "replayed")
 
+        happened = _occurred_shift(submission) or shift
         if not held_checked:
-            kept = self._hold_if_implausible(submission, principal, shift)
+            kept = self._hold_if_implausible(submission, principal, happened)
             if kept is not None:
                 return kept
 
@@ -159,8 +168,8 @@ class ShiftEventService:
         except Exception as exc:
             raise ShiftEventRuleError(str(exc)) from exc
 
-        target = self._reference_target(kind, new_event.ref_event_id, shift)
-        context = self._context(principal, shift, new_event.ref_event_id, target)
+        target = self._reference_target(kind, new_event.ref_event_id, happened)
+        context = self._context(principal, happened, new_event.ref_event_id, target)
 
         if is_decision(submission.type):
             self._check_decision(target, principal)
@@ -252,7 +261,7 @@ class ShiftEventService:
         if target is None:
             raise ShiftEventRuleError("ثبت مرجع پیدا نشد؛ ابتدا رویداد اصلی را ثبت کنید.")
         target_kind = kind_for(target.type)
-        if target_kind is None or not target_kind.requires_approval:
+        if target_kind is None or not waits_for_decision(target_kind, target):
             raise ShiftEventRuleError("این رویداد نیاز به تأیید ندارد.")
         if target.actor_id == principal.staff_id:
             raise ShiftEventRuleError("ثبت‌کننده نمی‌تواند همان رویداد را تأیید کند.")
@@ -307,6 +316,15 @@ class ShiftEventService:
                 row = events_repo.latest_ref(connection, event_id, ("equipment.fault_fixed",))
             return row is not None
 
+        def withdrawn_in_shift() -> int:
+            """Every withdrawal this shift has already recorded, by the shift it occurred in (ADR-019)."""
+            with self._database.read() as connection:
+                rows = connection.exec_driver_sql(
+                    "SELECT payload FROM events WHERE type = ? AND shift_id = ?",
+                    (EventType.CASH_WITHDRAWN.value, shift.text),
+                ).mappings()
+            return sum(int(json.loads(str(row["payload"])).get("amount", 0)) for row in rows)
+
         def campaign_active(campaign_id: str) -> bool:
             if self._campaigns is None:
                 return False
@@ -319,6 +337,7 @@ class ShiftEventService:
             shift_work_date=shift.work_date,
             shift_text=shift.text,
             withdrawal_cap=cap,
+            withdrawn_in_shift=withdrawn_in_shift,
             item_at=item_at,
             staff_roles=staff_roles,
             campaign_active=campaign_active,
@@ -353,7 +372,7 @@ class ShiftEventService:
             pending: list[PendingApproval] = []
             for event in events:
                 kind = kind_for(event.type)
-                if kind is None or not kind.requires_approval or event.event_id in decided:
+                if kind is None or not waits_for_decision(kind, event) or event.event_id in decided:
                     continue
                 if not _may_decide(kind, event, principal):
                     continue
@@ -475,6 +494,9 @@ def _may_decide(kind: KindSpec, event: EventRecord, principal: Principal) -> boo
     if culprit is not None and str(culprit) == principal.staff_id:
         return False
     roles = set(principal.roles)
+    if kind.manager_only_when is not None and kind.manager_only_when(event.payload):
+        # An above-cap withdrawal names a manager at the desk and the manager decides it later.
+        return Role.MANAGER.value in roles
     if Role.MANAGER.value in roles:
         return True
     if {role.value for role in kind.approvable_by}.intersection(roles):
@@ -493,10 +515,26 @@ def waits_for_decision(kind: KindSpec, event: EventRecord) -> bool:
 
     A row stored before the clinic asked for a second person — a waste record of SHF-3's first version
     carries no «تأییدکننده» — has no decider at all, so it is a finished record and not an open item
-    that nobody could ever close.
+    that nobody could ever close. A kind that is only sometimes confirmable says so from its payload:
+    an above-cap withdrawal waits for the manager, a below-cap one for nobody (ADR-019).
     """
     if not kind.requires_approval:
         return False
+
     if kind.approvable_by:
         return True
     return bool(str(event.payload.get(kind.confirmer_field or "") or "").strip())
+
+
+def _occurred_shift(submission: EventSubmission) -> ShiftKey | None:
+    """The shift a record happened in, from its own instant; None when the instant cannot be read."""
+    occurred = submission.client_at
+    if isinstance(occurred, str):
+        try:
+            occurred = parse_iso(occurred)
+        except ValueError:
+            return None
+    try:
+        return covering(to_tehran(occurred))
+    except ValueError:
+        return None

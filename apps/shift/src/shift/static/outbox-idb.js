@@ -154,7 +154,7 @@ function isValidIngestResponse(body, expectedEventId) {
   if (!Number.isInteger(body.seq) || body.seq < 1) return false;
   if (typeof body.event_id !== "string" || body.event_id !== expectedEventId) return false;
   if (typeof body.created !== "boolean") return false;
-  return body.status === "recorded" || body.status === "replayed";
+  return body.status === "recorded" || body.status === "replayed" || body.status === "held";
 }
 
 /**
@@ -187,8 +187,11 @@ async function refusalReason(resp) {
   const fallback = `پاسخ سرور ${resp.status}`;
   try {
     const body = await resp.json();
-    if (body && typeof body.detail === "string" && body.detail.trim()) {
-      return body.detail.slice(0, 300);
+    // The API's refusal envelope is `{"error": {"code", "message"}}`; the message is the Persian line
+    // the person holding the phone has to read (F6).
+    const message = body && body.error && body.error.message;
+    if (typeof message === "string" && message.trim()) {
+      return message.slice(0, 300);
     }
   } catch (err) {
     // The refusal was not JSON: the status line is still worth showing.

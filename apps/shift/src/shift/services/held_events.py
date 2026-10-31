@@ -12,7 +12,7 @@ own instant, so its movement lands exactly once; rejecting keeps it out of the b
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from shift.adapters.db import events_repo
 from shift.adapters.db.core import Database
@@ -24,6 +24,14 @@ from shift.domain.occurred_time import HELD_MESSAGES
 from shift.domain.policy import ShiftKey
 from shift.services.event_store import EventStore, NewEvent
 from shift.services.outbox import EventSubmission, SubmissionResult
+
+
+class Actor(Protocol):
+    """Who is acting: the manager's own session names the decision (R-04)."""
+
+    staff_id: str
+    device_id: str
+
 
 HELD = EventType.EVENT_HELD.value
 RELEASED = EventType.EVENT_RELEASED.value
@@ -48,6 +56,9 @@ class Held:
     shift_id: str | None
     work_date: str
     body: Mapping[str, Any]
+    # A decision, a fault closing or a delivery names the record it closes; releasing it without
+    # that reference would turn a legal approval into a refusal (F5, E-09/E-12/E-07).
+    ref_event_id: str | None = None
 
     @property
     def message_fa(self) -> str:
@@ -63,6 +74,7 @@ class Held:
             device_id=self.device_id,
             client_at=self.occurred_at,
             client_event_id=self.event_id,
+            ref_event_id=self.ref_event_id,
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -87,11 +99,18 @@ class HeldEvents:
         self._clock = clock or SystemClock()
 
     def hold(self, submission: EventSubmission, *, reason: str, shift: ShiftKey) -> SubmissionResult:
-        """Keep one implausible record in the log without letting its movement into the books."""
+        """Keep one implausible record in the log without letting its movement into the books.
+
+        A phone that does not accept the held answer yet will send the same record again; the record
+        is kept once, so the manager never sees ten copies of one withdrawal to decide on.
+        """
         moment = self._clock.now_utc()
         event_id = submission.client_event_id or submission.event_id
         if not event_id:
             raise ValueError("a held submission needs its client event id")
+        already = self._existing(event_id)
+        if already is not None:
+            return SubmissionResult(already.seq, event_id, False, "held", held=True)
         occurred = (
             submission.client_at if isinstance(submission.client_at, datetime) else parse_iso(submission.client_at)
         )
@@ -105,6 +124,7 @@ class HeldEvents:
                     "event_id": event_id,
                     "occurred_at": utc_iso(occurred),
                     "payload": dict(submission.payload),
+                    "ref_event_id": submission.ref_event_id,
                 },
                 actor_id=submission.actor_id,
                 device_id=submission.device_id,
@@ -124,6 +144,11 @@ class HeldEvents:
             held=True,
         )
 
+    def _existing(self, event_id: str) -> EventRecord | None:
+        """The held row already stored for one client event id, if the phone sent it again."""
+        with self._database.read() as connection:
+            return events_repo.latest_ref(connection, event_id, (HELD,))
+
     def pending(self) -> list[Held]:
         """Every held record no manager has released or rejected yet, oldest first."""
         with self._database.read() as connection:
@@ -135,17 +160,23 @@ class HeldEvents:
             if event.type == HELD and event.event_id not in decided and (held := _held(event)) is not None
         ]
 
-    def release(self, held_event_id: str, *, record: Callable[[EventSubmission], SubmissionResult]) -> Held:
+    def release(
+        self,
+        held_event_id: str,
+        *,
+        record: Callable[[EventSubmission], SubmissionResult],
+        actor: Actor | None = None,
+    ) -> Held:
         """Let a held record through, once: its own event lands now and its movement applies now."""
         held = self._open(held_event_id)
         record(held.submission())
-        self._append(held, RELEASED)
+        self._append(held, RELEASED, actor=actor)
         return held
 
-    def reject(self, held_event_id: str) -> Held:
+    def reject(self, held_event_id: str, *, actor: Actor | None = None) -> Held:
         """Keep a held record out of the books for good; nothing is applied and nothing is deleted."""
         held = self._open(held_event_id)
-        self._append(held, HOLD_REJECTED)
+        self._append(held, HOLD_REJECTED, actor=actor)
         return held
 
     def _open(self, held_event_id: str) -> Held:
@@ -162,16 +193,20 @@ class HeldEvents:
             raise UnknownHeld(NOT_HELD)
         return held
 
-    def _append(self, held: Held, event_type: str) -> EventRecord:
-        """Record the manager's decision on the held record; the decision changes no projection."""
+    def _append(self, held: Held, event_type: str, *, actor: Actor | None = None) -> EventRecord:
+        """Record the manager's decision on the held record; the decision changes no projection.
+
+        R-04 says every row names who did it: the decision names the manager who made it, not the
+        person whose record happened to be kept.
+        """
         moment = self._clock.now_utc()
         return self._store.append(
             NewEvent(
                 client_event_id=new_ulid(moment),
                 type=event_type,
                 payload={"event_id": held.event_id},
-                actor_id=held.actor_id,
-                device_id=held.device_id,
+                actor_id=held.actor_id if actor is None else actor.staff_id,
+                device_id=held.device_id if actor is None else actor.device_id,
                 work_date=date.fromisoformat(held.work_date),
                 client_at=moment,
                 shift_id=held.shift_id,
@@ -200,6 +235,7 @@ def _held(event: EventRecord) -> Held | None:
             shift_id=event.shift_id,
             work_date=event.work_date,
             body=dict(payload["payload"]),
+            ref_event_id=None if payload.get("ref_event_id") is None else str(payload["ref_event_id"]),
         )
     except (KeyError, TypeError, ValueError):
         return None

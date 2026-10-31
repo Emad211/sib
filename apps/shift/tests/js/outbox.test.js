@@ -206,14 +206,25 @@ describe("Client-side ULID and Tehran business date", () => {
 });
 
 describe("A refused record keeps the server's own reason (F6)", () => {
-  it("reads the Persian detail out of a 422 body", async () => {
-    const resp = { status: 422, json: async () => ({ detail: "نقش شما اجازهٔ ثبت این رویداد را ندارد." }) };
+  it("reads the Persian message out of the API's error envelope", async () => {
+    const resp = {
+      status: 422,
+      json: async () => ({ error: { code: "unprocessable", message: "نقش شما اجازهٔ ثبت این رویداد را ندارد." } }),
+    };
     assert.strictEqual(await refusalReason(resp), "نقش شما اجازهٔ ثبت این رویداد را ندارد.");
   });
 
-  it("falls back to the status when the body carries no detail", async () => {
+  it("falls back to the status when the envelope carries no message", async () => {
     assert.strictEqual(await refusalReason({ status: 400, json: async () => ({}) }), "پاسخ سرور 400");
     const broken = { status: 410, json: async () => { throw new Error("not json"); } };
     assert.strictEqual(await refusalReason(broken), "پاسخ سرور 410");
+  });
+});
+
+describe("A held record is kept, not failed (F5)", () => {
+  it("accepts the held status from the ingest response", () => {
+    const held = { seq: 7, event_id: EVENT_ID, created: true, status: "held", held: true };
+    assert.strictEqual(isValidIngestResponse(held, EVENT_ID), true);
+    assert.strictEqual(isValidIngestResponse({ ...held, event_id: "other" }, EVENT_ID), false);
   });
 });

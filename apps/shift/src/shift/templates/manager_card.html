@@ -60,7 +60,8 @@
     <p class="mg-note">این نقد داخل تحویل ثبت شده و مال شیفت بعد است.</p>
     {% for row in card.sections.cash_exceptions %}
     <article class="mg-row">
-      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان رسید</span></p>
+      {% if row.outflow != "0" %}<p class="mg-amount">{{ row.outflow }} <span class="mg-unit">تومان برداشت</span></p>{% endif %}
       <p class="mg-line">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
     </article>

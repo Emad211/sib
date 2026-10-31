@@ -254,6 +254,7 @@ def _cash_rows(card: Card) -> list[dict[str, str]]:
             "handover_id": entry.handover_id,
             "flow": _flow(entry.flow),
             "amount": f"{entry.amount:,}",
+            "outflow": f"{entry.outflow:,}",
             "at": _stamp_fa(entry.at_tehran),
         }
         for entry in card.cash_exceptions

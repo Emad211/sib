@@ -92,6 +92,14 @@ SAME_LOCATION = "مبدأ و مقصد شارژ قفسه نمی‌توانند ی
 UNKNOWN_LOCATION = "محل مبدأ یا مقصد در کاتالوگ نیست."
 ITEM_NOT_THERE = "این قلم در قفسهٔ مقصد در کاتالوگ نیست."
 NOT_A_COUNTED_ITEM = "این قلم در این محل قلم شمارشی نیست."
+NOT_THE_STORE = "شمارش هفتگی فقط برای انبار اصلی ثبت می‌شود."
+UNKNOWN_CONFIRMER = "تأییدکننده باید از کارکنان فعال درمانگاه باشد."
+PAYMENT_RETURNED = "بار این فاکتور به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."
+
+# The clinic counts the main store blind once a week (S01 §4, P-11). No catalog field or setting names
+# the store's location yet, so its id is pinned here: a shelf count must never mark the week done, and the
+# warehouse section lists what the store holds rather than every counted item of the clinic.
+MAIN_STORE = "main_store"
 
 # Every action, the permission it needs and the handler that writes it; nothing else may be appended.
 ACTIONS: Mapping[str, tuple[Permission, str]] = {
@@ -367,11 +375,17 @@ class PurchaseService:
         return {"status": "recorded", "event_id": event_id, "delivery_id": digitized.delivery_id}
 
     def _payment_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-08: an invoice first, no payment while a flag is undecided, and never past the balance."""
+        """P-08: an invoice first; no payment on a returned parcel or while a flag is undecided.
+
+        A parcel that went back to the vendor has nothing left to pay for — the credit note is the
+        accountant's record of it — so the payment door closes there as well as behind a locked flag.
+        """
         payment = self._body(PaymentRecorded, data)
         parcel = self._require_delivery(payment.delivery_id)
         if not parcel.invoice_lines:
             raise PurchaseRuleError(NO_INVOICE)
+        if parcel.returned:
+            raise PurchaseRuleError(PAYMENT_RETURNED)
         if parcel.payment_locked:
             raise PurchaseRuleError(PAYMENT_LOCKED)
         if payment.amount_toman > parcel.invoice_total - parcel.paid_total:
@@ -399,8 +413,14 @@ class PurchaseService:
         return {"status": "recorded", "event_id": event_id, "delivery_id": credit.delivery_id}
 
     def _restock_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-10: the store down and the shelf up in one record, confirmed by the person who counted it."""
-        data["confirmer_id"] = principal.staff_id
+        """P-10: the store down and the shelf up in one record, confirmed by the person who counted it.
+
+        The shift lead who counted the units on the shelf is the confirmer, so the page may name them;
+        with no name it is the caller, who is the one counting at this moment. Either way the name must
+        be an active staff member, because the record says who confirmed the count.
+        """
+        if not data.get("confirmer_id"):
+            data["confirmer_id"] = principal.staff_id
         restock = self._body(RestockConfirmed, data)
         if restock.from_location_id == restock.to_location_id:
             raise PurchaseRuleError(SAME_LOCATION)
@@ -412,23 +432,27 @@ class PurchaseService:
             for item in self._catalog.items(shift)
         ):
             raise PurchaseRuleError(ITEM_NOT_THERE)
+        if not self._is_active_staff(restock.confirmer_id):
+            raise PurchaseRuleError(UNKNOWN_CONFIRMER)
         event_id = self._append(EventType.RESTOCK_CONFIRMED, restock, principal, shift)
         return {"status": "recorded", "event_id": event_id}
 
     def _weekly_count(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-11: a blind count of one item, its unnamed discrepancy, and the expiry flag beside it.
+        """P-11: a blind count of one store item, its unnamed discrepancy and the expiry flag beside it.
 
-        The answers carry event ids and nothing else: the difference is `counted − expected`, so naming
-        it would tell the counter the figure he just counted blind. The storekeeper sees the count
-        land on the manager's card, never its outcome here.
+        Only the main store is counted this way: the weekly status the manager's card reads is about the
+        store, so a shelf count must never be able to mark the week done. The answers carry event ids and
+        nothing else — the difference is `counted − expected`, so naming it would tell the counter the
+        figure he just counted blind.
         """
         near_expiry = bool(data.pop("near_expiry", False))
         counted = self._body(WeeklyCount, data)
         location = counted.location_id
-        if not any(
-            item.item_id == counted.item_id and item.location_id == location and item.kind is ItemKind.COUNTED
-            for item in self._catalog.items(shift)
-        ):
+        if location != MAIN_STORE:
+            raise PurchaseRuleError(NOT_THE_STORE)
+        # The same set the warehouse section lists, so the page never offers an item the rule refuses:
+        # a counted item that lives in the store, or one a shelf charge left stock at the store for.
+        if counted.item_id not in {item.item_id for item in self._store_items(self._counted_items(shift))}:
             raise PurchaseRuleError(NOT_A_COUNTED_ITEM)
         expected = self._stock().get((counted.item_id, location), 0)
         batch = [self._new_event(EventType.STOCK_WEEKLY_COUNT, counted, principal, shift)]
@@ -532,6 +556,12 @@ class PurchaseService:
             roles = staff_repo.roles_for(connection, staff_id) if person is not None else ()
         return person is not None and person.active and Role.STOREKEEPER.value in roles
 
+    def _is_active_staff(self, staff_id: str) -> bool:
+        """A record that names a person (the shelf charge's confirmer) names someone the clinic still has."""
+        with self._database.read() as connection:
+            person = staff_repo.find(connection, staff_id)
+        return person is not None and person.active
+
     def _counted_items(self, shift: ShiftKey) -> list[Item]:
         return [item for item in self._catalog.items(shift) if item.kind is ItemKind.COUNTED]
 
@@ -557,6 +587,12 @@ class PurchaseService:
         )
 
     def _warehouse(self, items: list[Item], shift: ShiftKey, log: list[EventRecord]) -> Warehouse:
+        """The store's own view: what lives in the main store or has stock there, and the week's count.
+
+        A counted item whose catalog home is the store is always listed; an item that a shelf charge
+        left a store row behind for is listed too, because that is where the storekeeper has to count
+        it and charge it from again. No quantity is published (`_warehouse_payload`): the count is blind.
+        """
         restock = [
             RestockRecord(
                 item_id=str(event.payload["item_id"]),
@@ -570,12 +606,30 @@ class PurchaseService:
             if event.type == EventType.RESTOCK_CONFIRMED
         ]
         return Warehouse(
-            items=tuple(
-                WarehouseItem(item.item_id, item.name, item.location_id, item.unit, item.minimum) for item in items
-            ),
+            items=self._store_items(items),
             locations=tuple((place.location_id, place.name) for place in self._catalog.locations(shift)),
             weekly=self._weekly(shift, log),
             restock=tuple(reversed(restock[-RESTOCK_HISTORY:])),
+        )
+
+    def _store_items(self, items: list[Item]) -> tuple[WarehouseItem, ...]:
+        """Every counted item the store holds: its catalog home is there, or a charge left stock there."""
+        catalog = {item.item_id: item for item in items}
+        home = [item.item_id for item in items if item.location_id == MAIN_STORE]
+        stocked = sorted(
+            item_id
+            for item_id, location_id in self._stock()
+            if location_id == MAIN_STORE and item_id in catalog and item_id not in home
+        )
+        return tuple(
+            WarehouseItem(
+                catalog[item_id].item_id,
+                catalog[item_id].name,
+                MAIN_STORE,
+                catalog[item_id].unit,
+                catalog[item_id].minimum,
+            )
+            for item_id in home + stocked
         )
 
 

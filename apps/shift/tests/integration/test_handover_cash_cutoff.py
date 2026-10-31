@@ -229,6 +229,11 @@ def test_a_late_event_after_the_settle_is_kept_flagged_and_the_box_keeps_its_fig
     assert stored[0]["handover_id"] == handover_id
     assert stored[0]["amount"] == -100_000
     assert parse_iso(stored[0]["occurred_at"]) == MOMENT - timedelta(hours=1)
+    with database.read() as connection:
+        linked = connection.exec_driver_sql(
+            "SELECT handover_id FROM events WHERE type = 'handover.late_cash_recorded'"
+        ).scalar_one()
+    assert linked == handover_id, "the notice belongs to the flow's own log, not only to its payload"
     assert _box(database) == 400_000
     report = projections.rebuild()
     assert report.drift == ()
@@ -255,3 +260,29 @@ def test_only_a_receipt_or_a_withdrawal_moves_the_box() -> None:
     assert signed_cash("acc.cash_receipt", {"amount": 5_000}, "shift-1") == 5_000
     assert signed_cash("acc.cash_reversal", {"amount": 5_000, "reason": "voided"}, "shift-1") == -5_000
     assert signed_cash("handover.cash_counted", {"counted": 5_000}, "shift-1") == 0
+
+
+def test_a_late_record_from_the_previous_flow_never_moves_the_next_flow_reference(
+    service: HandoverService, database: Database, store: EventStore, clock: FixedClock, projections: ProjectionEngine
+) -> None:
+    """H-11: money an earlier flow already saw is not counted a second time by the flow after it.
+
+    The stale withdrawal belongs to the first flow: that flow's count already read the empty box and
+    its late-cash record put the box back. The second flow's reference must stay where the settlement
+    left it, or an honest count would be charged a surplus against the outgoing person.
+    """
+    first = _start(service, opening_cash=OPENING_CASH)
+    _settle(service, first, 400_000)
+
+    clock.moment = MOMENT + timedelta(hours=8)
+    second = _start(service, incoming="staff-in-2")
+    late = _move(store, projections, "cash.withdrawn", 100_000, at=MOMENT - timedelta(hours=1))
+    assert notice_late_cash(database, store, late, clock=clock) is not None
+    projections.sync()
+    assert _box(database) == 400_000
+
+    _settle(service, second, 400_000)
+
+    assert _payloads(database, "handover.cash_reference_adjusted", second) == []
+    assert _payloads(database, "discrepancy.recorded", second) == []
+    assert _box(database) == 400_000

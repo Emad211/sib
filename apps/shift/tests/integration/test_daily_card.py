@@ -33,7 +33,7 @@ from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_events import DECISION_TYPES
 from shift.services.audit import AuditEntry, AuditService
-from shift.services.daily_card import Card, DailyCardService, Person
+from shift.services.daily_card import SECTION_NAMES, Card, DailyCardService, Person
 from shift.services.event_store import EventStore
 
 GENERATED_AT = datetime(2026, 10, 27, 7, 31, tzinfo=TEHRAN)  # Tuesday's card, just after 07:30
@@ -819,3 +819,35 @@ def test_the_card_shows_above_cap_withdrawals_late_cash_and_held_records(
     assert isinstance(card.late_cash[0].explains_discrepancy, bool)
     assert [(row.held_event_id, row.reason) for row in card.held_events] == [(held_id, "stale")]
     assert "۷۲" in card.held_events[0].message
+
+    # The page renders the stored document, so a section this reader forgets is a section the manager
+    # never sees; the three money-and-offline sections must survive the round trip unchanged.
+    stored = Card.from_payload(card.to_payload())
+    assert stored.over_cap_withdrawals == card.over_cap_withdrawals
+    assert stored.late_cash == card.late_cash
+    assert stored.held_events == card.held_events
+    assert set(stored.present_sections) == set(SECTION_NAMES)
+
+
+def test_a_withdrawal_inside_a_handover_reaches_the_card_as_an_outflow(
+    service: DailyCardService,
+    database: Database,
+    clock: FixedClock,
+    synthetic_day: None,
+) -> None:
+    """F1: cash that left the box during a handover is flagged like a receipt, not shown as zero."""
+    audit = AuditService(database, clock=clock)
+    _audit(
+        audit,
+        clock,
+        _monday(15, 10),
+        "handover.cash_exception",
+        subject_id="ho-reception",
+        detail={"flow": "reception", "amount": 0, "outflow": 100_000},
+    )
+
+    card = service.regenerate(CARD_DAY)
+
+    assert card is not None
+    row = next(entry for entry in card.cash_exceptions if entry.handover_id == "ho-reception")
+    assert (row.amount, row.outflow) == (0, 100_000)

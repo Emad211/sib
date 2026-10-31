@@ -91,6 +91,9 @@ class ShiftEventContext:
     shift_work_date: date
     shift_text: str
     withdrawal_cap: int
+    # Every withdrawal this shift has already recorded, by its own occurred shift: the cap is a
+    # running total, not a per-record limit (ADR-019).
+    withdrawn_in_shift: Callable[[], int]
     item_at: Callable[[str, str], bool]
     staff_roles: Callable[[str], frozenset[str] | None]
     campaign_active: Callable[[str], bool]
@@ -130,6 +133,19 @@ class KindSpec:
     unique_reference: bool = False
     cross_shift: bool = False
     card_fields: tuple[str, ...] = ()
+    # Some records change who may decide them from their own payload: an above-cap withdrawal is the
+    # manager's decision, a below-cap one is the recipient's (ADR-019, owner rule 3).
+    manager_only_when: Callable[[Mapping[str, Any]], bool] | None = None
+
+    @property
+    def requires_approval(self) -> bool:
+        """Whether the record waits for a second person's decision.
+
+        Derived from the two ways the clinic names a decider — a role or a person — so the manager's
+        card cannot show a pending row that nobody is allowed to close, and a kind cannot silently ask
+        for a confirmation it has no way to receive.
+        """
+        return bool(self.approvable_by or self.confirmer_field)
 
     @property
     def requires_approval(self) -> bool:

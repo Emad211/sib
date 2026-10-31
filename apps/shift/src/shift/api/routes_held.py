@@ -78,6 +78,7 @@ def release_held(
         entry = held.release(
             held_event_id,
             record=lambda submission: _record(events, submission, principal, shift),
+            actor=principal,
         )
     except UnknownHeld as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -96,7 +97,7 @@ def reject_held(
 ) -> HeldOutcome:
     """Record the manager's refusal; nothing is applied and nothing is deleted (R-03)."""
     try:
-        entry = held.reject(held_event_id)
+        entry = held.reject(held_event_id, actor=principal)
     except UnknownHeld as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return HeldOutcome(held_event_id=entry.held_event_id, event_id=entry.event_id, status="rejected")

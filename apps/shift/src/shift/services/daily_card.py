@@ -152,6 +152,9 @@ class CashException:
     flow: str
     at_tehran: str
     amount: int
+    # Money that left the box inside the window, as a positive figure: a withdrawal during a
+    # handover is accepted and flagged exactly like a receipt, and the card must show it (F1).
+    outflow: int = 0
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -159,6 +162,7 @@ class CashException:
             "flow": self.flow,
             "at_tehran": self.at_tehran,
             "amount": self.amount,
+            "outflow": self.outflow,
         }
 
     @classmethod
@@ -168,6 +172,7 @@ class CashException:
             flow=str(payload["flow"]),
             at_tehran=str(payload["at_tehran"]),
             amount=int(payload["amount"]),
+            outflow=int(payload.get("outflow", 0)),
         )
 
 
@@ -534,6 +539,13 @@ class Card:
             open_flows=tuple(OpenFlow.from_payload(entry) for entry in sections["open_flows"]),
             shift_events=tuple(ShiftEventLine.from_payload(entry) for entry in sections.get("shift_events", ())),
             open_events=tuple(OpenEvent.from_payload(entry) for entry in sections.get("open_events", ())),
+            # The three money-and-offline sections are read back too: the page renders the stored
+            # document, so a section this reader forgets is a section the manager never sees.
+            over_cap_withdrawals=tuple(
+                WithdrawalLine.from_payload(entry) for entry in sections.get("over_cap_withdrawals", ())
+            ),
+            late_cash=tuple(LateCashLine.from_payload(entry) for entry in sections.get("late_cash", ())),
+            held_events=tuple(HeldLine.from_payload(entry) for entry in sections.get("held_events", ())),
             present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
@@ -698,6 +710,7 @@ def _cash_exceptions(connection: Connection, window: CardWindow) -> tuple[CashEx
             flow=str(row.detail.get("flow", "")),
             at_tehran=row.at_tehran,
             amount=int(row.detail.get("amount", 0)),
+            outflow=int(row.detail.get("outflow", 0)),
         )
         for row in rows
     )

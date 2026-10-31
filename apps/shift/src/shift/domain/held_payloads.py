@@ -23,6 +23,8 @@ class SubmissionHeld(Payload):
     event_id: Identifier
     occurred_at: datetime
     payload: dict[str, Any]
+    # A decision or a fault closing names the record it acts on; the release path needs it back.
+    ref_event_id: Identifier | None = None
 
 
 class HeldReleased(Payload):

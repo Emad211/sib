@@ -295,3 +295,43 @@ def test_a_kind_rule_refusal_is_an_outbox_refusal(seeded: Database) -> None:
             principal=reception,
             shift=shift,
         )
+
+
+def test_a_record_is_judged_by_the_shift_it_happened_in(seeded: Database) -> None:
+    """F5: a queue that crossed the shift boundary is checked against the shift the person worked in.
+
+    The follow-up names the reading of its own shift; the shift that is running when the phone finally
+    syncs must not turn a legal record into a 422 the phone treats as final.
+    """
+    shift = ShiftKey(WORK_DATE, 2)
+    next_shift = shift.following()
+    service = _service(seeded)
+    nurse = _principal("nurse")
+    reading = service.record(
+        _submission(
+            "vitals.recorded",
+            {"systolic": 120, "diastolic": 80, "sugar": None},
+            nurse,
+            shift,
+        ),
+        principal=nurse,
+        shift=shift,
+    )
+
+    followup = service.record(
+        _submission(
+            "vitals.followup_opened",
+            {"note": "پیگیری فشار"},
+            nurse,
+            next_shift,
+            ref_event_id=reading.event_id,
+        ),
+        principal=nurse,
+        shift=next_shift,
+    )
+
+    assert followup.created
+    with seeded.read() as connection:
+        stored = events_repo.find_by_event_id(connection, followup.event_id)
+    assert stored is not None
+    assert stored.shift_id == shift.text
