@@ -16,6 +16,10 @@ NO_PHOTO = "عکس فاکتور را بگیرید؛ بدون آن دریافت �
 PHOTO_NOT_STORED = "این عکس روی سرور ذخیره نشده است؛ دوباره آن را بگیرید."
 NOT_AWAITING = "این بار منتظر شمارش شما نیست."
 NOT_THE_RECEIVER = "فقط کسی که بار به او سپرده شده است می‌تواند شمارش و تأیید کند."
+# Both sides confirm (owner document §4, line «هر دو طرف»): the door's count and the store's count are two
+# people's work, so the same person can never hold both halves — even when they hold both roles.
+TO_SELF = "بار را نمی‌توانید به خودتان تحویل دهید؛ تحویل بار دو طرف دارد و طرف دیگر باید کس دیگری باشد."
+CONFIRM_OWN = "شمردن و تأیید باری که خودتان در پذیرش تحویل گرفته‌اید ممکن نیست؛ تحویل بار دو طرف دارد."
 CONFIRM_RETURNED = "این بار به فروشنده برگشته است و به انبار نمی‌رود."
 CONFIRM_LINES = "شمارش باید برای همهٔ اقلام همین بار و هر قلم یک بار باشد."
 CONFIRMER_IS_GIVER = "تأییدکنندهٔ شارژ قفسه باید کس دیگری جز خود شما باشد."

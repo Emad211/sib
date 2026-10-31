@@ -1354,7 +1354,8 @@
       }
       entries.push({
         item_id: item.item_id,
-        location_id: item.location_id,
+        // The count is the main store's, whatever shelf the item's catalog home is (decision 2).
+        location_id: STORE,
         counted: counted,
         near_expiry: Boolean(tick && tick.checked),
       });

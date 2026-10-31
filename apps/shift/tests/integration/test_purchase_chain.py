@@ -129,18 +129,29 @@ def desk(database: Database) -> Iterator[Desk]:
             roles=person.roles,
         )
     # The figures the chain starts from, recorded the way the shift's own events record them.
-    for item, location, counted in (
-        (ITEM, STORE, STORE_BEFORE),
-        (ITEM, LOCATION, SHELF_BEFORE),
-        (SYRINGE, STORE, STORE_BEFORE),
-    ):
+    # The store's list is the catalog's (decision 2), so the settled week carries a count for every
+    # counted item, stock or no stock; only the two the tests work with hold a figure.
+    for item in catalog.items(SHIFT):
+        if item.kind is not ItemKind.COUNTED:
+            continue
         store.append(
             build_event(
                 EventType.STOCK_WEEKLY_COUNT.value,
-                payload={"item_id": item, "location_id": location, "counted": counted},
+                payload={
+                    "item_id": item.item_id,
+                    "location_id": STORE,
+                    "counted": STORE_BEFORE if item.item_id in {ITEM, SYRINGE} else 0,
+                },
                 shift_id=SHIFT.text,
             )
         )
+    store.append(
+        build_event(
+            EventType.STOCK_WEEKLY_COUNT.value,
+            payload={"item_id": ITEM, "location_id": LOCATION, "counted": SHELF_BEFORE},
+            shift_id=SHIFT.text,
+        )
+    )
     projections.sync()
     settings = SettingsService(database)
     yield Desk(
@@ -524,18 +535,30 @@ def test_a_parcel_goes_to_the_storekeeper_who_counts_it_before_it_joins_the_stor
             to_kind="storekeeper",
             packages=1,
         )
+    # Both sides confirm (owner document §4, line «هر دو طرف»): a person cannot name themselves as the
+    # receiver of the parcel they are handing over.
+    with pytest.raises(PurchaseRuleError, match="خودتان"):
+        _act(
+            desk,
+            desk.reception,
+            "delivery.transfer",
+            delivery_id=delivery_id,
+            to_staff_id=desk.reception.staff_id,
+            to_kind="shift",
+            packages=1,
+        )
     _act(
         desk,
         desk.reception,
         "delivery.transfer",
         delivery_id=delivery_id,
-        to_staff_id=desk.reception.staff_id,
+        to_staff_id=desk.nurse.staff_id,
         to_kind="shift",
         packages=1,
     )
     _act(
         desk,
-        desk.reception,
+        desk.nurse,
         "delivery.transfer",
         delivery_id=delivery_id,
         to_staff_id=desk.storekeeper.staff_id,
@@ -574,6 +597,51 @@ def test_a_parcel_goes_to_the_storekeeper_who_counts_it_before_it_joins_the_stor
             delivery_id=delivery_id,
             lines=[{"item_id": ITEM, "quantity": 4}],
         )
+
+
+def test_the_door_receiver_cannot_confirm_the_count_of_their_own_receipt(desk: Desk) -> None:
+    """Owner document §4, line «هر دو طرف»: one person holding both roles still cannot be both sides."""
+    both = Seeded("staff-both", "پذیرش و انبار", "09120000010", "device-both", ("reception", "storekeeper"))
+    create_staff(desk.database, staff_id=both.staff_id, full_name=both.full_name, mobile=both.mobile, roles=both.roles)
+    me = _principal(both)
+    delivery_id = _act(
+        desk,
+        me,
+        "delivery.receive",
+        order_id=None,
+        invoice_reference="فاکتور ۱۲",
+        lines=[{"item_id": ITEM, "location_id": LOCATION, "quantity": 4}],
+        packages=1,
+        invoice_photo_sha256=PHOTO,
+    )["delivery_id"]
+    with pytest.raises(PurchaseRuleError, match="خودتان"):
+        _act(
+            desk,
+            me,
+            "delivery.transfer",
+            delivery_id=delivery_id,
+            to_staff_id=me.staff_id,
+            to_kind="storekeeper",
+        )
+    # Somebody else may hand it back, but the person who counted it at the door still cannot count it in.
+    _act(
+        desk,
+        desk.reception,
+        "delivery.transfer",
+        delivery_id=delivery_id,
+        to_staff_id=me.staff_id,
+        to_kind="storekeeper",
+    )
+
+    with pytest.raises(PurchaseRuleError, match="خودتان"):
+        _act(
+            desk,
+            me,
+            "delivery.confirm",
+            delivery_id=delivery_id,
+            lines=[{"item_id": ITEM, "quantity": 4}],
+        )
+    assert _shelf(desk, ITEM, STORE) == STORE_BEFORE
 
 
 def test_a_receivers_count_that_differs_enters_the_store_and_locks_the_payment(desk: Desk) -> None:
@@ -735,7 +803,7 @@ def test_the_confirmer_is_somebody_else_and_somebody_the_clinic_still_has(desk: 
 
 
 def test_a_weekly_count_writes_an_unnamed_discrepancy_and_an_expiry_flag(desk: Desk) -> None:
-    """P-11: the gap is `counted − expected`, it carries no culprit, and it hangs off the count."""
+    """P-11: the gap is `expected − counted` (positive a shortage), carries no culprit, hangs off the count."""
     answer = _act(
         desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=9, near_expiry=True
     )
@@ -745,10 +813,18 @@ def test_a_weekly_count_writes_an_unnamed_discrepancy_and_an_expiry_flag(desk: D
     flag = _log(desk, EventType.EXPIRY_FLAGGED)[-1]
     assert answer == {"status": "recorded", "event_id": count.event_id}, "a blind count answers no figure"
     assert (gap.payload["scope"], gap.payload["item_id"], gap.payload["location_id"]) == ("item", SYRINGE, STORE)
-    assert (gap.payload["difference"], gap.payload["culprit_id"]) == (-3, None), "counted fewer than expected"
+    assert (gap.payload["difference"], gap.payload["culprit_id"]) == (3, None), "3 short of 12 is a shortage of 3"
     assert gap.ref_event_id == count.event_id
     assert flag.ref_event_id == count.event_id
     assert _shelf(desk, SYRINGE, STORE) == 9
+
+
+def test_a_count_above_the_store_target_reads_as_a_surplus_and_a_short_one_as_a_shortage(desk: Desk) -> None:
+    """H-01: expected 10, counted 8 is a shortage of 2; counted 2 more than expected is a surplus of 2."""
+    _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE - 2)
+    _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE)
+
+    assert [event.payload["difference"] for event in _log(desk, EventType.DISCREPANCY_RECORDED)] == [2, -2]
 
 
 def test_a_count_that_matches_writes_no_discrepancy(desk: Desk) -> None:
@@ -760,7 +836,7 @@ def test_a_count_that_matches_writes_no_discrepancy(desk: Desk) -> None:
 
 
 def test_the_weekly_status_turns_done_once_the_window_has_a_count(desk: Desk) -> None:
-    """A count closes the week it lands in — even a late one — and the next window opens due again."""
+    """A count closes the week it lands in — even a late one — and only when every item is counted."""
     state = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
     assert state["state"] == "done", "the desk's own store counts settle the week they landed in"
 
@@ -771,7 +847,11 @@ def test_the_weekly_status_turns_done_once_the_window_has_a_count(desk: Desk) ->
     _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE)
     weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
     assert weekly["state"] == "overdue", "one counted item does not close the week (decision 2)"
-    _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=STORE, counted=STORE_BEFORE)
+
+    # Every counted item of the catalog closes it, including the ones holding no stock.
+    for row in _state(desk, desk.storekeeper)["warehouse"]["items"]:
+        if row["item_id"] != SYRINGE:
+            _act(desk, desk.storekeeper, "weekly.count", item_id=row["item_id"], location_id=STORE, counted=0)
 
     weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
     assert weekly["state"] == "done"
@@ -788,24 +868,28 @@ def test_a_shelf_count_never_marks_the_week_done(desk: Desk) -> None:
     # A window the desk's own store counts do not cover: Saturday opens it, so nothing has counted yet.
     desk.clock.now = datetime(2026, 10, 31, 6, 30, tzinfo=UTC)  # Saturday 10:00 in Tehran
     assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "due"
+    written = len(_log(desk, EventType.STOCK_WEEKLY_COUNT))
 
     with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
         _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=LOCATION, counted=SHELF_BEFORE)
 
-    assert _log(desk, EventType.STOCK_WEEKLY_COUNT)[-1].payload["location_id"] == STORE, "only the store counts land"
+    assert len(_log(desk, EventType.STOCK_WEEKLY_COUNT)) == written, "a refused shelf count writes nothing"
     assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "due", "a shelf count leaves the week open"
 
 
-def test_the_store_list_holds_what_the_store_holds(desk: Desk) -> None:
-    """A shelf charge leaves the item at the store, so the storekeeper can count and re-charge it."""
-    before = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
+def test_the_store_list_is_the_whole_catalog_with_or_without_stock(desk: Desk) -> None:
+    """Decision 2: the store counts every counted item of the catalog, and a charge adds no second row."""
+    before = [row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]]
+    counted = sorted(item.item_id for item in desk.catalog.items(desk.shift) if item.kind is ItemKind.COUNTED)
     _charge(desk, item=OTHER, quantity=2)
-    after = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
+    after = [row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]]
 
-    assert SYRINGE in before, "a counted item whose catalog home is the store"
-    assert OTHER not in before, "its catalog home is the reception shelf, and the store never held it"
-    assert OTHER in after
-    assert {row["location_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]} == {STORE}
+    assert before == counted, "the list is the catalog's, never the projected stock's"
+    assert OTHER in before, "a counted item whose catalog home is the reception shelf is still the store's"
+    assert after == before, "a charge leaves no second row behind"
+    homes = {item.item_id: item.location_id for item in desk.catalog.items(desk.shift) if item.kind is ItemKind.COUNTED}
+    rows = _state(desk, desk.storekeeper)["warehouse"]["items"]
+    assert {row["item_id"]: row["location_id"] for row in rows} == homes, "each row keeps its catalog place"
 
 
 # --- what each role may see ------------------------------------------------------------------
@@ -1048,13 +1132,16 @@ def test_the_price_history_lists_every_price_of_an_item_per_vendor_for_the_accou
 
 
 def test_the_first_weekly_count_needs_the_storekeepers_opening_count_of_the_whole_store(desk: Desk) -> None:
-    """B1: with no store stock at all a weekly count would be all noise, so the opening count comes first."""
+    """B1, decision 1: on a stockless install the catalog still names every item the opening count covers."""
     with desk.database.write() as connection:
         connection.exec_driver_sql("DELETE FROM proj_stock")
     with pytest.raises(PurchaseRuleError, match="شمارش اولیه"):
         _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=3)
 
     items = [row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]]
+    counted = sorted(item.item_id for item in desk.catalog.items(desk.shift) if item.kind is ItemKind.COUNTED)
+    assert items == counted, "with no stock row at all the list still comes from the catalog"
+    assert {ITEM, SYRINGE} <= set(items)
     assert _state(desk, desk.storekeeper)["warehouse"]["baseline_done"] is False
     with pytest.raises(PurchaseRuleError, match="همهٔ اقلام"):
         _act(desk, desk.storekeeper, "store.baseline", lines=[{"item_id": ITEM, "quantity": 1}])
@@ -1068,7 +1155,9 @@ def test_the_first_weekly_count_needs_the_storekeepers_opening_count_of_the_whol
     assert _log(desk, EventType.DISCREPANCY_RECORDED) == [], "an opening count is compared with nothing"
     with pytest.raises(PurchaseRuleError, match="قبلاً"):
         _act(desk, desk.storekeeper, "store.baseline", lines=[{"item_id": item, "quantity": 7} for item in items])
+    # The weekly count works on the fresh install too, on items the opening count has just filled.
     _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=7)
+    _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=STORE, counted=7)
     # The emptied projection above is a test device, so the log is replayed rather than compared to it:
     # a replay has to rebuild the store's figures from the records alone.
     desk.projections.rebuild()
@@ -1105,7 +1194,7 @@ def test_only_the_storekeeper_counts_the_week_and_the_accountants_sample_never_s
     assert set(answer) == {"status", "event_id"}, "the answer carries no difference"
     assert _shelf(desk, picked[0], STORE) == before, "a sample compares and never sets"
     gap = _log(desk, EventType.DISCREPANCY_RECORDED)[-1].payload
-    assert (gap["item_id"], gap["difference"], gap["culprit_id"]) == (picked[0], 2, None)
+    assert (gap["item_id"], gap["difference"], gap["culprit_id"]) == (picked[0], -2, None), "2 more is a surplus"
     with pytest.raises(PurchaseRuleError, match="شمرده"):
         _act(desk, desk.accountant, "sample.count", item_id=picked[0], location_id=STORE, counted=before)
     assert _state(desk, desk.accountant)["sample"]["items"][0]["done"] is True

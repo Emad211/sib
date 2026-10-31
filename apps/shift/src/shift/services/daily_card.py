@@ -73,7 +73,8 @@ from shift.domain.shift_events import (
     kind_for,
     summary_for,
 )
-from shift.domain.stock_checks import weekly_status
+from shift.domain.stock_checks import weekly_status, weekly_window
+from shift.domain.store_payloads import MAIN_STORE
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.daily_card_extras import (
     CallSampleLine,
@@ -1582,17 +1583,32 @@ def _weekly_count(connection: Connection, moment: datetime, settings: SettingsSe
     """This week's answer for the main store: done, still due, or past its deadline (P-11, M-20).
 
     The deadline is the versioned setting (R-09), read as the shift of the moment the card is built.
+    The week closes only when every counted item of the catalog was counted in it, stock or no stock
+    (decision 2), so a count of a few items leaves the card asking.
     """
     shift = covering(to_tehran(moment))
+    due_weekday = settings.number(SettingKey.WEEKLY_COUNT_WEEKDAY, shift)
+    start, _end = weekly_window(to_tehran(moment).date(), due_weekday=due_weekday)
     last: datetime | None = None
+    counted: set[str] = set()
     for event in events_repo.iter_events(connection):
-        if event.type == EventType.STOCK_WEEKLY_COUNT.value:
-            last = parse_iso(event.at_tehran)
+        if event.type != EventType.STOCK_WEEKLY_COUNT.value or event.payload.get("location_id") != MAIN_STORE:
+            continue
+        at = parse_iso(event.at_tehran)
+        last = at
+        if to_tehran(at).date() >= start:
+            counted.add(str(event.payload["item_id"]))
+    items = {
+        item.item_id
+        for item in catalog_repo.list_items_effective(connection, shift.text)
+        if item.kind == "counted" and not item.retired
+    }
     status = weekly_status(
         last,
         moment,
-        due_weekday=settings.number(SettingKey.WEEKLY_COUNT_WEEKDAY, shift),
+        due_weekday=due_weekday,
         due_time=settings.clock_time(SettingKey.WEEKLY_COUNT_TIME, shift),
+        complete=items <= counted,
     )
     return WeeklyCountLine(
         state=status.state,

@@ -27,6 +27,7 @@ from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, parse_iso, to_tehran
 from shift.domain.event_types import EventType
+from shift.domain.handover_formulas import difference
 from shift.domain.handover_payloads import DiscrepancyRecorded
 from shift.domain.payloads import WeeklyCount
 from shift.domain.permissions import Permission, Role
@@ -43,13 +44,14 @@ from shift.domain.store_payloads import (
 )
 from shift.domain.store_sample import monthly_sample
 from shift.services.auth import Principal
-from shift.services.catalog import CatalogService, Item, ItemKind
+from shift.services.catalog import CatalogService, ItemKind
 from shift.services.event_store import EventStore
 from shift.services.purchase_rules import (
     BASELINE_DONE,
     BASELINE_ITEMS,
     BASELINE_ROLE,
     CONFIRM_LINES,
+    CONFIRM_OWN,
     CONFIRM_RETURNED,
     CONFIRMER_IS_GIVER,
     ITEM_NOT_THERE,
@@ -112,20 +114,13 @@ class StoreActions:
     # --- reading ---------------------------------------------------------------------------
 
     def store_item_ids(self, shift: ShiftKey) -> list[str]:
-        """Every counted item the store holds: its catalog home is there, or a movement left stock there."""
-        counted = [item for item in self._catalog.items(shift) if item.kind is ItemKind.COUNTED]
-        return self.store_item_ids_of(counted)
+        """Every counted item of the clinic: the store holds them all and every shelf is charged from it.
 
-    def store_item_ids_of(self, counted_items: list[Item]) -> list[str]:
-        """The same rule over a list of counted items the caller already read."""
-        counted = {item.item_id: item for item in counted_items}
-        home = [item_id for item_id, item in counted.items() if item.location_id == MAIN_STORE]
-        stocked = sorted(
-            item_id
-            for item_id, location_id in self._stock()
-            if location_id == MAIN_STORE and item_id in counted and item_id not in home
-        )
-        return home + stocked
+        The list is the catalog's, never the projected stock's: one code is counted in one place and the
+        main store keeps its own figure beside it (owner document §4), so on a fresh install no stock row
+        exists yet and the storekeeper's opening count is exactly what fills them (decision 1).
+        """
+        return [item.item_id for item in self._catalog.items(shift) if item.kind is ItemKind.COUNTED]
 
     def weekly(self, shift: ShiftKey, log: list[EventRecord]) -> tuple[WeeklyStatus, tuple[str, ...]]:
         """The week's status and the items counted in its window; one counted item does not close it."""
@@ -194,6 +189,11 @@ class StoreActions:
             raise PurchaseRuleError(NOT_AWAITING)
         if parcel.awaiting_staff_id != principal.staff_id:
             raise PurchaseRuleError(NOT_THE_RECEIVER)
+        # Both sides confirm (owner document §4, line «هر دو طرف»): the door's count and the store's
+        # count are two people's work, so whoever took the parcel in cannot also be the one who counts
+        # it into the store — a person holding both roles included.
+        if parcel.actor_id == principal.staff_id:
+            raise PurchaseRuleError(CONFIRM_OWN)
         arrived: dict[str, int] = {}
         for line in parcel.lines:
             arrived[line.item_id] = arrived.get(line.item_id, 0) + line.quantity
@@ -288,9 +288,10 @@ class StoreActions:
     def weekly_count(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
         """P-11: a blind count of one store item, its unnamed discrepancy and the expiry mark beside it.
 
-        The answers carry event ids and nothing else — the difference is `counted − expected`, so naming
-        it would tell the counter the figure he just counted blind. The week closes only when every item
-        of the store has been counted in its window (`weekly`), never on one item.
+        The answers carry event ids and nothing else — the difference is `expected − counted`, the
+        handover's own sign (`handover_formulas.difference`), so naming it would tell the counter the
+        figure he just counted blind. The week closes only when every item of the store has been counted
+        in its window (`weekly`), never on one item.
         """
         if not _COUNTERS & set(principal.roles):
             raise PurchaseRuleError(WEEKLY_ROLE)
@@ -304,7 +305,8 @@ class StoreActions:
             raise PurchaseRuleError(NEEDS_BASELINE)
         expected = self._stock().get((counted.item_id, MAIN_STORE), 0)
         batch = [new_event(self._clock, EventType.STOCK_WEEKLY_COUNT, counted, principal, shift)]
-        batch += self._gap(counted.item_id, counted.counted - expected, batch[0].client_event_id, principal, shift)
+        gap = difference(expected, counted.counted)
+        batch += self._gap(counted.item_id, gap, batch[0].client_event_id, principal, shift)
         if near_expiry:
             expiry = ExpiryFlagged(item_id=counted.item_id, location_id=MAIN_STORE, note=None)
             batch.append(
@@ -335,18 +337,19 @@ class StoreActions:
             raise PurchaseRuleError(SAMPLE_DONE)
         expected = self._stock().get((counted.item_id, MAIN_STORE), 0)
         batch = [new_event(self._clock, EventType.STOCK_SAMPLE_COUNT, counted, principal, shift)]
-        batch += self._gap(counted.item_id, counted.counted - expected, batch[0].client_event_id, principal, shift)
+        gap = difference(expected, counted.counted)
+        batch += self._gap(counted.item_id, gap, batch[0].client_event_id, principal, shift)
         self._events.append_many(batch)
         return {"status": "recorded", "event_id": batch[0].client_event_id}
 
     # --- the little pieces ----------------------------------------------------------------
 
-    def _gap(self, item_id: str, difference: int, ref: str, principal: Principal, shift: ShiftKey) -> list[Any]:
+    def _gap(self, item_id: str, signed: int, ref: str, principal: Principal, shift: ShiftKey) -> list[Any]:
         """The unnamed discrepancy of a store count, or nothing when the count matched (H-06)."""
-        if not difference:
+        if not signed:
             return []
         gap = DiscrepancyRecorded(
-            scope="item", item_id=item_id, location_id=MAIN_STORE, difference=difference, culprit_id=None
+            scope="item", item_id=item_id, location_id=MAIN_STORE, difference=signed, culprit_id=None
         )
         return [new_event(self._clock, EventType.DISCREPANCY_RECORDED, gap, principal, shift, ref_event_id=ref)]
 
