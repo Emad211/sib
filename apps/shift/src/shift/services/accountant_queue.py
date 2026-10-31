@@ -30,7 +30,7 @@ from shift.common.clock import Clock, SystemClock
 from shift.domain.event_types import EventType
 from shift.domain.policy import PolicyError, SettingKey, ShiftKey
 from shift.domain.shift_events import DECISION_TYPES, kind_for, summary_for
-from shift.domain.shift_events.cash_withdrawal import is_above_cap
+from shift.domain.shift_events.cash_withdrawal import is_above_cap_payload
 from shift.services.auth import Principal
 from shift.services.settings import SettingsService
 from shift.services.shift_events import ShiftEventService
@@ -270,7 +270,9 @@ class AccountantQueueService:
                             reason=str(summary.get("reason") or ""),
                             amount_toman=amount,
                             cap_toman=cap,
-                            above_cap=None if cap is None else is_above_cap(amount, cap),
+                            # ADR-019: the cap counts a whole shift, so the row asks the stored record's
+                            # own payload instead of re-doing the running-total arithmetic here.
+                            above_cap=is_above_cap_payload(event.payload),
                             status=PENDING,
                             decidable=is_decidable,
                         )
