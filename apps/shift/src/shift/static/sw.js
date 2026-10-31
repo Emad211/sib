@@ -31,6 +31,8 @@ const PRECACHE_URLS = [
   "/static/pwa.js",
   "/static/accountant.js",
   "/static/csrf.js",
+  "/static/jalali-datepicker.css",
+  "/static/jalali-datepicker.js",
   "/static/handover.css",
   "/static/handover.js",
   "/static/manager.css",
