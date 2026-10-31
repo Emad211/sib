@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.domain.policy import PolicyError, Role, ShiftKey
@@ -219,11 +219,18 @@ def build_catalog_router(
         staff_id: str,
         role: Role,
         body: RoleUpdate,
+        request: Request,
         manager: Annotated[Principal, Depends(guard)],
         service: Annotated[CatalogService, Depends(catalog)],
         shift: Annotated[ShiftKey | None, Depends(running_shift)],
     ) -> StaffRoleOut:
-        """Grant or revoke one role from the next shift on (R-08)."""
+        """Grant or revoke one role from the next shift on (R-08).
+
+        The same rule as `/api/v1/staff/{id}/roles/{role}` (ADR-022 §2): revoking `manager` may not
+        leave the clinic with no active manager, whichever route the client reaches for.
+        """
+        if not body.granted:
+            request.app.state.auth.require_manager_remains(staff_id=staff_id, role=role.value)
         try:
             saved = service.set_role(
                 staff_id, role, granted=body.granted, actor_id=manager.staff_id, running_shift=shift

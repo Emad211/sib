@@ -47,10 +47,16 @@ def _presence_holds(connection: Connection, *, staff_id: str, role: Role, instan
     if role is Role.SHIFT_DOCTOR:
         # A doctor's presence ends at the shift boundary: the clock's running shift must be the same.
         return str(row["shift_id"] or "") == shift.text
-    # Reception's presence ends when the next handover closes for the reception flow (ADR-021).
+    # Presence never outlives the shift it was declared in (ADR-021 §2, S01 R-12).
+    if str(row["shift_id"] or "") != shift.text:
+        return False
+    # Reception's presence ends when the next handover *closes* after it (ADR-021 §2, H-11): a flow
+    # opened before the declaration but signed after it takes over from that declaration, and a close
+    # that happened after `instant` says nothing about the record being judged (S01 R-15).
     closed_later = connection.exec_driver_sql(
-        "SELECT 1 FROM handover WHERE flow = ? AND signed_at IS NOT NULL AND opened_at > ? LIMIT 1",
-        (HandoverFlow.RECEPTION.value, str(row["client_at"])),
+        "SELECT 1 FROM handover WHERE flow = ? AND signed_at IS NOT NULL "
+        "AND julianday(signed_at) > julianday(?) AND julianday(signed_at) <= julianday(?) LIMIT 1",
+        (HandoverFlow.RECEPTION.value, str(row["client_at"]), instant.isoformat()),
     ).first()
     return closed_later is None
 

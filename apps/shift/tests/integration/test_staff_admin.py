@@ -157,3 +157,38 @@ def test_the_staff_page_lists_everyone_with_a_form_for_a_new_person(seeded: Test
     assert ROLES["nurse"].full_name in page.text
     assert "افزودن کارمند" in page.text
     assert "/static/manager-staff.js" in page.text
+
+
+def test_neither_role_route_can_take_the_last_manager(seeded: TestClient) -> None:
+    """ADR-022 §2: the catalog copy of the role route answers the same as the staff one."""
+    headers = _sign_in(seeded)
+    manager = ROLES["manager"].staff_id
+
+    for path in (
+        f"/api/v1/staff/{manager}/roles/manager",
+        f"/api/v1/catalog/staff/{manager}/roles/manager",
+    ):
+        refused = seeded.put(path, json={"granted": False}, headers=headers)
+        assert refused.status_code == 400, f"{path}: {refused.text}"
+
+
+def test_deactivation_keeps_a_manager_for_the_next_shift_not_only_today(seeded: TestClient) -> None:
+    """ADR-022 §2: the guard reads the next shift, where the clinic actually needs its manager.
+
+    The spare is a manager for the running shift and stops being one from the next; deactivating the
+    other manager now would leave the clinic with nobody holding the role tomorrow.
+    """
+    now_shift = covering(datetime.now(TEHRAN))
+    seeded.app.state.catalog.set_role(
+        SPARE.staff_id, "manager", granted=True, actor_id="staff-manager", running_shift=_previous(now_shift)
+    )
+    seeded.cookies.clear()
+    signed = login(seeded, mobile=SPARE.mobile, device_id=SPARE.device_id, pin=PIN)
+    headers = {"X-CSRFToken": signed.json()["csrf_token"]}
+    seeded.app.state.catalog.set_role(
+        SPARE.staff_id, "manager", granted=False, actor_id=SPARE.staff_id, running_shift=now_shift
+    )
+
+    refused = seeded.post(f"/api/v1/staff/{ROLES['manager'].staff_id}/active", json={"active": False}, headers=headers)
+
+    assert refused.status_code == 400, refused.text

@@ -487,7 +487,9 @@ class AuthService:
             if staff_repo.find(connection, staff_id) is None:
                 raise StaffNotFound(staff_id)
             if not active:
-                self._require_other_manager(connection, staff_id, covering(to_tehran(now)).text)
+                # The clinic needs a manager from the *next* shift on, not only for the shift that is
+                # running when the button is pressed (ADR-022 §2).
+                self._require_other_manager(connection, staff_id, covering(to_tehran(now)).following().text)
             staff_repo.set_active(connection, staff_id=staff_id, active=active)
             if not active:
                 sessions_repo.revoke_for_staff(
