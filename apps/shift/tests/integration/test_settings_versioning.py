@@ -212,6 +212,7 @@ def test_a_missing_setting_row_is_reported(database: Database, service: Settings
     with pytest.raises(SettingError, match="card_time"):
         service.snapshot()
 
+
 def test_an_optional_threshold_is_unset_until_the_manager_sets_it(service: SettingsService) -> None:
     """E1: an empty threshold means «not set», so no rule suggests anything (owner decision 11)."""
     assert service.optional_number(SettingKey.SUGAR_THRESHOLD) is None

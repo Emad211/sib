@@ -367,7 +367,9 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
                 "places": [{"id": place_id, "name": name} for place_id, name in sorted(places.items())],
                 "kinds": [{"id": kind.value, "label": label} for kind, label in ITEM_KIND_LABELS.items()],
                 "roles": [{"id": role.value, "label": ROLE_LABELS[role]} for role in LIST_ROLE_CHOICES],
-                "frequencies": [{"id": frequency.value, "label": label} for frequency, label in FREQUENCY_LABELS.items()],
+                "frequencies": [
+                    {"id": frequency.value, "label": label} for frequency, label in FREQUENCY_LABELS.items()
+                ],
             },
             cache_control=NO_STORE,
         )

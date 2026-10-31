@@ -630,6 +630,7 @@ def test_the_offline_queue_may_not_write_handover_events(client: TestClient) -> 
     assert discrepancy.status_code == 422
     assert "سرور" in handover_event.json()["error"]["message"], "the refusal is for a person, in Persian"
 
+
 def test_the_nursing_flow_asks_only_its_own_checklist(client: TestClient) -> None:
     """A3: the trolley belongs to nursing; reception's store lines never appear on its step."""
     phone = _phone(client, "nurse")

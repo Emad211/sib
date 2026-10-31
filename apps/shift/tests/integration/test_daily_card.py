@@ -1241,7 +1241,10 @@ def test_the_reward_and_campaign_sections_are_one_muted_line_on_a_day_with_nothi
         assert section.count("mg-empty") == 1, anchor
         assert "mg-row" not in section and "mg-amount" not in section, anchor
 
-def test_a_checklist_no_and_a_reading_reach_the_card(database: Database, clock: FixedClock, service: DailyCardService) -> None:
+
+def test_a_checklist_no_and_a_reading_reach_the_card(
+    database: Database, clock: FixedClock, service: DailyCardService
+) -> None:
     """B3: a «no» and a number read off a device land on the manager's card; a quiet yes stays off it."""
     _staff(database)
     store = EventStore(database, clock=clock)

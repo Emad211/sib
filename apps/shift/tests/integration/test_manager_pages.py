@@ -351,6 +351,7 @@ def test_a_fresh_install_shows_when_the_next_card_arrives(settings: Settings) ->
     assert "کارت بعدی" in response.text
     assert "07:30" in response.text, "the empty state says when the next card arrives"
 
+
 def test_a_manager_builds_a_space_checklist_on_the_items_page(manager_client: TestClient) -> None:
     """A4: the page names every attribute in the manager's words, and a space checklist is made there."""
     _signed_in(manager_client)

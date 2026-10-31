@@ -42,11 +42,7 @@ class ChecklistAsker:
                 for item in lines
                 if item.frequency is not Frequency.EVERY_SHIFT
             }
-        return [
-            item
-            for item in lines
-            if is_due(item.frequency, shift.work_date, _day(last.get(item.item_id)))
-        ]
+        return [item for item in lines if is_due(item.frequency, shift.work_date, _day(last.get(item.item_id)))]
 
 
 def _day(text: str | None) -> date | None:
