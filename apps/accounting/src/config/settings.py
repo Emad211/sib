@@ -1,5 +1,7 @@
+import ipaddress
 import os
 import sys
+from collections.abc import Mapping
 
 # The weak fallback secret for local/.exe/LAN runs. In a real server deployment
 # (PRODUCTION=1 or FLASK_ENV/APP_ENV=production) create_app() refuses to start with it.
@@ -48,6 +50,31 @@ def _is_production() -> bool:
         return True
     env = (os.environ.get("FLASK_ENV") or os.environ.get("APP_ENV") or "").strip().lower()
     return env == "production"
+
+
+# Opt-in LAN listening. SIB_HOST is read by the built-in server only (start.py and the
+# __main__ block of src/app.py); the clinic uses it when the reception PC must serve the
+# waiting room. The traffic is plain HTTP, so it belongs on the clinic's own network only.
+LAN_HOST_ENV = "SIB_HOST"
+
+
+def resolve_listen_host(production: bool, environ: Mapping[str, str] | None = None) -> str:
+    """Listen address of the built-in server: `SIB_HOST` when it is a valid IPv4 address.
+
+    Unset or invalid keeps today's behaviour exactly: 127.0.0.1 in production, 0.0.0.0
+    otherwise. Anything that is not a plain IPv4 address (a hostname, a port, `::1`) is
+    ignored rather than guessed, so a typo can never widen the bind by accident.
+    """
+    env = os.environ if environ is None else environ
+    candidate = (env.get(LAN_HOST_ENV) or "").strip()
+    if candidate:
+        try:
+            ipaddress.IPv4Address(candidate)
+        except ValueError:
+            pass
+        else:
+            return candidate
+    return "127.0.0.1" if production else "0.0.0.0"
 
 
 class Config:
