@@ -1,0 +1,213 @@
+/**
+ * Sib Shift — the Jalali date picker (static/jalali-datepicker.js).
+ *
+ * RTL, Persian, readable in a dark room: it takes every colour, radius and shadow from the tokens
+ * in app.css, so the panel follows the same light and dark themes as the rest of the shell.
+ * A day cell is a 44px target on any phone the clinic actually holds; the panel is as wide as the
+ * field, up to 22rem, and never wider than the viewport.
+ */
+
+.jp-field {
+  position: relative;
+  display: block;
+}
+
+/* Only when the page did not give the input the app's own `.form-control` class. */
+.jp-field > .jp-input:not(.form-control) {
+  display: block;
+  width: 100%;
+  min-height: var(--touch-target, 44px);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.jp-field > .jp-input:not(.form-control):focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-light);
+}
+
+.jp-error {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-danger);
+}
+
+.jp-error[hidden] {
+  display: none;
+}
+
+.jp-panel {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: calc(100% + 0.375rem);
+  z-index: 60;
+  width: min(22rem, calc(100vw - 1rem));
+  padding: 0.75rem;
+  direction: rtl;
+  text-align: center;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: var(--shadow-md);
+}
+
+.jp-panel[hidden] {
+  display: none;
+}
+
+.jp-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.jp-title {
+  flex: 1 1 auto;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.jp-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target, 44px);
+  min-height: var(--touch-target, 44px);
+  padding: 0;
+  color: var(--color-text);
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jp-nav:hover:not(:disabled) {
+  background-color: var(--color-surface-raised);
+}
+
+.jp-nav:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.jp-nav:disabled {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+  cursor: default;
+}
+
+.jp-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.jp-grid th {
+  height: 2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.jp-grid td {
+  padding: 0;
+}
+
+.jp-day {
+  height: var(--touch-target, 44px);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  vertical-align: middle;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jp-day:hover {
+  background-color: var(--color-surface-raised);
+}
+
+/* The clinic is shut on Friday (S01): the column is marked, never disabled. */
+.jp-day--friday {
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.jp-day--today {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.jp-day--selected,
+.jp-day--selected:hover {
+  font-weight: 700;
+  color: var(--color-on-primary);
+  background-color: var(--color-primary-button);
+}
+
+.jp-day--disabled,
+.jp-day--disabled:hover {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.jp-day:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.jp-foot {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
+.jp-clear {
+  min-height: var(--touch-target, 44px);
+  padding: 0 1rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jp-clear:hover:not(:disabled) {
+  background-color: var(--color-border);
+}
+
+.jp-clear:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.jp-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* On the narrowest phones the seven columns only reach 44px without the panel's side padding. */
+@media (max-width: 22rem) {
+  .jp-panel {
+    padding: 0.25rem;
+  }
+}

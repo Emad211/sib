@@ -19,6 +19,8 @@ const PRECACHE_URLS = [
   "/manifest.webmanifest",
   "/static/app.css",
   "/static/app.js",
+  "/static/jalali-datepicker.css",
+  "/static/jalali-datepicker.js",
   "/static/handover.css",
   "/static/handover.js",
   "/static/offline.js",
