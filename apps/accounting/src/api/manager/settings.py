@@ -106,6 +106,16 @@ def settings():
     if request.method == "POST":
         action = request.form.get("action")
         backup_name = request.form.get("backup_name", "")
+        if action in ("restore_backup", "delete_backup"):
+            # A06 §3.7: restore (and delete) are confirmed with the signed-in manager's
+            # password, exactly like reset_database. Checked before close_connection and
+            # before bk.restore_backup, so a wrong password creates no safety copy and
+            # touches neither the live database nor the backup files.
+            from src.services.auth_service import AuthService
+
+            if not AuthService().validate_manager(g.user["username"], request.form.get("password", "")):
+                flash("رمز عبور مدیر نادرست است", "error")
+                return redirect(url_for("manager.settings"))
         try:
             if action == "create_backup":
                 made = bk.create_backup(db_path, backup_dir, bk.KIND_MANUAL)

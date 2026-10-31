@@ -350,6 +350,29 @@
             gap: 0.5rem;
         }
 
+        .backup-actions form {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .backup-password {
+            width: 94px;
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            color: #f1f5f9;
+            font-family: inherit;
+            font-size: 0.75rem;
+        }
+
+        .backup-password:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.15);
+        }
+
         .no-backups {
             text-align: center;
             padding: 2rem;
@@ -588,6 +611,10 @@
                         <h3 class="card-title">لیست پشتیبان‌ها</h3>
                     </div>
 
+                    <p style="color: #94a3b8; font-size: 0.78rem; margin-bottom: 0.75rem;">
+                        برای بازگردانی یا حذف هر پشتیبان، رمز عبور مدیر را در کادر کنار دکمه بنویسید.
+                    </p>
+
                     <div class="backup-list">
                         {% if backups %}
                             {% for backup in backups %}
@@ -603,16 +630,18 @@
                                     <a href="{{ url_for('manager.download_backup', backup_name=backup.name) }}" class="btn btn-secondary btn-sm" title="دانلود">
                                         ⬇️
                                     </a>
-                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را بازگردانی کنید؟ دیتابیس فعلی جایگزین می‌شود.');">
+                                    <form method="post" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را بازگردانی کنید؟ دیتابیس فعلی جایگزین می‌شود.');">
                                         <input type="hidden" name="action" value="restore_backup">
                                         <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <input type="password" name="password" class="backup-password" placeholder="رمز مدیر" aria-label="رمز عبور مدیر" title="رمز عبور مدیر" autocomplete="current-password" required>
                                         <button type="submit" class="btn btn-primary btn-sm" title="بازگردانی">
                                             🔄
                                         </button>
                                     </form>
-                                    <form method="post" style="display: inline;" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را حذف کنید؟');">
+                                    <form method="post" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این بکاپ را حذف کنید؟');">
                                         <input type="hidden" name="action" value="delete_backup">
                                         <input type="hidden" name="backup_name" value="{{ backup.name }}">
+                                        <input type="password" name="password" class="backup-password" placeholder="رمز مدیر" aria-label="رمز عبور مدیر" title="رمز عبور مدیر" autocomplete="current-password" required>
                                         <button type="submit" class="btn btn-danger btn-sm" title="حذف">
                                             🗑️
                                         </button>
