@@ -111,8 +111,7 @@ def test_a_slip_the_server_does_not_hold_is_refused_and_the_box_stays(app: TestC
 
     response = _deposit(app, token, {"amount": DEPOSIT, "photo_sha256": "a" * 64})
 
-    # Off shift the access rule answers first (ADR-021); on shift the kind's own permission does.
-    assert response.status_code in (403, 422)
+    assert response.status_code == 422
     assert _box(app) == OPENING
 
 

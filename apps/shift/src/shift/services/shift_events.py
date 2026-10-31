@@ -178,7 +178,11 @@ class ShiftEventService:
             # who was off shift then is kept for the manager, never dropped with a refusal.
             worked_then = has_bound_role(principal.roles) and needed in self._permissions_at(principal, submission)
             if not worked_then:
-                kept = self._hold_off_shift(submission, principal, shift)
+                kept = None
+                # Only what the person's own role could record on shift waits for the manager; a kind
+                # the role never holds, such as a nurse's cash deposit, stays the plain refusal.
+                if needed in effective_permissions(principal.roles, principal.roles):
+                    kept = self._hold_off_shift(submission, principal, shift)
                 if kept is None:
                     raise ShiftEventRuleError("نقش شما اجازهٔ ثبت این رویداد را ندارد.")
                 return kept
