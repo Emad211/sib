@@ -89,6 +89,14 @@
 </section>
 {% endif %}
 
+{% if show_purchase_link %}
+<section class="card" aria-labelledby="purchase-link-title">
+  <h2 id="purchase-link-title" class="card-title">خرید و انبار</h2>
+  <p class="card-subtitle">سفارش خرید، دریافت بار، فاکتور و پرداخت، مرجوعی، شارژ قفسه و شمارش هفتگی انبار.</p>
+  <a class="btn btn-primary btn-block" href="/purchase">باز کردن صفحهٔ خرید</a>
+</section>
+{% endif %}
+
 <!-- Outbox Card (hidden when 0 items) -->
 <section id="outbox-card" class="card hidden" aria-labelledby="outbox-card-title">
   <h2 id="outbox-card-title" class="card-title">صف رویدادهای محلی (Outbox)</h2>

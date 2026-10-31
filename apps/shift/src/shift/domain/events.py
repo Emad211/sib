@@ -51,6 +51,7 @@ from shift.domain.payloads import (
     WasteReported,
     WeeklyCount,
 )
+from shift.domain.purchase_specs import PURCHASE_EVENT_SPECS
 from shift.domain.shift_events import shift_event_specs
 
 
@@ -106,12 +107,14 @@ BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
 
 
 def _shift_event_specs() -> Mapping[EventType, EventSpec]:
-    """The composed SHF-3 vocabulary; a kind's own spec wins over the provisional base row.
+    """The composed SHF-3 and SHF-4 vocabulary; a kind's own spec wins over the provisional base row.
 
     The four moving kinds keep a base row for the older modules that imported it, but the kind module
     is the single owner now and its spec (shift-scoped) replaces the provisional one.
     """
     composed = dict(BASE_EVENT_SPECS)
+    for event_type, (payload_model, effects) in PURCHASE_EVENT_SPECS.items():
+        composed[event_type] = EventSpec(payload_model, effects, requires_shift=True)
     for event_type, (payload_model, effects) in shift_event_specs().items():
         composed[EventType(event_type)] = EventSpec(payload_model, effects, requires_shift=True)
     return composed

@@ -22,6 +22,7 @@ from shift.api import (
     routes_held,
     routes_manager,
     routes_photos,
+    routes_purchase,
     routes_rewards,
     routes_settings,
     routes_web,
@@ -48,6 +49,7 @@ from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
 from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
+from shift.services.purchase import PurchaseService
 from shift.services.rewards import RewardsService
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
@@ -216,6 +218,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.campaign_report = CampaignReportService(
             database, campaigns=application.state.campaigns, clock=clock
         )
+        # The purchasing chain and the warehouse (SHF-4): one service writes every action and folds the
+        # state the page reads, so the log stays the only truth of the chain.
+        application.state.purchase = PurchaseService(
+            database,
+            application.state.events,
+            application.state.projections,
+            application.state.catalog,
+            application.state.settings_service,
+            clock=clock,
+        )
         # One bridge for the process: the handover start reads accounting through it, and the
         # background poll keeps the mirror live. Without an accounting copy the bridge stays None
         # and a handover start is refused (H-03), never silently allowed.
@@ -307,6 +319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_photos.router)
     app.include_router(routes_handover.router)
     app.include_router(routes_held.router)
+    app.include_router(routes_purchase.router)
     app.include_router(routes_web.router)
 
     @app.get("/healthz", tags=["ops"])

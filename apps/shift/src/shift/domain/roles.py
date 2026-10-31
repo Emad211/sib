@@ -30,6 +30,7 @@ class Permission(StrEnum):
     STOCK_WASTE_REPORT = "stock.waste.report"
     PURCHASE_ORDER_DRAFT = "purchase.order.draft"
     PURCHASE_ORDER_DECIDE = "purchase.order.decide"
+    PURCHASE_ORDER_PLACE = "purchase.order.place"
     PURCHASE_DELIVERY_RECEIVE = "purchase.delivery.receive"
     PURCHASE_PAYMENT_RECORD = "purchase.payment.record"
     PARCEL_HANDLE = "parcel.handle"

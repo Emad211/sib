@@ -461,6 +461,33 @@ function renderParcels() {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("h2", "ho-job-title", "بسته‌های در راه"));
+  const known = state.parcels_in_transit || [];
+  if (known.length) {
+    // SHF-4: a parcel the store has not taken yet is a real delivery, so the screen offers its own id
+    // instead of asking a tired person to type a number nobody can check later (P-12).
+    job.appendChild(element("p", "ho-text", "بستهٔ در راه را از فهرست انتخاب کنید؛ شناسهٔ آن همان دریافت پذیرش است."));
+    const selectLabel = element("label", "ho-label", "بستهٔ در راه");
+    selectLabel.htmlFor = "handover-parcel-select";
+    const select = element("select", "ho-text-input");
+    select.id = "handover-parcel-select";
+    for (const parcel of known) {
+      const option = element(
+        "option",
+        "",
+        `${parcel.invoice_reference}${parcel.packages ? ` — ${parcel.packages} بسته` : ""}`
+      );
+      option.value = parcel.parcel_id;
+      select.appendChild(option);
+    }
+    const submit = element("button", "ho-action ho-action-primary", "ثبت بسته");
+    submit.id = "handover-parcel-submit";
+    submit.type = "button";
+    submit.addEventListener("click", () => guard(submitKnownParcel));
+    job.append(selectLabel, select, submit);
+    job.appendChild(advanceButton("بستهٔ دیگری در راه نیست، ادامه"));
+    stepContainer.appendChild(job);
+    return;
+  }
   job.appendChild(
     element(
       "p",
@@ -482,6 +509,21 @@ function renderParcels() {
   job.append(idLabel, idInput, countLabel, countInput, submit);
   job.appendChild(advanceButton("بسته‌ای در راه نیست، ادامه"));
   stepContainer.appendChild(job);
+}
+
+async function submitKnownParcel() {
+  const select = $("handover-parcel-select");
+  const parcel = (state.parcels_in_transit || []).find((entry) => entry.parcel_id === select.value);
+  if (!parcel) {
+    showMessage("بستهٔ در راه را انتخاب کنید.", "error");
+    return;
+  }
+  await request(`${API}/${state.handover_id}/parcels`, "POST", {
+    parcel_id: parcel.parcel_id,
+    packages: parcel.packages || 1,
+  });
+  await refresh();
+  showMessage("بسته ثبت شد.", "ok");
 }
 
 async function submitParcel() {

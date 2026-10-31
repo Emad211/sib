@@ -11,7 +11,14 @@ DOMAIN_DIR = Path(__file__).resolve().parents[2] / "src" / "shift" / "domain"
 # rewards.py is the one documented home of the reward rules (S01 §5, shf5-DESIGN.md §3): its
 # docstrings are where the master's provisional money decisions are recorded, so the file carries
 # that documentation on top of its ~90 lines of arithmetic and gets its own cap.
-LINE_CAPS = {"permissions.py": 180, "rewards.py": 200}
+# SHF-4's two new files are each one document of the purchasing chain (S03 §3's payload vocabulary and
+# S03 §4's parcel states), so splitting either would hide the chain instead of shortening it.
+LINE_CAPS = {
+    "permissions.py": 180,
+    "rewards.py": 200,
+    "purchase_payloads.py": 200,
+    "purchase_deliveries.py": 200,
+}
 DEFAULT_LINE_CAP = 150
 FORBIDDEN_ROOTS = {
     "io",

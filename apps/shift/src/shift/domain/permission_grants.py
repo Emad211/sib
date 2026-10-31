@@ -34,6 +34,9 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.FAULT_FIX,
                 _P.CLEANING_CONFIRM,
                 _P.REWARD_VIEW,
+                # The owner's document: the parcel arrives in whatever shift it arrives in, so the
+                # counter takes it in and flags a problem instead of waiting for the storekeeper.
+                _P.PURCHASE_DELIVERY_RECEIVE,
             }
         ),
         Role.NURSE: frozenset(
@@ -80,6 +83,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
             {
                 _P.EVENTS_APPEND,
                 _P.PURCHASE_ORDER_DRAFT,
+                # Only the purchaser hands an approved order to a vendor and records it (P-03).
+                _P.PURCHASE_ORDER_PLACE,
                 _P.PURCHASE_DELIVERY_RECEIVE,
                 _P.PURCHASE_PAYMENT_RECORD,
                 _P.EQUIPMENT_FAULT_REPORT,

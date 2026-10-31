@@ -1,6 +1,6 @@
 """Integration tests for the authenticated idempotent events endpoint (review B1)."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -15,19 +15,17 @@ from shift.adapters.db.core import Database
 from shift.api.deps import running_shift
 from shift.api.errors import install_error_handlers
 from shift.api.routes_events import router as events_router
-from shift.common.clock import SystemClock, parse_iso, to_tehran
+from shift.common.clock import parse_iso, to_tehran
 from shift.common.ids import new_ulid
-from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.outbox import business_date_for
 
-RUNNING = ShiftKey(date(2026, 10, 28), 2)
+# One fresh instant for the whole module: F5 holds a record older than 72 hours for the manager, so a
+# pinned instant would turn this suite red three days after it was written. The shift is the one that
+# instant falls in, because the log takes it from the record's own occurrence (E-14), not from a header.
+CLIENT_AT = datetime.now(UTC) - timedelta(minutes=5)
+RUNNING = covering(to_tehran(CLIENT_AT))
 MATRIX_STAFF = {"staff_id": "staff-no-roles", "mobile": "09120000010", "device_id": "device-no-roles"}
-# The fixed instant every service reads as "now": half an hour after the fixture record's own
-# `client_at`. Without it the suite turns red on its own three days after the fixture date, because a
-# record that old is implausible and the server then keeps it for the manager instead of appending it
-# (F5) — a time bomb in the test, not in the app.
-FIXED_NOW = datetime(2026, 10, 28, 10, 30, tzinfo=UTC)
 
 
 def _event_payload(**overrides: Any) -> dict[str, Any]:
@@ -45,9 +43,9 @@ def _event_payload(**overrides: Any) -> dict[str, Any]:
             "culprit_id": "staff-reception",
             "confirmer_id": "staff-spare",
         },
-        # A fixed 2026-10-28 instant is held once it is more than three days old (F5), so the default
-        # instant is "now": these tests are about identity and idempotency, not about the hold rule.
-        "client_at": datetime.now(UTC).isoformat(),
+        # Fresh, not pinned: the F5 hold keeps a record older than 72 hours for the manager, so a fixed
+        # instant would turn this suite red three days after it was written.
+        "client_at": CLIENT_AT.isoformat(),
     }
     payload.update(overrides)
     return payload
@@ -67,14 +65,11 @@ def _headers(session: dict[str, Any]) -> dict[str, str]:
 
 
 @pytest.fixture
-def seeded(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """The real app with one staff member and one phone per role, on a fixed shift and a fixed clock."""
+def seeded(client: TestClient) -> TestClient:
+    """The real app with one staff member and one phone per role, on a fixed shift."""
     seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
     seed_catalog(client.app.state.database)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
-    # Every service built in the lifespan keeps a `SystemClock` instance and reads the class method, so
-    # patching the class pins "now" for all of them at once without reaching into a private attribute.
-    monkeypatch.setattr(SystemClock, "now_utc", lambda self: FIXED_NOW)
     return client
 
 

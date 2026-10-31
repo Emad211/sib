@@ -124,6 +124,8 @@ BODIES = {
         "opening_cash": 1,
         "items": [{"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 1}],
     },
+    # No such action: every permitted role gets the same deterministic refusal, and nothing is written.
+    "POST /api/v1/purchase/action": {"action": "unknown.action", "data": {}},
 }
 PAGES = {
     "GET /login",
@@ -133,6 +135,7 @@ PAGES = {
     "GET /manager/baseline",
     "GET /manager/items",
     "GET /events",
+    "GET /purchase",
 }
 
 

@@ -61,6 +61,20 @@ class EventType(StrEnum):
     REWARD_EARNED = "reward.earned"
     REWARD_CONFIRMED = "reward.confirmed"
     REWARD_REVOKED = "reward.revoked"
+    # SHF-4 purchasing chain (S01 §4, S03 §3): documents of the order → delivery → invoice → payment
+    # path, plus the two warehouse records. Only `restock_confirmed` moves stock.
+    ORDER_DRAFTED = "order_drafted"
+    ORDER_DECIDED = "order_decided"
+    ORDER_PLACED = "order_placed"
+    DELIVERY_RECEIVED = "delivery_received"
+    DELIVERY_FLAGGED = "delivery_flagged"
+    DELIVERY_TRANSFERRED = "delivery_transferred"
+    INVOICE_DIGITIZED = "invoice_digitized"
+    PAYMENT_RECORDED = "payment_recorded"
+    VENDOR_RETURN = "vendor_return"
+    VENDOR_CREDIT = "vendor_credit"
+    RESTOCK_CONFIRMED = "restock_confirmed"
+    EXPIRY_FLAGGED = "expiry_flagged"
 
 
 class UnknownEventType(ValueError):

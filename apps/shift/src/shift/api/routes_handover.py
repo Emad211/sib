@@ -38,6 +38,7 @@ from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
 from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
+from shift.services.purchase import PurchaseService
 
 log = logging.getLogger(__name__)
 
@@ -271,13 +272,23 @@ def current_handovers(
 @router.get("/{handover_id}")
 def get_handover_state(
     handover_id: str,
+    request: Request,
     response: Response,
     _principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """The flow as its own log rebuilt it: step, statuses and signatures only."""
+    """The flow as its own log rebuilt it: step, statuses, signatures and the parcels in transit.
+
+    The parcels are the purchasing chain's own deliveries (SHF-4, P-12): the screen hands over a real
+    parcel id instead of a number somebody typed, and only when the store has not taken it yet.
+    """
     _no_store(response)
-    return _state(_run(service.state, handover_id))
+    purchase: PurchaseService = request.app.state.purchase
+    parcels = [
+        {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
+        for parcel in purchase.in_transit(deps.running_shift(request))
+    ]
+    return {**_state(_run(service.state, handover_id)), "parcels_in_transit": parcels}
 
 
 @router.get("/{handover_id}/targets")
@@ -385,11 +396,21 @@ def answer_checklist(
 def hand_parcel(
     handover_id: str,
     body: ParcelIn,
+    request: Request,
     response: Response,
     principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """Record one parcel in transit changing hands on the parcels step (H-04)."""
+    """Record one parcel in transit changing hands on the parcels step (H-04).
+
+    P-12: once the purchasing chain knows which parcels are on their way, the only ids this route
+    accepts are those real deliveries — a typed number can no longer stand in for a parcel nobody can
+    trace. An install that has not used the chain yet still hands over a parcel by its own id.
+    """
+    purchase: PurchaseService = request.app.state.purchase
+    known = {parcel.delivery_id for parcel in purchase.in_transit(deps.running_shift(request))}
+    if known and body.parcel_id not in known:
+        raise Conflict("این شناسهٔ بسته در فهرست بارهای در راه نیست؛ بسته را از فهرست انتخاب کنید.")
     state = _run(service.hand_parcel, handover_id, body.parcel_id, body.packages, caller=_caller(principal))
     _no_store(response)
     return _state(state)

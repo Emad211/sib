@@ -14,6 +14,7 @@ Every value here is invented; nothing reads a production database or real patien
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, datetime
 from typing import Any
 
@@ -36,7 +37,17 @@ from shift.domain.policy import ShiftKey
 from shift.domain.shift_events import DECISION_TYPES
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.campaigns import CampaignService
-from shift.services.daily_card import SECTION_NAMES, Card, DailyCardService, Person
+from shift.services.daily_card import (
+    SECTION_NAMES,
+    BelowMinimumLine,
+    Card,
+    DailyCardService,
+    FlaggedDeliveryLine,
+    ParcelLine,
+    Person,
+    PurchaseOrderLine,
+    WeeklyCountLine,
+)
 from shift.services.event_store import EventStore
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 
@@ -754,6 +765,11 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
         "campaign_discounts",
         "late_cash",
         "held_events",
+        "purchase_orders",
+        "flagged_deliveries",
+        "parcels_in_transit",
+        "weekly_count",
+        "below_minimum",
     }
     assert document["card_date"] == "2026-10-27"
     assert document["generated_at"] == "2026-10-27T04:01:00+00:00"
@@ -783,10 +799,10 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
     card = service.regenerate(CARD_DAY)
     assert card is not None
     document = json.loads(_stored_payload(database, CARD_DAY))
-    assert document["schema"] == CARD_SCHEMA_VERSION == 5
+    assert document["schema"] == CARD_SCHEMA_VERSION == 6
 
-    # Schema 2 has the five original sections; 3 added the shift-event pair and 4 the three money and
-    # offline ones. A card of any of them reads, and its page grows no block it never stored.
+    # Schema 2 has the five original sections; 3 added the shift-event pair, 4 the three money and
+    # offline ones, and 5 the reward and campaign pair. A card of any of them reads, and its page grows no block it never stored.
     for schema, names in (
         (2, ("emergency_starts", "cash_exceptions", "discrepancies", "flows", "open_flows")),
         (
@@ -816,12 +832,29 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
                 "held_events",
             ),
         ),
+        (
+            5,
+            (
+                "emergency_starts",
+                "over_cap_withdrawals",
+                "cash_exceptions",
+                "discrepancies",
+                "flows",
+                "open_flows",
+                "shift_events",
+                "open_events",
+                "rewards",
+                "campaign_discounts",
+                "late_cash",
+                "held_events",
+            ),
+        ),
     ):
         assert _stored_as(database, {**document, "schema": schema, "sections": _only(document, names)}) == names
 
     # A document with a version this code does not know is not guessed at.
     legacy = {**document, "schema": 2, "sections": _only(document, ("emergency_starts",))}
-    for schema in (1, 6):
+    for schema in (1, 7):
         with pytest.raises(ValueError):
             Card.from_payload({**legacy, "schema": schema})
 
@@ -849,6 +882,7 @@ def _stored_as(database: Database, document: dict[str, Any]) -> tuple[str, ...]:
     stored = DailyCardService(database).get(CARD_DAY)
     assert stored is not None
     assert stored.rewards == () and stored.campaign_discounts == ()
+    assert stored.purchase_orders == () and stored.below_minimum == () and stored.weekly_count == ()
     return stored.present_sections
 
 
@@ -1014,10 +1048,24 @@ def test_a_built_card_survives_the_stored_payload_unchanged(
     card = service.regenerate(CARD_DAY)
 
     assert card is not None
+    # The five SHF-4 sections are folded by the purchase tests' own chain (test_purchase_chain); here one
+    # row each is laid over the card so the stored round trip still proves every field of every section.
+    stored = card
+    person = card.rewards[0].earner
+    card = replace(
+        card,
+        purchase_orders=(
+            PurchaseOrderLine("order-1", "2026-10-27T08:00:00+03:30", 5, person, 2, ("a × 2", "b × 1"), "n"),
+        ),
+        flagged_deliveries=(FlaggedDeliveryLine("del-1", "INV-1", "کم", "2026-10-27T08:00:00+03:30", 7, person),),
+        parcels_in_transit=(ParcelLine("del-2", "INV-2", 3, "2026-10-27T08:00:00+03:30", 9, person),),
+        weekly_count=(WeeklyCountLine("due", "2026-10-24", "2026-10-26", None),),
+        below_minimum=(BelowMinimumLine("item-1", "name", "shelf", 10, 3),),
+    )
     for name in SECTION_NAMES:
         assert getattr(card, name), f"the fixture left {name} empty, so the round trip would prove nothing"
     assert Card.from_payload(json.loads(canonical_json(card.to_payload()))) == card
-    assert service.get(CARD_DAY) == card
+    assert service.get(CARD_DAY) == stored
 
 
 def test_the_reward_section_carries_a_waiting_and_a_confirmed_reward_with_its_campaign(
@@ -1133,9 +1181,7 @@ def test_a_revocation_days_later_keeps_the_confirmation_on_the_day_that_paid_it(
     deducted = service.regenerate(SATURDAY)
 
     assert paid is not None and deducted is not None
-    assert [(row.status, row.amount, row.deduction_month) for row in paid.rewards] == [
-        (CONFIRMED, REWARD_VITALS, None)
-    ]
+    assert [(row.status, row.amount, row.deduction_month) for row in paid.rewards] == [(CONFIRMED, REWARD_VITALS, None)]
     assert paid.rewards[0].at_tehran == tehran_iso(_monday(9, 40))
     assert [(row.status, row.amount, row.deduction_month) for row in deducted.rewards] == [
         (REVOKED, -REWARD_VITALS, "1405-09")

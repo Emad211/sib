@@ -13,6 +13,7 @@ from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
+from shift.services.purchase import PURCHASE_PERMISSIONS
 
 router = APIRouter(tags=["web"])
 
@@ -102,6 +103,11 @@ def get_home(request: Request) -> HTMLResponse:
     show_rewards_link = principal is not None and Permission.REWARD_VIEW in principal.permissions
     show_queue_link = principal is not None and Permission.ACCOUNTANT_QUEUE_VIEW in principal.permissions
     show_campaign_report_link = principal is not None and Permission.CAMPAIGN_REPORT_VIEW in principal.permissions
+    # And the same rule again for purchasing: one purchase permission is enough to open the screen,
+    # and the sections inside it are cut down by the API, not by this flag (SHF-4, R-07).
+    show_purchase_link = principal is not None and any(
+        permission in principal.permissions for permission in PURCHASE_PERMISSIONS
+    )
     return _shell_page(
         request,
         "home.html",
@@ -112,6 +118,7 @@ def get_home(request: Request) -> HTMLResponse:
             "show_rewards_link": show_rewards_link,
             "show_queue_link": show_queue_link,
             "show_campaign_report_link": show_campaign_report_link,
+            "show_purchase_link": show_purchase_link,
         },
     )
 
@@ -138,6 +145,17 @@ def get_handover_page(request: Request, _principal: HandoverCounter) -> HTMLResp
     flow they may complete is decided by the API (H-10: a nurse never counts the cash box).
     """
     return _shell_page(request, "handover.html")
+
+
+@router.get("/purchase", response_class=HTMLResponse, summary="Serve the purchasing and warehouse screen")
+def get_purchase_page(request: Request, _principal: EventsAppender) -> HTMLResponse:
+    """One job per role on one screen (R-10, S01 §4).
+
+    The page itself carries no clinic data: its script asks `GET /api/v1/purchase/state` and draws only
+    the sections that answer carries, so an order, a parcel and an invoice never sit in a cached shell.
+    The response asks for `no-store` because the accountant's section holds prices (R-02, ADR-016).
+    """
+    return _shell_page(request, "purchase.html", cache_control="no-store")
 
 
 @router.get("/offline.html", summary="Serve offline fallback page")

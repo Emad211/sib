@@ -409,7 +409,7 @@ def _card_view(card: Card) -> dict[str, Any]:
 
 
 def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
-    """The card's twelve sections as rows of text; a section the stored card lacks is left out."""
+    """Every section of the card as rows of text; a section the stored card lacks is left out."""
     builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
         "over_cap_withdrawals": _withdrawal_rows,
@@ -423,6 +423,12 @@ def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
         "open_events": _open_event_rows,
         "rewards": _reward_rows,
         "campaign_discounts": _campaign_rows,
+        # SHF-4: the purchasing chain's open decisions and the warehouse's unfinished work (M-19..M-21).
+        "purchase_orders": _purchase_order_rows,
+        "flagged_deliveries": _flagged_delivery_rows,
+        "parcels_in_transit": _parcel_rows,
+        "weekly_count": _weekly_count_rows,
+        "below_minimum": _below_minimum_rows,
     }
     return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
@@ -731,4 +737,81 @@ def _campaign_rows(card: Card) -> list[dict[str, str]]:
             "total": UNKNOWN_FIGURE if entry.total is None else f"{entry.total:,}",
         }
         for entry in card.campaign_discounts
+    ]
+
+
+# --- the purchasing chain and the warehouse (SHF-4, M-19..M-21) ------------------------------
+
+_WEEKLY_STATE_FA = {"done": "انجام شده", "due": "در انتظار شمارش", "overdue": "گذشته از موعد"}
+
+
+def _purchase_order_rows(card: Card) -> list[dict[str, str]]:
+    """M-19: an order waiting for the manager, its lines and how long it has waited."""
+    return [
+        {
+            "order_id": entry.order_id,
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+            "line_count": str(entry.line_count),
+            "lines": "، ".join(entry.lines),
+            "note": entry.note or "",
+        }
+        for entry in card.purchase_orders
+    ]
+
+
+def _flagged_delivery_rows(card: Card) -> list[dict[str, str]]:
+    """M-19: a problem parcel whose payment waits for the manager."""
+    return [
+        {
+            "delivery_id": entry.delivery_id,
+            "invoice_reference": entry.invoice_reference,
+            "reason": entry.reason_fa,
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+        }
+        for entry in card.flagged_deliveries
+    ]
+
+
+def _parcel_rows(card: Card) -> list[dict[str, str]]:
+    """M-20: a parcel still on its way to the storekeeper, with its age in hours."""
+    return [
+        {
+            "delivery_id": entry.delivery_id,
+            "invoice_reference": entry.invoice_reference,
+            "packages": "" if entry.packages is None else str(entry.packages),
+            "actor": _person(entry.actor),
+            "at": _stamp_fa(entry.at_tehran),
+            "age_hours": str(entry.age_hours),
+        }
+        for entry in card.parcels_in_transit
+    ]
+
+
+def _weekly_count_rows(card: Card) -> list[dict[str, Any]]:
+    """M-20: the main store's count for this week and the window it belongs to."""
+    return [
+        {
+            "state": _WEEKLY_STATE_FA.get(entry.state, entry.state),
+            "window": f"{format_jalali(date.fromisoformat(entry.window_from))} تا "
+            f"{format_jalali(date.fromisoformat(entry.window_to))}",
+            "last_count": "" if entry.last_count_on is None else format_jalali(date.fromisoformat(entry.last_count_on)),
+        }
+        for entry in card.weekly_count
+    ]
+
+
+def _below_minimum_rows(card: Card) -> list[dict[str, Any]]:
+    """M-21: an item under its minimum, with the figure it stands at now."""
+    return [
+        {
+            "name": entry.name,
+            "location": entry.location,
+            "minimum": entry.minimum,
+            "quantity": entry.quantity,
+        }
+        for entry in card.below_minimum
     ]
