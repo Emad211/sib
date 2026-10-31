@@ -813,7 +813,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
     card = service.regenerate(CARD_DAY)
     assert card is not None
     document = json.loads(_stored_payload(database, CARD_DAY))
-    assert document["schema"] == CARD_SCHEMA_VERSION == 7
+    assert document["schema"] == CARD_SCHEMA_VERSION == 8
 
     # Schema 2 has the five original sections; 3 added the shift-event pair, 4 the three money and
     # offline ones, and 5 the reward and campaign pair. A card of any of them reads, and its page grows no block it never stored.
