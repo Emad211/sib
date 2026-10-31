@@ -1,0 +1,24 @@
+# HTTPS on the clinic LAN with Caddy's internal CA (ADR-015). SHIFT_SITE is the server's fixed LAN IP or name.
+{
+	auto_https disable_redirects
+	# Phones get the root certificate once, over plain HTTP, before they can trust anything else.
+	skip_install_trust
+}
+
+http://{$SHIFT_SITE} {
+	handle /ca.crt {
+		root * {$SHIFT_CA_DIR}
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		redir https://{host}{uri}
+	}
+}
+
+https://{$SHIFT_SITE} {
+	tls internal
+	encode gzip
+	reverse_proxy 127.0.0.1:8443
+}

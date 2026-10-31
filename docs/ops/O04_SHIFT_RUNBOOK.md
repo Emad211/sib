@@ -48,10 +48,28 @@
    اگر دیتابیس از قبل داده داشته باشد، **پیش از** هر migration یک snapshot در `backups/shift_pre_migration_<UTC>.db` گرفته می‌شود؛
    اگر backup یا migration شکست بخورد، سرویس بالا نمی‌آید (`MigrationError`) و هیچ تغییری نیمه‌کاره نمی‌ماند.
 6. بررسی سلامت: `GET /healthz` باید `{"status": "ok", "version": "..."}` برگرداند؛ `/docs` و `/openapi.json` باید ۴۰۴ بدهند.
-7. با سرویس روشن، گوشی مدیر را جفت کنید (بخش ۲.۱): `tools/print_enroll_qr.py --staff-id manager --origin https://<host>:8443 --out manager.svg`، سپس QR را روی گوشی باز کنید.
-8. برای اجرای دائمی، سرویس را با NSSM (یا Task Scheduler با گزینهٔ «Run whether user is logged on or not») ثبت کنید (S02 بخش ۵).
+7. با سرویس روشن، گوشی مدیر را جفت کنید (بخش ۲.۱): `tools/print_enroll_qr.py --staff-id manager --origin https://<host> --out manager.svg`، سپس QR را روی گوشی باز کنید.
+8. برای اجرای دائمی و HTTPS، بخش ۲.۲ را انجام دهید.
 
-> **HTTPS:** سرویس خودش روی `127.0.0.1` HTTP ساده حرف می‌زند و Caddy (CA داخلی، ADR-015) روی همان رایانه HTTPS را به آن می‌رساند. کوکی‌های نشست در حالت تولید همیشه `Secure` هستند، پس بدون Caddy مرورگرِ گوشی ورود را نمی‌پذیرد؛ فقط Chrome روی `127.0.0.1` همان رایانه استثناست. فایل Caddyfile و نصب گواهی ریشه هنوز در مخزن نیست (بخش ۱۱).
+> **HTTPS:** سرویس خودش روی `127.0.0.1` HTTP ساده حرف می‌زند و Caddy (CA داخلی، ADR-015) روی همان رایانه HTTPS را به آن می‌رساند. کوکی‌های نشست در حالت تولید همیشه `Secure` هستند، پس بدون Caddy مرورگرِ گوشی ورود را نمی‌پذیرد؛ فقط Chrome روی `127.0.0.1` همان رایانه استثناست.
+
+## ۲.۲ اجرای دائمی و HTTPS روی رایانهٔ درمانگاه
+
+> این دو فایل هنوز با Caddy و NSSM واقعی اجرا نشده‌اند؛ روی رایانهٔ درمانگاه یک بار با حوصله امتحان و نتیجه اینجا ثبت شود.
+
+1. به رایانه یک **IP ثابت** در شبکهٔ داخلی بدهید.
+2. `caddy.exe` و `nssm.exe` را از سایت رسمی‌شان در یک پوشه بگذارید.
+3. PowerShell را با دسترسی مدیر باز کنید و از پوشهٔ `apps/shift/deploy` اجرا کنید:
+
+   ```powershell
+   ./install-services.ps1 -Site 192.168.1.10 -AppDir C:/ShiftApp/apps/shift -DataDir C:/ShiftData -ToolsDir C:/ShiftTools -AccountingDb C:/Hesabdari/clinic_new.db
+   ```
+
+   دو سرویس `ShiftApp` و `ShiftCaddy` با روشن شدن رایانه بالا می‌آیند، و فقط پورت‌های ۸۰ و ۴۴۳ در فایروال باز می‌شوند. داده و کلید نشست در `-DataDir` است، پس **همان `SHIFT_HOME` را هنگام اجرای ابزارهای بخش ۲ هم تنظیم کنید**.
+4. **روی هر گوشی، یک بار:** `http://<IP>/ca.crt` را باز کنید، گواهی را نصب و معتمد کنید. بعد `https://<IP>/` باید بدون هشدار باز شود.
+5. نشانی‌های ثبت گوشی از این پس `https://<IP>` است، نه پورت 8443.
+
+**برگشت:** `nssm remove ShiftApp confirm` و `nssm remove ShiftCaddy confirm`. دیتابیس دست نمی‌خورد.
 
 ## ۲.۱ ثبت گوشی پرسنل با QR (device enrollment)
 
@@ -64,7 +82,7 @@
 **راه ۲ — خط فرمان (از `apps/shift`):**
 
 ```powershell
-.venv/Scripts/python.exe tools/print_enroll_qr.py --db shift.db --staff-id <staff_id> --origin https://<host>:8443 --out "D:/sib-ops/enroll/<staff_id>.svg"
+.venv/Scripts/python.exe tools/print_enroll_qr.py --db shift.db --staff-id <staff_id> --origin https://<host> --out "D:/sib-ops/enroll/<staff_id>.svg"
 ```
 
 | خروجی | معنا |
