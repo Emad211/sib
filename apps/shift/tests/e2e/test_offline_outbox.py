@@ -196,7 +196,7 @@ def _login(page: Page, base_url: str) -> None:
     page.fill("#mobile", PERSON.mobile)
     page.fill("#pin", PIN)
     page.click("#submit")
-    page.wait_for_selector("#message.ok", timeout=15000)
+    page.wait_for_function("location.pathname === '/'", timeout=15000)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _wait_for_shell(page)
 

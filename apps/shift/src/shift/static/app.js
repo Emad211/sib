@@ -58,7 +58,7 @@
   }
 
   // Network Status Monitoring & Banners
-  function updateNetworkStatus() {
+  function updateNetworkStatus(event) {
     const isOnline = navigator.onLine;
     const banner = document.getElementById("network-banner");
     const statusBadge = document.getElementById("connection-status-badge");
@@ -68,14 +68,19 @@
         banner.textContent = "ارتباط با سرور قطع است — ذخیره در صف آفلاین فعال شد";
         banner.className = "network-banner offline";
       } else {
-        banner.textContent = "اتصال برقرار شد — در حال همگام‌سازی...";
-        banner.className = "network-banner online";
         rememberOnlineSync();
-        setTimeout(() => {
-          if (navigator.onLine && banner) {
-            banner.className = "network-banner hidden";
-          }
-        }, 3000);
+        // Only a real reconnect deserves the banner, not every page load.
+        if (event && event.type === "online") {
+          banner.textContent = "اتصال برقرار شد — در حال همگام‌سازی...";
+          banner.className = "network-banner online";
+          setTimeout(() => {
+            if (navigator.onLine && banner) {
+              banner.className = "network-banner hidden";
+            }
+          }, 3000);
+        } else {
+          banner.className = "network-banner hidden";
+        }
       }
     }
 
@@ -275,7 +280,41 @@
     }
   };
 
+  const ROLE_NAMES = {
+    reception: "پذیرش",
+    nurse: "پرستار",
+    storekeeper: "انباردار",
+    purchaser: "مسئول خرید",
+    accountant: "حسابدار",
+    shift_doctor: "پزشک شیفت",
+    manager: "مدیر",
+  };
+
+  // Who is signed in and how to leave: shown on every page, and simply absent offline or logged out.
+  async function showWhoAmI() {
+    const who = document.getElementById("who-am-i");
+    const logout = document.getElementById("logout-btn");
+    if (!who || !logout) return;
+    let me;
+    try {
+      const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
+      if (!response.ok) return;
+      me = await response.json();
+    } catch {
+      return;
+    }
+    const roles = (me.roles || []).map((role) => ROLE_NAMES[role] || role).join("، ");
+    who.textContent = `${me.staff.name} · ${roles}`;
+    who.classList.remove("hidden");
+    logout.classList.remove("hidden");
+    logout.addEventListener("click", async () => {
+      await fetch("/api/v1/auth/logout", { method: "POST", headers: { "X-CSRFToken": me.csrf_token } });
+      location.assign("/login");
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
+    showWhoAmI();
     requestPersistentStorage();
     updateNetworkStatus();
     refreshOutboxUi();

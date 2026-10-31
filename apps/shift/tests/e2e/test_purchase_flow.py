@@ -231,7 +231,7 @@ def _login(page: Page, base_url: str, person: Seeded) -> None:
     page.fill("#pin", PIN)
     page.click("#submit")
     page.wait_for_function(
-        "() => Boolean(document.querySelector('#message.ok')) || location.pathname === '/admin/devices'",
+        "() => location.pathname === '/'",
         timeout=15000,
     )
 

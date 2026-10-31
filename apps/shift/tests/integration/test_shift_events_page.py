@@ -133,7 +133,7 @@ def test_the_home_screen_links_staff_to_the_wizard_and_hides_it_from_visitors(
     _signed_in(staff_client)
     home = staff_client.get("/")
     assert 'href="/events"' in home.text
-    assert "ثبت رویداد شیفت" in home.text
+    assert "ثبت رویداد" in home.text
 
 
 def test_the_worker_precaches_the_new_assets_and_never_the_authenticated_page(

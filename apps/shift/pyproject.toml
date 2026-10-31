@@ -2,7 +2,7 @@
 # requirements*.lock, so this file carries metadata and tool policy, not a build.
 [project]
 name = "shift"
-version = "0.2.0"
+version = "0.3.0"
 description = "Sib clinic shift management service (FastAPI + SQLAlchemy Core + SQLite)"
 requires-python = ">=3.13"
 dependencies = [

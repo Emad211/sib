@@ -27,6 +27,8 @@
       </a>
 
       <div class="status-bar">
+        <span id="who-am-i" class="who-am-i hidden"></span>
+        <button id="logout-btn" type="button" class="logout-btn hidden">خروج</button>
         <span id="stale-badge" class="badge badge-stale hidden" role="note" aria-live="polite"></span>
         <span id="outbox-count-badge" class="badge badge-queued hidden" role="status"></span>
         <span id="connection-status-badge" class="badge badge-online">آنلاین</span>
@@ -36,6 +38,7 @@
 
   <!-- Main Content Container -->
   <main class="main-container" id="main-content">
+    {% if request is defined and request.url.path != "/" %}<a class="back-home" href="/">→ بازگشت به کارهای من</a>{% endif %}
     {% block content %}{% endblock %}
   </main>
 

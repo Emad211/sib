@@ -421,3 +421,38 @@ body {
   line-height: 1.5;
   color: var(--color-danger, #b3261e);
 }
+
+/* Home: one big button per job the person can do. */
+.home-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 0.75rem; }
+.home-tiles { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
+.home-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  min-height: 4.5rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.875rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+.home-tile:hover, .home-tile:focus-visible { border-color: var(--color-primary); }
+.home-tile-icon { font-size: 1.75rem; line-height: 1; }
+.home-tile-text { display: grid; gap: 0.125rem; }
+.home-tile-title { font-size: 1.0625rem; font-weight: 700; }
+.home-tile-hint { font-size: 0.8125rem; color: var(--color-text-muted); }
+.who-am-i { font-size: 0.75rem; color: var(--color-text-muted); }
+.logout-btn {
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+.back-home { display: inline-block; margin-bottom: 0.75rem; color: var(--color-primary); font-weight: 500; text-decoration: none; }
+.dev-tools summary { cursor: pointer; color: var(--color-text-muted); }

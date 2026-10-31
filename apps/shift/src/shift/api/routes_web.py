@@ -90,36 +90,100 @@ def _shell_page(
     return response
 
 
+# One big button per job on the home page, in the order of a shift (R-10). Permissions decide, never role names (R-07).
+HOME_TILES: tuple[dict[str, Any], ...] = (
+    {
+        "needs": frozenset({Permission.HANDOVER_START}),
+        "href": "/handover",
+        "icon": "🔄",
+        "title": "تحویل شیفت",
+        "hint": "شمارش صندوق و قفسه، چک‌لیست‌ها و امضا",
+    },
+    {
+        "needs": frozenset({Permission.EVENTS_APPEND}),
+        "href": "/events",
+        "icon": "📝",
+        "title": "ثبت رویداد",
+        "hint": "کارت‌به‌کارت، برداشت، ضایعات، خرابی و بقیه",
+    },
+    {
+        "needs": frozenset(PURCHASE_PERMISSIONS),
+        "href": "/purchase",
+        "icon": "📦",
+        "title": "خرید و انبار",
+        "hint": "سفارش، دریافت بار، شارژ قفسه و شمارش هفتگی",
+    },
+    {
+        "needs": frozenset({Permission.ACCOUNTANT_QUEUE_VIEW}),
+        "href": "/accountant/queue",
+        "icon": "🧾",
+        "title": "صف حسابدار",
+        "hint": "کارت‌به‌کارت، برداشت‌ها، مرجوعی و پاداش ماه",
+    },
+    {
+        "needs": frozenset({Permission.CAMPAIGN_REPORT_VIEW}),
+        "href": "/accountant/campaigns",
+        "icon": "🏷️",
+        "title": "گزارش کمپین",
+        "hint": "هر کمپین: چند تخفیف و چه جمعی",
+    },
+    {
+        "needs": frozenset({Permission.REWARD_VIEW}),
+        "href": "/rewards",
+        "icon": "⭐",
+        "title": "پاداش من",
+        "hint": "مبلغ و رتبهٔ این ماه و هدف تیمی",
+    },
+    {
+        "needs": frozenset({Permission.DAILY_CARD_VIEW}),
+        "href": "/manager/card",
+        "icon": "📊",
+        "title": "کارت روزانه",
+        "hint": "تصمیم‌های باز، مغایرت‌ها و هشدارها",
+    },
+    {
+        "needs": frozenset({Permission.HANDOVER_BASELINE}),
+        "href": "/manager/baseline",
+        "icon": "🧮",
+        "title": "شمارش اولیه",
+        "hint": "شروع کار: صندوق و اقلام هر جریان",
+    },
+    {
+        "needs": frozenset({Permission.CATALOG_MANAGE}),
+        "href": "/manager/items",
+        "icon": "💊",
+        "title": "اقلام و کد کالا",
+        "hint": "حداقل و کد کالای هر قلم",
+    },
+    {
+        "needs": frozenset({Permission.SETTINGS_CHANGE}),
+        "href": "/manager/settings",
+        "icon": "⚙️",
+        "title": "تنظیمات",
+        "hint": "سقف‌ها، ساعت‌ها و کمپین‌ها",
+    },
+    {
+        "needs": frozenset({Permission.DEVICE_ENROLL}),
+        "href": "/admin/devices",
+        "icon": "📱",
+        "title": "گوشی‌ها",
+        "hint": "ثبت گوشی تازه و لغو دسترسی",
+    },
+)
+
+
 @router.get("/", response_class=HTMLResponse, summary="Serve PWA home shell")
 def get_home(request: Request) -> HTMLResponse:
     """Render the main PWA shell and issue the double-submit CSRF cookie."""
     settings = request.app.state.settings
     principal = deps.principal_or_none(request)
-    # The permission decides who sees the card link, never a role name (R-07, SHF-6.1).
-    show_manager_link = principal is not None and Permission.DAILY_CARD_VIEW in principal.permissions
-    # Same rule for the shift-event screen: a visitor with no session keeps no link (SHF-3).
-    show_events_link = principal is not None and Permission.EVENTS_APPEND in principal.permissions
-    # And for the three SHF-5 screens: one's own rewards, the accountant's queue, the campaign report.
-    show_rewards_link = principal is not None and Permission.REWARD_VIEW in principal.permissions
-    show_queue_link = principal is not None and Permission.ACCOUNTANT_QUEUE_VIEW in principal.permissions
-    show_campaign_report_link = principal is not None and Permission.CAMPAIGN_REPORT_VIEW in principal.permissions
-    # And the same rule again for purchasing: one purchase permission is enough to open the screen,
-    # and the sections inside it are cut down by the API, not by this flag (SHF-4, R-07).
-    show_purchase_link = principal is not None and any(
-        permission in principal.permissions for permission in PURCHASE_PERMISSIONS
-    )
+    # A visitor with no session keeps no tile; the sections inside each screen are cut down by the API.
+    granted = principal.permissions if principal is not None else frozenset()
+    tiles = [tile for tile in HOME_TILES if granted & tile["needs"]]
     return _shell_page(
         request,
         "home.html",
-        {
-            "show_dev_events": settings.environment == "development",
-            "show_manager_link": show_manager_link,
-            "show_events_link": show_events_link,
-            "show_rewards_link": show_rewards_link,
-            "show_queue_link": show_queue_link,
-            "show_campaign_report_link": show_campaign_report_link,
-            "show_purchase_link": show_purchase_link,
-        },
+        {"show_dev_events": settings.environment == "development", "tiles": tiles},
     )
 
 

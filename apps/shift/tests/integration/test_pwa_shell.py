@@ -144,8 +144,8 @@ def test_production_home_is_a_shell_not_a_demo_form(settings: Settings) -> None:
     with TestClient(create_app(replace(settings, environment="production"))) as client:
         text = client.get("/").text
 
-    assert "شیفت فعال درمانگاه" in text
-    assert "تحویل شیفت" in text
+    assert 'id="shift-overview-title"' in text
+    assert "از گوشی ثبت‌شدهٔ خود وارد شوید" in text
     for forbidden in (
         "staff_user_1",
         "device_web_client",

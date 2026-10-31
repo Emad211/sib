@@ -224,7 +224,7 @@ def _login(page: Page, base_url: str, person: Seeded) -> None:
     page.fill("#mobile", person.mobile)
     page.fill("#pin", PIN)
     page.click("#submit")
-    page.wait_for_selector("#message.ok", timeout=15000)
+    page.wait_for_function("location.pathname === '/'", timeout=15000)
 
 
 def _open_handover(page: Page, base_url: str) -> None:
