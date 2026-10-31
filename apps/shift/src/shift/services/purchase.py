@@ -200,6 +200,8 @@ class PurchaseState:
     sample: dict[str, Any] | None = None
     # G3: what waits for this very person — shelf charges to confirm and parcels to count (no figures).
     inbox: dict[str, Any] | None = None
+    # G3: who the giver may name to confirm a shelf charge, by name and role; never an id for staff.
+    directory: tuple[dict[str, Any], ...] = ()
     viewer_id: str = ""
 
     def to_payload(self) -> dict[str, Any]:
@@ -226,6 +228,7 @@ class PurchaseState:
             "price_history": None if self.price_history is None else [_series_payload(s) for s in self.price_history],
             "sample": self.sample,
             "inbox": self.inbox,
+            "directory": list(self.directory),
         }
 
 
@@ -291,7 +294,8 @@ class PurchaseService:
             is_storekeeper=Role.STOREKEEPER.value in principal.roles,
             price_history=price_history(log) if Permission.PURCHASE_PAYMENT_RECORD in held else None,
             sample=self._sample_view(principal, shift, log),
-            inbox=self._inbox(principal, log),
+            inbox=self._inbox(principal, shift, log),
+            directory=self._directory(principal),
             viewer_id=principal.staff_id,
         )
 
@@ -629,13 +633,39 @@ class PurchaseService:
             ],
         }
 
-    def _inbox(self, principal: Principal, log: list[EventRecord]) -> dict[str, Any]:
+    def _directory(self, principal: Principal) -> tuple[dict[str, Any], ...]:
+        """G3: the people the giver may name to confirm a shelf charge, by name and role.
+
+        Only somebody who may record a charge needs the list. The giver's own name is left out: a charge
+        confirmed by the person who recorded it is not a two-sided record (owner decision, G3).
+        """
+        if Permission.STOCK_RESTOCK_CONFIRM not in principal.permissions:
+            return ()
+        with self._database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+        return tuple(
+            {
+                "staff_id": person.staff.staff_id,
+                "name": person.staff.full_name,
+                "role": "، ".join(person.roles),
+            }
+            for person in people
+            if person.staff.active and person.staff.staff_id != principal.staff_id
+        )
+
+    def _inbox(self, principal: Principal, shift: ShiftKey, log: list[EventRecord]) -> dict[str, Any]:
         """G3: what waits for this person's own count; the offered figure stays hidden from the counter."""
+        # Names travel with the offers: the counter may hold no warehouse section, and an id is never shown.
+        names = {item.item_id: item.name for item in self._counted_items(shift)}
+        places = {place.location_id: place.name for place in self._catalog.locations(shift)}
         mine = [
             {
                 "offer_id": offer.event_id,
                 "item_id": str(offer.payload["item_id"]),
+                "item_name": names.get(str(offer.payload["item_id"]), ""),
                 "to_location_id": str(offer.payload["to_location_id"]),
+                "to_location_name": places.get(str(offer.payload["to_location_id"]), ""),
+                "from_location_name": places.get(str(offer.payload["from_location_id"]), ""),
                 "giver_id": offer.actor_id,
             }
             for offer in self._store.open_offers(log)
@@ -651,6 +681,10 @@ class PurchaseService:
                 "delivery_id": parcel.delivery_id,
                 "invoice_reference": parcel.invoice_reference,
                 "item_ids": sorted({line.item_id for line in parcel.lines}),
+                "items": [
+                    {"item_id": item_id, "name": names.get(item_id, "")}
+                    for item_id in sorted({line.item_id for line in parcel.lines})
+                ],
             }
             for parcel in delivery_states(log).values()
             if parcel.awaiting_staff_id == principal.staff_id and not parcel.returned
