@@ -768,9 +768,12 @@
     return actor.name || actor.id || entry.actor_name || entry.actor_id || "";
   }
 
-  function summaryText(summary) {    if (!summary || typeof summary !== "object") return "";
+  function summaryText(summary) {
+    if (!summary || typeof summary !== "object") return "";
     return Object.keys(summary)
       .map(function (key) {
+        // A receipt photo is a link on the card, never a 64-character hash in the text (SHF-7).
+        if (key.endsWith("_sha256")) return "";
         var label = SUMMARY_LABELS[key] || key;
         var value = summary[key];
         if (value === null || value === undefined || value === "") return "";
@@ -818,6 +821,15 @@
       card.appendChild(el("p", "se-pending-meta", "ثبت‌کننده: " + meta.join(" · ")));
       var summary = summaryText(entry.summary);
       if (summary) card.appendChild(el("p", "se-pending-summary", summary));
+      if (entry.summary && entry.summary.photo_sha256) {
+        // The approver decides the record from this phone, so the receipt must open from here too
+        // (the photo route admits exactly the manager and the approvers).
+        var photo = el("a", "se-pending-photo", "عکس رسید");
+        photo.href = "/api/v1/photos/" + entry.summary.photo_sha256;
+        photo.target = "_blank";
+        photo.rel = "noopener";
+        card.appendChild(photo);
+      }
       var actions = el("div", "se-pending-actions");
       actions.appendChild(decisionButton(entry, catalog.approved_type, "تأیید", "btn-primary"));
       actions.appendChild(decisionButton(entry, catalog.rejected_type, "رد", "btn-danger"));

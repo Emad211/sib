@@ -126,3 +126,33 @@ def test_the_items_page_lists_the_missing_codes_first(clinic_client: TestClient)
 
     _sign_in(clinic_client, "reception")
     assert clinic_client.get("/manager/items").status_code == 403
+
+
+def test_a_saved_code_shows_on_the_items_page_at_once(clinic_client: TestClient) -> None:
+    """A catalog change starts with the next shift, so the page must read that shift (review F1)."""
+    target = next(
+        item
+        for item in _counted(clinic_client, "shelf_reception")
+        if item.kind is ItemKind.COUNTED and item.item_id == "apotel_500_amp"
+    )
+    headers = _sign_in(clinic_client, "manager")
+    saved = clinic_client.put(
+        f"/api/v1/catalog/items/{target.item_id}",
+        json={
+            "name": target.name,
+            "kind": target.kind.value,
+            "location_id": target.location_id,
+            "unit": target.unit,
+            "minimum": 4,
+            "acc_code": "50001",
+            "stock_factor": 1,
+            "retired": False,
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+
+    page = clinic_client.get("/manager/items")
+    assert page.status_code == 200
+    assert "68 قلم بی‌کد مانده" in page.text, "the manager must see the code just typed"
+    assert "50001" in page.text

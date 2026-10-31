@@ -313,10 +313,16 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         _editor: ItemsEditor,
         catalog: CatalogDep,
     ) -> HTMLResponse:
-        """Every item, the ones without an accounting code first (SHF-7.1, Q-17)."""
-        shift = deps.running_shift(request)
-        places = {place.location_id: place.name for place in catalog.locations(shift)}
-        items = catalog.items(shift)
+        """Every item as the **next** shift will see it, the ones without an accounting code first.
+
+        A catalog change takes effect from the next shift and never in the middle of one (R-09), so
+        the page reads the next shift: after the manager saves a code, the reload must show the code
+        it just typed. Reading the running shift here showed the old version and looked like a
+        refusal (review F1).
+        """
+        target = deps.running_shift(request).following()
+        places = {place.location_id: place.name for place in catalog.locations(target)}
+        items = catalog.items(target)
         counted = [item for item in items if item.kind is ItemKind.COUNTED]
         rows = [_item_row(item, places) for item in sorted(items, key=_item_order)]
         missing = sum(1 for item in counted if not item.acc_code)
