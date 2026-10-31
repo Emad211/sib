@@ -2,13 +2,25 @@
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="شیفت">
+  <meta name="format-detection" content="telephone=no">
   <title>ورود — شیفت</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-180.png">
+  <link rel="preload" href="/static/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
   <style>
     body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-           font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text); }
+           font-family: var(--font-sans); background: var(--color-bg); color: var(--color-text);
+           padding: env(safe-area-inset-top) env(safe-area-inset-right)
+                    env(safe-area-inset-bottom) env(safe-area-inset-left); }
     main { width: min(22rem, 92vw); background: var(--color-surface); padding: 1.75rem; border-radius: .75rem;
            box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
     h1 { margin: 0 0 1.25rem; font-size: 1.15rem; }
@@ -28,21 +40,25 @@
     <h1>ورود به شیفت</h1>
     <form id="login-form" novalidate>
       <label for="mobile">شمارهٔ موبایل</label>
-      <input id="mobile" name="mobile" inputmode="numeric" autocomplete="username" required>
+      <input id="mobile" name="mobile" inputmode="numeric" autocomplete="username" enterkeyhint="next" required>
       <label for="pin">رمز شش‌رقمی</label>
       <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password"
-             maxlength="6" required>
+             enterkeyhint="go" maxlength="6" required>
       <button id="submit" type="submit">ورود</button>
       <p id="message" role="status"></p>
     </form>
     <p class="hint">رمز فقط روی گوشیی کار می‌کند که قبلاً با کد ثبت دستگاه جفت شده باشد.</p>
   </main>
+  <script src="/static/pwa.js"></script>
   <script>
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const deviceId = localStorage.getItem("shift_device_id") || "";
     const form = document.getElementById("login-form");
     const button = document.getElementById("submit");
     const message = document.getElementById("message");
+    // Persian digits are accepted everywhere on the phone; the API only sees ASCII.
+    const asciiDigits = (value) =>
+      window.ShiftPWA && window.ShiftPWA.normalizeDigits ? window.ShiftPWA.normalizeDigits(value) : value;
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -58,8 +74,8 @@
           method: "POST",
           headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
           body: JSON.stringify({
-            mobile: form.mobile.value,
-            pin: form.pin.value,
+            mobile: asciiDigits(form.mobile.value),
+            pin: asciiDigits(form.pin.value),
             device_id: deviceId,
           }),
         });

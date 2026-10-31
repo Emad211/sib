@@ -4,13 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f172a">
   <meta name="description" content="سامانهٔ مدیریت و تحویل شیفت درمانگاه">
   <meta name="csrf-token" content="{{ csrf_token | default('') }}">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="شیفت">
+  <meta name="format-detection" content="telephone=no">
 
   <title>{% block title %}شیفت{% endblock %}</title>
 
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/static/icons/192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/apple-180.png">
+  <link rel="preload" href="/static/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
   {% block extra_head %}{% endblock %}
 </head>
@@ -42,12 +50,31 @@
     {% block content %}{% endblock %}
   </main>
 
+  <!-- Install offer: home screen only, hidden when installed or once dismissed (pwa.js). -->
+  <div id="install-banner" class="install-banner hidden" role="dialog" aria-label="نصب شیفت">
+    <img src="/static/icons/192.png" alt="" class="install-icon">
+    <div class="install-text">
+      <strong>شیفت را روی گوشی نصب کنید</strong>
+      <span>یک‌بار نصب؛ بعد از این، باز کردن شیفت یک ضربه است.</span>
+    </div>
+    <button id="install-btn" type="button" class="btn btn-primary install-btn">نصب</button>
+    <button id="install-dismiss" type="button" class="install-dismiss" aria-label="بستن پیشنهاد نصب">×</button>
+  </div>
+
+  <!-- Update notice: reloading keeps every record in the outbox (IndexedDB). -->
+  <div id="update-toast" class="update-toast hidden" role="status" aria-live="polite">
+    <span>نسخهٔ تازه آماده است</span>
+    <button id="update-reload" type="button" class="btn btn-primary btn-compact">به‌روزرسانی</button>
+    <button id="update-later" type="button" class="install-dismiss" aria-label="بعداً">×</button>
+  </div>
+
   <script id="outbox-labels" type="application/json">{{ outbox_labels_json() | safe }}</script>
 
   <!-- Scripts -->
   <script src="/static/csrf.js"></script>
   <script src="/static/outbox-idb.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/pwa.js"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

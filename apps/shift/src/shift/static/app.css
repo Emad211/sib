@@ -455,3 +455,155 @@ body {
   cursor: pointer;
 }
 .back-home { display: inline-block; margin-bottom: 0.75rem; color: var(--color-primary); font-weight: 500; text-decoration: none; }
+
+/* ---------------------------------------------------------------------------
+ * Installed-app polish: safe areas, 360px width, touch targets and calm status.
+ * ------------------------------------------------------------------------- */
+
+html {
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+}
+
+body {
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 16px stops iOS/Android from zooming the page when a field takes focus. */
+input, select, textarea {
+  font-size: 16px;
+}
+
+a, button, .btn, .home-tile, input, select, textarea {
+  touch-action: manipulation;
+}
+
+.main-container {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* The header stays one calm line at 360px: badges wrap instead of widening the page. */
+.header-inner,
+.status-bar {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.status-bar {
+  justify-content: flex-end;
+}
+
+/* A primary action that stays above the Android keyboard on long forms. */
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.action-bar .btn {
+  flex: 1;
+}
+
+/* Install offer: home screen only, dismissed once stays dismissed. */
+.install-banner {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-md);
+}
+
+.install-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+}
+
+.install-text {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.install-text strong {
+  font-size: 0.9375rem;
+}
+
+.install-text span {
+  color: var(--color-text-muted);
+}
+
+.install-btn {
+  flex: none;
+  min-height: var(--touch-target);
+}
+
+.install-dismiss {
+  flex: none;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  font-family: var(--font-sans);
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* Update notice: small, Persian, above the keyboard; reloading keeps the outbox. */
+.update-toast {
+  position: fixed;
+  inset-inline: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 608px;
+  margin: 0 auto;
+  padding: 0.625rem 0.75rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 0.875rem;
+}
+
+.update-toast > span {
+  min-width: 0;
+}
+
+.update-toast .btn {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 360px) {
+  .install-banner {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .install-text span {
+    display: none;
+  }
+}

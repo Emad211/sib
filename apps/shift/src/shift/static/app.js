@@ -15,6 +15,8 @@
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })
         .then((reg) => {
+          // pwa.js owns the Persian update banner; hand it the live registration.
+          window.dispatchEvent(new CustomEvent("shift:sw-registered", { detail: reg }));
           // Listen for updates
           reg.addEventListener("updatefound", () => {
             const newWorker = reg.installing;
