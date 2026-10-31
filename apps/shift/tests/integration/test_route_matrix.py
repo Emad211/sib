@@ -118,7 +118,14 @@ BODIES = {
     # No such action: every permitted role gets the same deterministic refusal, and nothing is written.
     "POST /api/v1/purchase/action": {"action": "unknown.action", "data": {}},
 }
-PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns", "GET /events"}
+PAGES = {
+    "GET /login",
+    "GET /enroll",
+    "GET /admin/devices",
+    "GET /manager/campaigns",
+    "GET /events",
+    "GET /purchase",
+}
 
 
 def _rows() -> dict[str, dict[str, object]]:

@@ -441,6 +441,21 @@
    "storekeeper": 200
   }
  },
+ "GET /purchase [get_purchase_page]": {
+  "guard": "permission:events.append",
+  "note": "the purchasing and warehouse screen: one job per role, and the API cuts each section down to the permissions held, so no price reaches a phone without purchase.payment.record (R-10, R-07)",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /sw.js [get_service_worker]": {
   "guard": "public",
   "roles": {

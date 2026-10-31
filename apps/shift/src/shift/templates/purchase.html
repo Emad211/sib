@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — خرید و انبار{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/purchase.css">
+{% endblock %}
+
+{% block content %}
+<div class="pu-page">
+  <header class="pu-head">
+    <h1 class="pu-title">خرید و انبار</h1>
+    <p class="pu-intro">هر نقش فقط کار خودش را می‌بیند: انباردار سفارش و شمارش، مدیر تصمیم، مسئول خرید سفارش دادن، پذیرش دریافت بار، حسابدار فاکتور و پرداخت.</p>
+  </header>
+
+  {# The one status line of this screen: a server refusal or the record it just wrote, in Persian. #}
+  <div id="purchase-status" class="badge hidden feedback-badge" role="status" aria-live="polite"></div>
+  <p id="purchase-loading" class="pu-hint">در حال خواندن وضعیت خرید و انبار…</p>
+
+  {# Every section is a skeleton: the script fills it and unhides only what this person may use. #}
+  <div id="purchase-sections" class="pu-sections">
+    <section id="purchase-decide" class="card pu-section" aria-labelledby="purchase-decide-title" hidden>
+      <h2 id="purchase-decide-title" class="card-title">سفارش‌های در انتظار تصمیم</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-place" class="card pu-section" aria-labelledby="purchase-place-title" hidden>
+      <h2 id="purchase-place-title" class="card-title">سفارش‌های تأییدشده</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-draft" class="card pu-section" aria-labelledby="purchase-draft-title" hidden>
+      <h2 id="purchase-draft-title" class="card-title">سفارش تازه</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-receive" class="card pu-section" aria-labelledby="purchase-receive-title" hidden>
+      <h2 id="purchase-receive-title" class="card-title">دریافت بار</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-transit" class="card pu-section" aria-labelledby="purchase-transit-title" hidden>
+      <h2 id="purchase-transit-title" class="card-title">بار در راه</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-invoice" class="card pu-section" aria-labelledby="purchase-invoice-title" hidden>
+      <h2 id="purchase-invoice-title" class="card-title">فاکتور و پرداخت</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-return" class="card pu-section" aria-labelledby="purchase-return-title" hidden>
+      <h2 id="purchase-return-title" class="card-title">مرجوعی</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-restock" class="card pu-section" aria-labelledby="purchase-restock-title" hidden>
+      <h2 id="purchase-restock-title" class="card-title">شارژ قفسه</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+
+    <section id="purchase-count" class="card pu-section" aria-labelledby="purchase-count-title" hidden>
+      <h2 id="purchase-count-title" class="card-title">شمارش هفتگی انبار</h2>
+      <div class="pu-body" data-body></div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/purchase.js"></script>
+{% endblock %}
