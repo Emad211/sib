@@ -8,7 +8,10 @@ import pytest
 DOMAIN_DIR = Path(__file__).resolve().parents[2] / "src" / "shift" / "domain"
 # permissions.py is a pure role × permission data table: it legitimately grows with each rule
 # (H-12 added the nursing flow's start and its sign), so it carries its own cap. Logic stays at 150.
-LINE_CAPS = {"permissions.py": 180}
+# rewards.py is the one documented home of the reward rules (S01 §5, shf5-DESIGN.md §3): its
+# docstrings are where the master's provisional money decisions are recorded, so the file carries
+# that documentation on top of its ~90 lines of arithmetic and gets its own cap.
+LINE_CAPS = {"permissions.py": 180, "rewards.py": 200}
 DEFAULT_LINE_CAP = 150
 FORBIDDEN_ROOTS = {
     "io",

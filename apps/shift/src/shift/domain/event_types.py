@@ -56,6 +56,11 @@ class EventType(StrEnum):
     EVENT_HELD = "event.held"
     EVENT_RELEASED = "event.released"
     EVENT_HOLD_REJECTED = "event.hold_rejected"
+    # SHF-5 rewards (S01 §5): written by the reward service or the manager's screen, never a phone
+    # button, and none of them moves a projection — the ledger is derived from these three records.
+    REWARD_EARNED = "reward.earned"
+    REWARD_CONFIRMED = "reward.confirmed"
+    REWARD_REVOKED = "reward.revoked"
 
 
 class UnknownEventType(ValueError):

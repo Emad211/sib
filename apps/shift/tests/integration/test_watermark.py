@@ -20,7 +20,7 @@ from shift.adapters.accounting import views
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import migrations, mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
-from shift.adapters.db.migrations import m0001_baseline, m0003_accounting_mirror
+from shift.adapters.db.migrations import m0001_baseline, m0002_auth_and_devices, m0003_accounting_mirror
 from shift.domain.events import EventType
 from shift.services.accounting_bridge import FEEDS, AccountingBridge
 from shift.services.event_store import EventStore
@@ -331,6 +331,10 @@ def test_a_version_3_database_keeps_its_cash_history_and_rewinds_the_cash_waterm
     engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
         m0001_baseline.up(connection)
+        # A version-3 install ran migration 2 (staff and sessions) before migration 3; the fixture
+        # needs it too, because every later migration — the reward rates on `staff` included — expects
+        # the tables of its own moment to exist.
+        m0002_auth_and_devices.up(connection)
         m0003_accounting_mirror.up(connection)
         connection.exec_driver_sql("PRAGMA user_version = 3")
         connection.exec_driver_sql(

@@ -113,6 +113,11 @@ class KindSpec:
     `confirmer_field` names the payload key of the one person the clinic asked to confirm it (the
     «تأییدکننده» of waste, the «گیرنده» of a withdrawal). A kind that declares either waits for a
     decision; one that declares neither is never an open item.
+
+    `phone` says whether the kind is a button at all. A reward is written by the service or by the
+    manager's own screen, never typed on a staff phone: a self-service reward button would be a
+    self-dealing hole (shf5-DESIGN.md §3), so `kinds_for` leaves such a kind out of the wizard while
+    `kinds()` still answers every label the manager's card needs (SHF-5).
     """
 
     event_type: str
@@ -136,6 +141,9 @@ class KindSpec:
     # Some records change who may decide them from their own payload: an above-cap withdrawal is the
     # manager's decision, a below-cap one is the recipient's (ADR-019, owner rule 3).
     manager_only_when: Callable[[Mapping[str, Any]], bool] | None = None
+    # A reward record is never a phone button: a reward the earner could record for themselves would
+    # be a self-dealing hole (SHF-5, shf5-DESIGN.md §3), so the wizard skips these kinds entirely.
+    phone: bool = True
 
     @property
     def requires_approval(self) -> bool:
@@ -194,8 +202,12 @@ def offline_types() -> frozenset[str]:
 
 
 def kinds_for(permission: Permission) -> tuple[KindSpec, ...]:
-    """The buttons one permission opens; the phone never shows a button the API would refuse."""
-    return tuple(kind for kind in kinds() if kind.permission is permission)
+    """The buttons one permission opens; the phone never shows a button the API would refuse.
+
+    A kind that is not a button (`phone=False`, the reward kinds) is left out here: it is written by
+    the service or by the manager's screen, and offering it on the phone would be a self-dealing hole.
+    """
+    return tuple(kind for kind in kinds() if kind.permission is permission and kind.phone)
 
 
 def shift_event_specs() -> Mapping[str, tuple[type[BaseModel], EffectBuilder]]:

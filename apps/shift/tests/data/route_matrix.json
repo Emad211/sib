@@ -13,6 +13,34 @@
    "storekeeper": 200
   }
  },
+ "GET /accountant/campaigns [get_campaign_report]": {
+  "guard": "permission:campaign.report.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /accountant/queue [get_accountant_queue]": {
+  "guard": "permission:accountant.queue.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /admin/devices [device_admin_page]": {
   "guard": "permission:device.enroll",
   "roles": {
