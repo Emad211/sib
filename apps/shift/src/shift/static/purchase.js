@@ -259,7 +259,8 @@
 
   function dateInput() {
     var input = el("input", "form-control");
-    input.type = "date";
+    input.type = "text";
+    input.setAttribute("data-jalali-date", "");
     return input;
   }
 
@@ -968,7 +969,8 @@
         var value = Number(amount.value);
         if (!Number.isInteger(value) || value < 1) return fail(new Error(NO_AMOUNT));
         var data = { delivery_id: invoice.delivery_id, amount_toman: value, method: method.value };
-        if (paidOn.value) data.paid_on = paidOn.value;
+        var paidIso = window.ShiftJalaliDatepicker.getIso(paidOn);
+        if (paidIso) data.paid_on = paidIso;
         var text = receipt.value.trim();
         if (text) data.receipt_reference = text;
         return run({ action: "payment.record", data: data }, MESSAGES.payment);

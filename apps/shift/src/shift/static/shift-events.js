@@ -540,7 +540,7 @@
       case "staff":
         return selectControl(field, staffChoices(), "نفر را انتخاب کنید…");
       case "date":
-        // E2: the date field is a Jalali picker the shell wires on merge; the manager never types ISO.
+        // The Jalali picker attaches when this field reaches the page and owns the ISO value.
         control = el("input", "form-control");
         control.type = "text";
         control.name = field.key;
@@ -548,8 +548,8 @@
         control.autocomplete = "off";
         control.value = value || "";
         control.dataset.field = field.key;
-        control.addEventListener("input", function () {
-          state.values[field.key] = control.value;
+        control.addEventListener("change", function () {
+          state.values[field.key] = window.ShiftJalaliDatepicker.getIso(control);
         });
         return control;
       case "boolean":

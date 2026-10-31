@@ -22,9 +22,9 @@
   <form class="mg-section" method="get" action="/accountant/campaigns">
     <h2 class="mg-section-title">بازهٔ گزارش</h2>
     <label class="mg-meta" for="report-from">از روز (YYYY-MM-DD)</label>
-    <input class="form-control mg-input" id="report-from" name="from" type="date" dir="ltr" value="{{ report.from }}">
+    <input class="form-control mg-input" id="report-from" name="from" data-jalali-date dir="rtl" value="{{ report.from }}">
     <label class="mg-meta" for="report-to">تا روز (YYYY-MM-DD)</label>
-    <input class="form-control mg-input" id="report-to" name="to" type="date" dir="ltr" value="{{ report.to }}">
+    <input class="form-control mg-input" id="report-to" name="to" data-jalali-date dir="rtl" value="{{ report.to }}">
     <button class="btn btn-primary mg-save" type="submit">نمایش</button>
   </form>
 

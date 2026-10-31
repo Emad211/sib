@@ -912,6 +912,16 @@
     } else {
       init(document);
     }
+    // Wizards draw their fields after load, so a date input that appears later is picked up too.
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (node.matches("input[data-jalali-date]")) attach(node);
+          else init(node);
+        }
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
   }
 
   if (typeof module !== "undefined" && module.exports) {
