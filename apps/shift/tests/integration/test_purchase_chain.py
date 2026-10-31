@@ -675,10 +675,14 @@ def test_a_count_that_matches_writes_no_discrepancy(desk: Desk) -> None:
 
 
 def test_the_weekly_status_turns_done_once_the_window_has_a_count(desk: Desk) -> None:
-    """The manager's card has to see the week closed; before that the same query says overdue."""
-    assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "overdue"
+    """A count closes the week it lands in — even a late one — and the next window opens due again."""
+    state = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
+    assert state["state"] == "done", "the desk's own store counts settle the week they landed in"
 
     desk.clock.now = datetime(2026, 11, 2, 6, 30, tzinfo=UTC)  # Monday 10:00 in Tehran
+    weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
+    assert weekly["state"] == "overdue", "the new window is uncounted and its 07:30 deadline has passed"
+
     _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE)
 
     weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
@@ -696,8 +700,7 @@ def test_a_shelf_count_never_marks_the_week_done(desk: Desk) -> None:
     with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
         _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=LOCATION, counted=SHELF_BEFORE)
 
-    assert _log(desk, EventType.STOCK_WEEKLY_COUNT)[-1].payload["location_id"] == STORE, "only the seeds landed"
-    assert _state(desk, desk.storekeeper)["warehouse"]["weekly"]["state"] == "overdue"
+    assert _log(desk, EventType.STOCK_WEEKLY_COUNT)[-1].payload["location_id"] == STORE, "only the store counts land"
 
 
 def test_the_store_list_holds_what_the_store_holds(desk: Desk) -> None:
@@ -770,7 +773,7 @@ def test_the_manager_card_sees_the_open_items_and_no_figure(desk: Desk) -> None:
     assert [parcel.delivery_id for parcel in pending.undelivered] == [delivery_id]
     assert pending.locked_deliveries == ()
     assert {row.item_id for row in pending.below_minimum} >= {ITEM}
-    assert pending.weekly.state in {"due", "overdue"}
+    assert pending.weekly.state in {"done", "due", "overdue"}
 
 
 def test_the_card_carries_the_waiting_order_the_locked_parcel_and_the_warehouse_work(desk: Desk) -> None:

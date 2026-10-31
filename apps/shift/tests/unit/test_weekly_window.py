@@ -106,3 +106,13 @@ def test_the_window_is_read_in_tehran_time_not_the_servers() -> None:
 
     assert status.state == "overdue"
     assert (status.window_start, status.window_end) == THIS_WEEK
+
+
+def test_a_late_count_still_closes_the_window_it_belongs_to() -> None:
+    """A count after the deadline is late, not absent: the card must stop asking once it lands."""
+    late = _tehran(TUESDAY, 9, 0)
+
+    status = weekly_status(late, _tehran(TUESDAY, 9, 1), due_weekday=MONDAY, due_time=DUE)
+
+    assert status.state == "done"
+    assert status.last_count_at == late

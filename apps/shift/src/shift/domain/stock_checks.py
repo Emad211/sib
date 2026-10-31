@@ -60,7 +60,9 @@ def weekly_status(
     now = to_tehran(moment)
     start, end = weekly_window(now.date(), due_weekday=due_weekday)
     counted = None if last_count_at is None else to_tehran(last_count_at)
-    if counted is not None and start <= counted.date() <= end:
+    # A count at or after the window opened settles this window even when it lands after the deadline:
+    # a late count is still the week's count, and the card must stop asking once somebody did it.
+    if counted is not None and counted.date() >= start:
         state: WeeklyState = "done"
     elif now > datetime.combine(end, due_time, tzinfo=TEHRAN):
         state = "overdue"
