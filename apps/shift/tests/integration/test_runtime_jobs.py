@@ -7,7 +7,7 @@ and a started app must own its loops and stop them on shutdown.
 
 import sqlite3
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,7 @@ from auth_fixtures import PIN, ROLES, login, seed_roster
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
 
+import shift.app as app_module
 from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.config.settings import Settings
@@ -22,7 +23,8 @@ from shift.runtime import BackgroundJobs
 from shift.services import mirror as mirror_module
 from shift.services.audit import AuditService
 from shift.services.backup import BackupService
-from shift.services.scheduler import PolicySchedule, Scheduler
+from shift.services.daily_card import DailyCardService
+from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
 
 BEFORE_FOUR_TEHRAN = datetime(2026, 10, 28, 0, 0, tzinfo=UTC)  # 03:30 Tehran
@@ -205,6 +207,38 @@ def test_one_failing_job_does_not_stop_the_others(
 
     assert "background job failed" in caplog.text
     assert _actions(database) == [("backup.created", "ok")]
+
+
+def test_the_background_jobs_store_the_daily_card_that_falls_due(
+    database: Database, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The factory injects the real card builder (SHF-6.1), so a run at 07:30 stores that day's card."""
+    clock = MovableClock(CARD_OPENING)
+    cards = DailyCardService(database, clock=clock, audit=AuditService(database, clock=clock))
+    jobs = app_module._background_jobs(
+        replace(settings, background_jobs=True),
+        database,
+        clock=clock,
+        services=SettingsService(database, clock=clock),
+        audit=AuditService(database, clock=clock),
+        bridge=None,
+        cards=cards,
+    )
+    assert jobs is not None
+
+    with caplog.at_level("INFO", logger="shift.services.scheduler"):
+        runs = jobs.run_scheduled_jobs()
+
+    daily = next(run for run in runs if run.name == DAILY_CARD)
+    assert daily.message.startswith("daily card 2026-10-27 stored (1 day)")
+    assert "scheduled job daily_card ran for 2026-10-27" in caplog.text
+    card = cards.get(date(2026, 10, 27))
+    assert card is not None
+    assert (card.card_date, card.covered_from, card.covered_to) == (
+        date(2026, 10, 27),
+        date(2026, 10, 26),
+        date(2026, 10, 26),
+    )
 
 
 def test_a_started_app_wires_audit_backups_the_scheduler_and_the_bridge(settings: Settings, tmp_path: Path) -> None:

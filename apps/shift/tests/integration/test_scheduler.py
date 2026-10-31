@@ -77,6 +77,48 @@ def test_no_daily_card_on_friday() -> None:
     assert DAILY_CARD not in [task.name for task in Scheduler(Schedule()).due(FRIDAY_LATE)]
 
 
+def test_an_injected_action_replaces_the_stub_and_runs_once_per_period() -> None:
+    """The app injects the real card builder (SHF-6.1); the period key still runs it only once."""
+    calls: list[datetime] = []
+
+    def build_card(moment: datetime) -> str:
+        calls.append(moment)
+        return "daily card 2026-10-27 stored (1 day)"
+
+    scheduler = Scheduler(Schedule(), actions={DAILY_CARD: build_card})
+
+    first = scheduler.run_due(TUESDAY_OPENING)
+    second = scheduler.run_due(TUESDAY_LATE)
+
+    assert calls == [datetime(2026, 10, 27, 7, 30, tzinfo=TEHRAN)]  # the Tehran moment of the run
+    assert [run.message for run in first if run.name == DAILY_CARD] == ["daily card 2026-10-27 stored (1 day)"]
+    assert DAILY_CARD not in [run.name for run in second]
+
+
+def test_the_friday_gap_keeps_the_injected_card_action_from_running() -> None:
+    calls: list[datetime] = []
+
+    def build_card(moment: datetime) -> str:
+        calls.append(moment)
+        return "daily card stored"
+
+    runs = Scheduler(Schedule(), actions={DAILY_CARD: build_card}).run_due(FRIDAY_LATE)
+
+    assert DAILY_CARD not in [run.name for run in runs]
+    assert calls == []
+
+
+def test_an_injected_action_leaves_the_other_jobs_on_their_default() -> None:
+    scheduler = Scheduler(Schedule(), actions={DAILY_CARD: lambda _moment: "daily card stored"})
+
+    runs = scheduler.run_due(MONDAY_WARNING)
+
+    assert [(run.name, run.message.startswith("weekly count warning raised")) for run in runs] == [
+        (DAILY_CARD, False),
+        (WEEKLY_COUNT_WARNING, True),
+    ]
+
+
 def test_the_weekly_count_warning_runs_once_in_its_week() -> None:
     scheduler = Scheduler(Schedule())
 
