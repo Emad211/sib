@@ -92,11 +92,11 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.REWARD_VIEW,
             }
         ),
+        # ADR-022 (owner decision 10): the accountant counts no cash and signs no handover. The
+        # counters of the box are the two people of a reception flow; the accountant sees the result.
         Role.ACCOUNTANT: frozenset(
             {
                 _P.EVENTS_APPEND,
-                _P.HANDOVER_CASH_SUBMIT,
-                _P.HANDOVER_SIGN,
                 _P.CASH_DEPOSIT_RECORD,
                 _P.STOCK_COUNT_SUBMIT,
                 _P.PURCHASE_PAYMENT_RECORD,

@@ -55,6 +55,7 @@ HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
 BASELINE_PATH = "/manager/baseline"
 ITEMS_PATH = "/manager/items"
+STAFF_PATH = "/manager/staff"
 BASELINE_API_PATH = "/api/v1/manager/baseline"
 NO_STORE = "no-store"
 FRIDAY = 4
@@ -70,6 +71,16 @@ ITEM_KIND_LABELS = {
     ItemKind.YES_NO: "بله/خیر",
     ItemKind.READING: "عدد خواندنی",
     ItemKind.PHOTO: "عکس",
+}
+# The seven roles in the manager's words, in the order the staff screen lists them (R-08).
+ROLE_LABELS: dict[str, str] = {
+    "manager": "مدیر",
+    "reception": "پذیرش",
+    "nurse": "پرستار",
+    "shift_doctor": "پزشک شیفت",
+    "storekeeper": "انباردار",
+    "purchaser": "مسئول خرید",
+    "accountant": "حسابدار",
 }
 BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
 BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "
@@ -156,6 +167,7 @@ CardViewer = Annotated[Principal, Depends(deps.require_page(Permission.DAILY_CAR
 SettingsEditor = Annotated[Principal, Depends(deps.require_page(Permission.SETTINGS_CHANGE))]
 BaselineEditor = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE))]
 ItemsEditor = Annotated[Principal, Depends(deps.require_page(Permission.CATALOG_MANAGE))]
+StaffEditor = Annotated[Principal, Depends(deps.require_page(Permission.STAFF_MANAGE))]
 
 CardsService = Callable[[Request], DailyCardService]
 SettingsServiceSource = Callable[[Request], SettingsService]
@@ -237,7 +249,7 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         shift = deps.running_shift(request)
         places = {place.location_id: place.name for place in catalog.locations(shift)}
         with request.app.state.database.read() as connection:
-            people = staff_repo.list_with_roles(connection)
+            people = staff_repo.list_with_roles(connection, shift.text)
             recorded = {flow: handover_repo.has_baseline(connection, flow) for flow in FLOW_LOCATIONS}
         flows = []
         for flow, location_ids in FLOW_LOCATIONS.items():
@@ -337,6 +349,24 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
             {"items": rows, "counted": len(counted), "missing": missing},
             cache_control=NO_STORE,
         )
+
+    @pages.get(STAFF_PATH, response_class=HTMLResponse, summary="The staff and their roles")
+    def get_manager_staff(request: Request, _editor: StaffEditor) -> HTMLResponse:
+        """Everyone with the roles they hold from the next shift on, and a form for a new person (ADR-022)."""
+        people = request.app.state.auth.directory()
+        rows = [
+            {
+                "id": person.staff_id,
+                "name": person.full_name,
+                "mobile": person.mobile,
+                "active": person.active,
+                "next_roles": person.next_roles,
+                "pending": person.next_roles != person.roles,
+            }
+            for person in people
+        ]
+        roles = [{"id": role, "label": label} for role, label in ROLE_LABELS.items()]
+        return _shell_page(request, "manager_staff.html", {"staff": rows, "roles": roles}, cache_control=NO_STORE)
 
     return pages
 

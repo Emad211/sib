@@ -13,10 +13,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.api import deps
+from shift.api.errors import BadRequest
 from shift.api.templating import templates
 from shift.common.clock import utc_iso
-from shift.domain.permissions import Permission
-from shift.services.auth import SESSION_COOKIE, SESSION_TTL, Principal, StaffSummary
+from shift.domain.permissions import Permission, Role
+from shift.domain.policy import PolicyError
+from shift.services.auth import SESSION_COOKIE, SESSION_TTL, Principal, StaffNotFound, StaffSummary
+from shift.services.catalog import CatalogError
 
 router = APIRouter()
 PREAUTH_CSRF_TTL_SECONDS = 3600
@@ -44,6 +47,29 @@ class PinResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pin: str = Field(min_length=1, max_length=32)
+
+
+class StaffCreateRequest(BaseModel):
+    """A new person: name, mobile, a first PIN and one or more starting roles (ADR-022)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=1, max_length=80)
+    mobile: str = Field(min_length=1, max_length=32)
+    pin: str = Field(min_length=1, max_length=32)
+    roles: list[Role] = Field(min_length=1)
+
+
+class StaffActiveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active: bool
+
+
+class StaffRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    granted: bool
 
 
 def _cookies_are_secure(request: Request) -> bool:
@@ -93,6 +119,7 @@ def _staff_payload(entry: StaffSummary) -> dict[str, object]:
         "roles": list(entry.roles),
         "active": entry.active,
         "locked_until": entry.locked_until,
+        "next_roles": list(entry.next_roles),
     }
 
 
@@ -162,6 +189,53 @@ def me(principal: SessionUser) -> dict[str, object]:
 def list_staff(request: Request, _: StaffManager) -> list[dict[str, object]]:
     """Staff directory for the credential administration screen."""
     return [_staff_payload(entry) for entry in deps.auth_service(request).directory()]
+
+
+@router.post("/api/v1/staff", status_code=201, tags=["staff"])
+def create_staff(body: StaffCreateRequest, request: Request, principal: StaffManager) -> dict[str, object]:
+    """Add a person who can sign in at once; the starting roles apply immediately (ADR-022)."""
+    created = deps.auth_service(request).create_staff(
+        full_name=body.full_name,
+        mobile=body.mobile,
+        pin=body.pin,
+        roles=[role.value for role in body.roles],
+        actor_id=principal.staff_id,
+    )
+    return _staff_payload(created)
+
+
+@router.post("/api/v1/staff/{staff_id}/active", status_code=204, tags=["staff"])
+def set_staff_active(staff_id: str, body: StaffActiveRequest, request: Request, principal: StaffManager) -> Response:
+    """Deactivate or reactivate one person; a deactivated person loses every session at once."""
+    deps.auth_service(request).set_active(staff_id=staff_id, active=body.active, actor_id=principal.staff_id)
+    return Response(status_code=204)
+
+
+@router.put("/api/v1/staff/{staff_id}/roles/{role}", tags=["staff"])
+def set_staff_role(
+    staff_id: str, role: Role, body: StaffRoleRequest, request: Request, principal: StaffManager
+) -> dict[str, object]:
+    """Grant or take back one role from the next shift on; login and permissions read the same answer."""
+    auth = deps.auth_service(request)
+    if not any(entry.staff_id == staff_id for entry in auth.directory()):
+        raise StaffNotFound(staff_id)
+    if not body.granted:
+        auth.require_manager_remains(staff_id=staff_id, role=role.value)
+    try:
+        change = request.app.state.catalog.set_role(
+            staff_id,
+            role.value,
+            granted=body.granted,
+            actor_id=principal.staff_id,
+            running_shift=deps.running_shift(request),
+        )
+    except (CatalogError, PolicyError) as error:
+        raise BadRequest(str(error)) from error
+    return {
+        "role": role.value,
+        "granted": change.value.granted,
+        "effective_from_shift": change.value.effective_from_shift.text,
+    }
 
 
 @router.post("/api/v1/staff/{staff_id}/unlock", status_code=204, tags=["staff"])

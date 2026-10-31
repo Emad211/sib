@@ -161,6 +161,27 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
         "hint": "سقف‌ها، ساعت‌ها و کمپین‌ها",
     },
     {
+        "needs": frozenset({Permission.STAFF_MANAGE}),
+        "href": "/manager/staff",
+        "icon": "👥",
+        "title": "کارکنان",
+        "hint": "افزودن کارمند، نقش‌ها و غیرفعال‌کردن",
+    },
+    {
+        "needs": frozenset({Permission.REWARD_GRANT}),
+        "href": "/manager/rewards",
+        "icon": "🏆",
+        "title": "پاداش کارکنان",
+        "hint": "تأیید پاداش، نرخ‌ها و هدف تیمی",
+    },
+    {
+        "needs": frozenset({Permission.SETTINGS_CHANGE}),
+        "href": "/manager/campaigns",
+        "icon": "🏷️",
+        "title": "کمپین‌های تخفیف",
+        "hint": "بازهٔ تخفیف و مبلغ هر کمپین",
+    },
+    {
         "needs": frozenset({Permission.DEVICE_ENROLL}),
         "href": "/admin/devices",
         "icon": "📱",

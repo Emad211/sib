@@ -30,7 +30,7 @@ from pydantic import BaseModel, ValidationError
 from shift.adapters.db import events_repo, projections_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
-from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso
+from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.event_types import EventType
 from shift.domain.handover_payloads import DiscrepancyRecorded
@@ -60,6 +60,7 @@ from shift.domain.purchase_payloads import (
     VendorCredit,
     VendorReturn,
 )
+from shift.domain.shift_clock import covering
 from shift.domain.stock_checks import WeeklyStatus, weekly_status
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, Item, ItemKind
@@ -589,7 +590,8 @@ class PurchaseService:
         """The recipient of a custody hand-over must be an active holder of the storekeeper role."""
         with self._database.read() as connection:
             person = staff_repo.find(connection, staff_id)
-            roles = staff_repo.roles_for(connection, staff_id) if person is not None else ()
+            shift_key = covering(to_tehran(self._clock.now_utc())).text
+            roles = staff_repo.roles_for(connection, staff_id, shift_key) if person is not None else ()
         return person is not None and person.active and Role.STOREKEEPER.value in roles
 
     def _is_active_staff(self, staff_id: str) -> bool:

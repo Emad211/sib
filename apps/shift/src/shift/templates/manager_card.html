@@ -8,12 +8,7 @@
 
 {% block content %}
 <div class="mg-page">
-  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
-    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
-    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
-    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
-    <a class="mg-nav-link" href="/manager/items">اقلام و کد کالا</a>
-  </nav>
+  {% include "_manager_nav.html" %}
 
   {% if card %}
   <header class="mg-head">

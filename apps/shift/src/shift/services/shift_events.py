@@ -320,11 +320,10 @@ class ShiftEventService:
         def staff_roles(staff_id: str) -> frozenset[str] | None:
             with self._database.read() as connection:
                 person = staff_repo.find(connection, staff_id)
-                roles = staff_repo.roles_for(connection, staff_id) if person is not None else ()
+                roles = staff_repo.roles_for(connection, staff_id, shift.text) if person is not None else ()
             if person is None or not person.active:
                 return None
-            # The login session's roles are the authority here (R-07/R-08); the catalog role
-            # versions are the manager's next-shift preview, not the running credential.
+            # One source of truth (ADR-022): the roles that shift sees, the same ones login grants.
             return frozenset(roles)
 
         def find_event(event_id: str) -> EventView | None:
@@ -509,7 +508,7 @@ class ShiftEventService:
         items = self._catalog.items(shift)
         locations = self._catalog.locations(shift)
         with self._database.read() as connection:
-            people = staff_repo.list_with_roles(connection)
+            people = staff_repo.list_with_roles(connection, shift.text)
         campaigns = [] if self._campaigns is None else self._campaigns.active_on(shift.work_date)
         # The owner's rule: outside a manager-defined campaign there is no discount button at all.
         campaign_available = bool(campaigns)

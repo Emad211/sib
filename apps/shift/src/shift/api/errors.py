@@ -22,6 +22,7 @@ from shift.services.auth import (
     InvalidCredentials,
     SessionInvalid,
     StaffInactive,
+    StaffInputError,
     StaffNotFound,
 )
 from shift.services.devices import DeviceError, DeviceNotFound, EnrollmentRejected, UnknownStaff
@@ -130,6 +131,8 @@ def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] |
         return 403, "device_revoked", "دسترسی این گوشی لغو شده است.", None
     if isinstance(exc, SessionInvalid):
         return 401, "not_authenticated", "نشست معتبر نیست؛ دوباره وارد شوید.", None
+    if isinstance(exc, StaffInputError):
+        return (409 if exc.conflict else 400), "staff_invalid", exc.message_fa, None
     if isinstance(exc, (StaffNotFound, UnknownStaff)):
         return 404, "staff_not_found", "کارمند پیدا نشد.", None
     if isinstance(exc, EnrollmentRejected):
