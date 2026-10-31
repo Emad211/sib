@@ -182,13 +182,11 @@ def standing_of(
     """One person's screen: own net, own count, rank by count of confirmed works, and the team total.
 
     The rank is a competition rank over how many works each participant got confirmed, so equal
-    counts share a rank (1, 1, 3). `headcount` is how many people were part of the month at all;
-    `team_works` is the owner's team goal: every confirmed work of the month.
+    counts share a rank (1, 1, 3). `headcount` counts the caller even without a confirmed work, so a
+    rank never out-sits it; `team_works` is the owner's team goal: every confirmed work of the month.
     """
     counts = works_by_staff(month, confirmed)
     own_works = counts.get(staff_id, 0)
-    # The caller is part of the month even with nothing confirmed yet: the rank they are shown can
-    # never sit above the headcount it is read against.
     headcount = len(counts) + (0 if staff_id in counts else 1)
     return Standing(
         staff_id=staff_id,
