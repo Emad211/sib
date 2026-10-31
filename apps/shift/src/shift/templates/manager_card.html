@@ -101,6 +101,41 @@
   </section>
   {% endif %}
 
+  {% if "shift_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-shift-events-title">
+    <h2 id="mg-shift-events-title" class="mg-section-title">رویدادهای شیفت</h2>
+    {% for row in card.sections.shift_events %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.status }}</p>
+      <p class="mg-line">{{ row.actor }} · {{ row.at }}</p>
+      {% for field in row.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "open_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-open-events-title">
+    <h2 id="mg-open-events-title" class="mg-section-title">رویدادهای باز</h2>
+    {% for row in card.sections.open_events %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.status }}</p>
+      <p class="mg-line">{{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-muted">{{ row.age_hours }} ساعت باز</p>
+      {% for field in row.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% else %}
   <section class="mg-section" aria-labelledby="mg-empty-title">
     <h1 id="mg-empty-title" class="mg-title">کارت روزانهٔ مدیر</h1>

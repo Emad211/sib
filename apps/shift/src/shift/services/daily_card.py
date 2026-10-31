@@ -13,7 +13,13 @@ a handover nobody signed is exactly what the card exists to show.
 
 Nothing here reads a reference number. The card is a manager's page, and R-02/ADR-011 keep the frozen
 references in the audit trail alone: `handover.reference.<id>` is never queried and never serialised,
-and the only figure a section carries is a discrepancy's gap or a flow's cash exception total.
+and the only figures a section carries are a discrepancy's gap, a flow's cash exception total, or an
+amount a shift event itself recorded — never a blind-count reference.
+
+The two shift-event sections (SHF-3) are laid over the same log: `shift_events` is every registered
+shift event of the window, newest first, and `open_events` is whatever is still waiting — an open
+fault or an undecided approval — whatever day it was opened on, oldest first. A decision event is
+never a row of its own; it only decides the status of the event it references.
 """
 
 from collections.abc import Mapping
@@ -23,13 +29,22 @@ from typing import Any
 
 from sqlalchemy import Connection
 
-from shift.adapters.db import audit_repo, card_repo, events_repo, handover_repo, staff_repo
+from shift.adapters.db import audit_repo, card_repo, catalog_repo, events_repo, handover_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_tehran, to_utc, utc_iso
 from shift.common.hashing import canonical_json
 from shift.domain.daily_card import CARD_SCHEMA_VERSION, CardWindow, due_card_days, window_for
 from shift.domain.events import EventType
+from shift.domain.shift_events import (
+    APPROVED,
+    DECISION_TYPES,
+    FieldKind,
+    KindSpec,
+    is_decision,
+    kind_for,
+    summary_for,
+)
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.handover import EXCEPTION_ACTION
 
@@ -42,7 +57,33 @@ SHORTAGE = "shortage"
 SURPLUS = "surplus"
 _EMERGENCY = EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value
 _DISCREPANCY = EventType.DISCREPANCY_RECORDED.value
+_FAULT_REPORTED = EventType.EQUIPMENT_FAULT_REPORTED.value
+_FAULT_ASSIGNED = EventType.EQUIPMENT_FAULT_ASSIGNED.value
+_FAULT_FIXED = EventType.EQUIPMENT_FAULT_FIXED.value
 _SECONDS_PER_HOUR = 3600
+
+# The status a shift-event row carries on the card; `open_events` keeps the three that still wait.
+STATUS_PENDING = "pending"
+STATUS_APPROVED = "approved"
+STATUS_REJECTED = "rejected"
+STATUS_REPORTED = "reported"
+STATUS_ASSIGNED = "assigned"
+STATUS_FIXED = "fixed"
+STATUS_RECORDED = "recorded"
+OPEN_STATUSES = frozenset({STATUS_PENDING, STATUS_REPORTED, STATUS_ASSIGNED})
+
+# Every section a card of this code writes, in the document's own order; a stored card that predates
+# a section simply does not carry it, and the page then does not render it (schema 2 has five).
+SECTION_NAMES = (
+    "emergency_starts",
+    "cash_exceptions",
+    "discrepancies",
+    "flows",
+    "open_flows",
+    "shift_events",
+    "open_events",
+)
+LEGACY_SCHEMA_VERSIONS = frozenset({2})
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,11 +276,76 @@ class OpenFlow:
 
 
 @dataclass(frozen=True, slots=True)
-class Card:
-    """One day's manager card: the window it covers, when it was built, and its five sections.
+class ShiftEventLine:
+    """One recorded shift event: its kind, who recorded it, when, and the status the card reads now.
 
-    A section whose data does not exist yet is absent from the payload rather than a placeholder: the
-    shift events of SHF-3, the purchases of SHF-4 and the rewards of SHF-5 have no section here yet.
+    `summary` is the kind's own summarizer with the ids replaced by the names the roster and the
+    catalog hold now, so the page renders a person and an item instead of an opaque identifier.
+    """
+
+    event_type: str
+    code: str
+    label_fa: str
+    at_tehran: str
+    actor: Person
+    summary: dict[str, Any]
+    status: str
+    ref_event_id: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_type": self.event_type,
+            "code": self.code,
+            "label_fa": self.label_fa,
+            "at_tehran": self.at_tehran,
+            "actor": self.actor.to_payload(),
+            "summary": self.summary,
+            "status": self.status,
+            "ref_event_id": self.ref_event_id,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "ShiftEventLine":
+        ref_event_id = payload.get("ref_event_id")
+        return cls(
+            event_type=str(payload["event_type"]),
+            code=str(payload["code"]),
+            label_fa=str(payload["label_fa"]),
+            at_tehran=str(payload["at_tehran"]),
+            actor=Person.from_payload(payload["actor"]),
+            summary=dict(payload["summary"]),
+            status=str(payload["status"]),
+            ref_event_id=None if ref_event_id is None else str(ref_event_id),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OpenEvent:
+    """A shift event the clinic is still waiting on, and how long it has waited (H-07, SHF-3).
+
+    The row is the same one `shift_events` carries; `age_hours` is measured to the build moment, so a
+    fault reported three days ago arrives at the manager as a number, not as a date to subtract.
+    """
+
+    row: ShiftEventLine
+    age_hours: int
+
+    def to_payload(self) -> dict[str, Any]:
+        return {**self.row.to_payload(), "age_hours": self.age_hours}
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "OpenEvent":
+        return cls(ShiftEventLine.from_payload(payload), int(payload["age_hours"]))
+
+
+@dataclass(frozen=True, slots=True)
+class Card:
+    """One day's manager card: the window it covers, when it was built, and its seven sections.
+
+    `present_sections` is not part of the document: it remembers which sections the stored card
+    carried, so a schema-2 card — written before the shift-event sections existed — does not grow two
+    empty blocks when the page renders it. The purchases of SHF-4 and the rewards of SHF-5 still have
+    no section here.
     """
 
     card_date: date
@@ -251,6 +357,9 @@ class Card:
     discrepancies: tuple[DiscrepancyLine, ...] = ()
     flows: tuple[FlowLine, ...] = ()
     open_flows: tuple[OpenFlow, ...] = ()
+    shift_events: tuple[ShiftEventLine, ...] = ()
+    open_events: tuple[OpenEvent, ...] = ()
+    present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
     def day_count(self) -> int:
@@ -271,14 +380,16 @@ class Card:
                 "discrepancies": [entry.to_payload() for entry in self.discrepancies],
                 "flows": [entry.to_payload() for entry in self.flows],
                 "open_flows": [entry.to_payload() for entry in self.open_flows],
+                "shift_events": [entry.to_payload() for entry in self.shift_events],
+                "open_events": [entry.to_payload() for entry in self.open_events],
             },
         }
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "Card":
-        """Read a stored card back; only the schema version this code writes is accepted."""
+        """Read a stored card back; schema 2 (before the shift-event sections) and 3 are accepted."""
         schema = int(payload["schema"])
-        if schema != CARD_SCHEMA_VERSION:
+        if schema != CARD_SCHEMA_VERSION and schema not in LEGACY_SCHEMA_VERSIONS:
             raise ValueError(f"unknown daily card schema: {schema}")
         sections = payload["sections"]
         return cls(
@@ -291,6 +402,9 @@ class Card:
             discrepancies=tuple(DiscrepancyLine.from_payload(entry) for entry in sections["discrepancies"]),
             flows=tuple(FlowLine.from_payload(entry) for entry in sections["flows"]),
             open_flows=tuple(OpenFlow.from_payload(entry) for entry in sections["open_flows"]),
+            shift_events=tuple(ShiftEventLine.from_payload(entry) for entry in sections.get("shift_events", ())),
+            open_events=tuple(OpenEvent.from_payload(entry) for entry in sections.get("open_events", ())),
+            present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
 
@@ -310,6 +424,8 @@ class DailyCardService:
         moment = self._clock.now_utc()
         with self._database.read() as connection:
             names = _Names(connection)
+            catalog = _CatalogNames(connection)
+            index = _EventIndex(connection)
             return Card(
                 card_date=window.card_date,
                 covered_from=window.covered_from,
@@ -320,6 +436,8 @@ class DailyCardService:
                 discrepancies=_discrepancies(connection, window, names),
                 flows=_flows(connection, window, names),
                 open_flows=_open_flows(connection, moment, names),
+                shift_events=_shift_events(connection, window, names, catalog, index),
+                open_events=_open_events(moment, names, catalog, index),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -512,3 +630,149 @@ def _open_flows(connection: Connection, moment: datetime, names: _Names) -> tupl
 def _age_hours(moment: datetime, opened_at: datetime) -> int:
     """Whole hours a flow has waited for its signature; floor, so 19h 59m reads 19."""
     return int((to_utc(moment) - to_utc(opened_at)).total_seconds() // _SECONDS_PER_HOUR)
+
+
+class _CatalogNames:
+    """The newest catalog name of an item or a location, looked up once per build.
+
+    A row stored before the catalog kept that id names the id itself: the card must still report the
+    event, and an honest identifier is better than a guess at a name nobody wrote down.
+    """
+
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+        self._items: dict[str, str] = {}
+        self._locations: dict[str, str] = {}
+
+    def item(self, item_id: str) -> str:
+        if item_id not in self._items:
+            row = catalog_repo.find_item_latest(self._connection, item_id)
+            self._items[item_id] = item_id if row is None else row.name
+        return self._items[item_id]
+
+    def location(self, location_id: str) -> str:
+        if location_id not in self._locations:
+            row = catalog_repo.find_location_latest(self._connection, location_id)
+            self._locations[location_id] = location_id if row is None else row.name
+        return self._locations[location_id]
+
+
+class _EventIndex:
+    """Every event read once per build, with the references that decide a shift event's status.
+
+    A decision or a fault closing is itself an event; reading them into maps keeps the status of a row
+    a lookup instead of one query per row. Later events overwrite earlier ones, so a second decision
+    (the service refuses one, but the log is the authority) would be the one the card reads.
+    """
+
+    def __init__(self, connection: Connection) -> None:
+        self.events = tuple(events_repo.iter_events(connection))
+        self._decisions: dict[str, str] = {}
+        self._assigned: set[str] = set()
+        self._fixed: set[str] = set()
+        for event in self.events:
+            if event.ref_event_id is None:
+                continue
+            if event.type in DECISION_TYPES:
+                self._decisions[event.ref_event_id] = event.type
+            elif event.type == _FAULT_ASSIGNED:
+                self._assigned.add(event.ref_event_id)
+            elif event.type == _FAULT_FIXED:
+                self._fixed.add(event.ref_event_id)
+
+    def status(self, event: EventRecord, kind: KindSpec) -> str:
+        """The one status the card reads for a row: a decision, the fault chain, or just recorded."""
+        if kind.requires_approval:
+            decision = self._decisions.get(event.event_id)
+            if decision is None:
+                return STATUS_PENDING
+            return STATUS_APPROVED if decision == APPROVED else STATUS_REJECTED
+        if event.type == _FAULT_REPORTED:
+            if event.event_id in self._fixed:
+                return STATUS_FIXED
+            if event.event_id in self._assigned:
+                return STATUS_ASSIGNED
+            return STATUS_REPORTED
+        return STATUS_RECORDED
+
+
+def _registered_kind(event: EventRecord) -> KindSpec | None:
+    """The kind that owns a row, or None for a handover event and for a decision (never its own row)."""
+    kind = kind_for(event.type)
+    if kind is None or is_decision(event.type):
+        return None
+    return kind
+
+
+def _shift_events(
+    connection: Connection, window: CardWindow, names: _Names, catalog: _CatalogNames, index: _EventIndex
+) -> tuple[ShiftEventLine, ...]:
+    """Every registered shift event of the window, newest first, with its current status."""
+    span = events_repo.iter_between(connection, after=utc_iso(window.start), until=utc_iso(window.end))
+    rows: list[ShiftEventLine] = []
+    for event in reversed(list(span)):
+        kind = _registered_kind(event)
+        if kind is not None:
+            rows.append(_shift_event_line(event, kind, names, catalog, index))
+    return tuple(rows)
+
+
+def _open_events(moment: datetime, names: _Names, catalog: _CatalogNames, index: _EventIndex) -> tuple[OpenEvent, ...]:
+    """Everything still waiting — an open fault, an undecided approval — whatever day it opened on.
+
+    Oldest first, because a fault nobody fixed for three days is exactly what the manager must see
+    before the one recorded this morning. A rejected, approved, fixed or merely recorded event is not
+    waiting on anybody and stays out.
+    """
+    rows: list[OpenEvent] = []
+    for event in index.events:
+        kind = _registered_kind(event)
+        if kind is None or index.status(event, kind) not in OPEN_STATUSES:
+            continue
+        line = _shift_event_line(event, kind, names, catalog, index)
+        rows.append(OpenEvent(line, _age_hours(moment, parse_iso(event.server_at))))
+    return tuple(rows)
+
+
+def _shift_event_line(
+    event: EventRecord, kind: KindSpec, names: _Names, catalog: _CatalogNames, index: _EventIndex
+) -> ShiftEventLine:
+    """One row: the kind's vocabulary, the person the roster names, and its own resolved summary."""
+    return ShiftEventLine(
+        event_type=event.type,
+        code=kind.code,
+        label_fa=kind.label_fa,
+        at_tehran=event.at_tehran,
+        actor=names.person(event.actor_id),
+        summary=_summary(kind, event.payload, names, catalog),
+        status=index.status(event, kind),
+        ref_event_id=event.ref_event_id,
+    )
+
+
+def _summary(kind: KindSpec, payload: Mapping[str, Any], names: _Names, catalog: _CatalogNames) -> dict[str, Any]:
+    """The kind's own summary with each id replaced by the name the clinic's lists hold now.
+
+    Which value is a person, an item or a place is the kind's own `fields`, the same metadata the
+    phone's wizard reads; an amount, a quantity, a note or a choice stays exactly as recorded.
+    """
+    fields = {field.key: field.kind for field in kind.fields}
+    return {
+        key: _summary_value(fields.get(key), value, names, catalog) for key, value in summary_for(kind, payload).items()
+    }
+
+
+def _summary_value(field_kind: FieldKind | None, value: Any, names: _Names, catalog: _CatalogNames) -> Any:
+    """One summarized value; a key with no field spec is the kind's own already-usable text."""
+    if value is None or field_kind is None:
+        return value
+    if field_kind is FieldKind.STAFF:
+        return names.person(str(value)).name or str(value)
+    if field_kind is FieldKind.ITEM:
+        return catalog.item(str(value))
+    if field_kind is FieldKind.LOCATION:
+        return catalog.location(str(value))
+    if field_kind is FieldKind.MULTI:
+        # The clinic's only multi field is the cleaning checklist, which ticks catalog items.
+        return [_summary_value(FieldKind.ITEM, item, names, catalog) for item in value]
+    return value

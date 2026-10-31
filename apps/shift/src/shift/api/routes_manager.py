@@ -25,8 +25,23 @@ from shift.common.clock import TEHRAN, parse_iso, to_tehran
 from shift.common.jalali import format_jalali
 from shift.domain.permissions import Permission
 from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
+from shift.domain.shift_events import FieldKind, KindSpec, kind_for
 from shift.services.auth import Principal
-from shift.services.daily_card import SHORTAGE, SURPLUS, Card, DailyCardService, Person
+from shift.services.daily_card import (
+    SHORTAGE,
+    STATUS_APPROVED,
+    STATUS_ASSIGNED,
+    STATUS_FIXED,
+    STATUS_PENDING,
+    STATUS_RECORDED,
+    STATUS_REJECTED,
+    STATUS_REPORTED,
+    SURPLUS,
+    Card,
+    DailyCardService,
+    Person,
+    ShiftEventLine,
+)
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
@@ -41,6 +56,19 @@ CARD_NOT_FOUND = "کارتی برای این روز پیدا نشد."
 FLOW_LABELS = {"reception": "پذیرش", "nursing": "پرستاری"}
 # Which way a gap went, so the manager reads a shortage from a surplus and never a bare figure.
 DIRECTION_LABELS = {SHORTAGE: "کسری", SURPLUS: "مازاد"}
+# The one status each shift-event row can carry, in the manager's words (SHF-3).
+SHIFT_EVENT_STATUS_LABELS = {
+    STATUS_PENDING: "در انتظار تأیید",
+    STATUS_APPROVED: "تأییدشده",
+    STATUS_REJECTED: "ردشده",
+    STATUS_REPORTED: "باز",
+    STATUS_ASSIGNED: "ارجاع‌شده",
+    STATUS_FIXED: "تعمیرشده",
+    STATUS_RECORDED: "ثبت‌شده",
+}
+BOOLEAN_LABELS = {True: "بله", False: "خیر"}
+MULTI_SEPARATOR = "، "
+TOMAN = "تومان"
 SHIFT_LABELS = {1: "شیفت صبح", 2: "شیفت عصر", 3: "شیفت شب"}
 WEEKDAY_LABELS = {
     0: "دوشنبه",
@@ -188,17 +216,18 @@ def _card_view(card: Card) -> dict[str, Any]:
     }
 
 
-def _sections(card: Card) -> dict[str, list[dict[str, str]]]:
-    """The card's five sections as rows of text; a section the stored card lacks is left out."""
-    stored = card.to_payload()["sections"]
-    builders: dict[str, Callable[[Card], list[dict[str, str]]]] = {
+def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
+    """The card's seven sections as rows of text; a section the stored card lacks is left out."""
+    builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
         "cash_exceptions": _cash_rows,
         "discrepancies": _discrepancy_rows,
         "flows": _flow_rows,
         "open_flows": _open_flow_rows,
+        "shift_events": _shift_event_rows,
+        "open_events": _open_event_rows,
     }
-    return {name: build(card) for name, build in builders.items() if name in stored}
+    return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
 
 def _emergency_rows(card: Card) -> list[dict[str, str]]:
@@ -270,6 +299,69 @@ def _open_flow_rows(card: Card) -> list[dict[str, str]]:
         }
         for entry in card.open_flows
     ]
+
+
+def _shift_event_rows(card: Card) -> list[dict[str, Any]]:
+    """The day's shift events, newest first: what was recorded, by whom, and what it says now."""
+    return [_shift_event_row(entry) for entry in card.shift_events]
+
+
+def _open_event_rows(card: Card) -> list[dict[str, Any]]:
+    """What is still waiting, oldest first, with how long the clinic has waited for it."""
+    return [{**_shift_event_row(entry.row), "age_hours": f"{entry.age_hours:,}"} for entry in card.open_events]
+
+
+def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
+    """One shift-event row: the kind's label and code, its actor, its instant and its own fields."""
+    return {
+        "code": entry.code,
+        "label": entry.label_fa,
+        "actor": _person(entry.actor),
+        "at": _stamp_fa(entry.at_tehran),
+        "status": SHIFT_EVENT_STATUS_LABELS.get(entry.status, entry.status),
+        "fields": _event_fields(kind_for(entry.event_type), entry.summary),
+    }
+
+
+def _event_fields(kind: KindSpec | None, summary: dict[str, Any]) -> list[dict[str, str]]:
+    """The row's values, labelled by the kind's own `KindSpec` so the page matches the phone."""
+    specs = {field.key: field for field in kind.fields} if kind is not None else {}
+    order = [key for key in (kind.card_fields if kind is not None else ()) if key in summary]
+    order += [key for key in summary if key not in order]
+    fields: list[dict[str, str]] = []
+    for key in order:
+        value = summary[key]
+        if value is None:
+            continue
+        spec = specs.get(key)
+        fields.append(
+            {
+                "label": key if spec is None else spec.label_fa,
+                "value": _field_fa(None if spec is None else spec.kind, value),
+            }
+        )
+    return fields
+
+
+def _field_fa(field_kind: FieldKind | None, value: Any) -> str:
+    """One value in the clinic's words: an amount in Toman, a quantity as counted, a multi joined."""
+    if field_kind is FieldKind.AMOUNT:
+        return f"{int(value):,} {TOMAN}"
+    if field_kind is FieldKind.BOOLEAN:
+        return BOOLEAN_LABELS[bool(value)]
+    if field_kind is FieldKind.MULTI:
+        return MULTI_SEPARATOR.join(str(item) for item in value)
+    if field_kind is FieldKind.DATE:
+        return _date_fa(str(value))
+    return str(value)
+
+
+def _date_fa(text: str) -> str:
+    """A stored ISO date as Jalali; text that is not a date is kept as the card holds it."""
+    try:
+        return format_jalali(date.fromisoformat(text))
+    except ValueError:
+        return text
 
 
 def _history_row(card: Card) -> dict[str, str]:
