@@ -46,6 +46,7 @@ from shift.domain.payloads import (
     ConsumptionRecorded,
     EmergencyWithdrawal,
     ItemCounted,
+    PresenceDeclared,
     ShelfRestocked,
     ShiftOpened,
     WasteReported,
@@ -104,6 +105,9 @@ BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.EVENT_HELD: EventSpec(SubmissionHeld, no_effects, requires_shift=True),
     EventType.EVENT_RELEASED: EventSpec(HeldReleased, no_effects, requires_shift=True),
     EventType.EVENT_HOLD_REJECTED: EventSpec(HeldRejected, no_effects, requires_shift=True),
+    # ADR-021: «حضور در شیفت» of a second receptionist or the shift doctor. It moves no projection;
+    # who is on shift is read back out of these records and the handover rows.
+    EventType.SHIFT_PRESENCE_DECLARED: EventSpec(PresenceDeclared, no_effects, requires_shift=True),
 }
 
 

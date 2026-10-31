@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}کارکنان{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  {% include "_manager_nav.html" %}
+
+  <header class="mg-head">
+    <h1 class="mg-title">کارکنان</h1>
+    <p class="mg-meta">هر کس یک یا چند نقش دارد. نقشِ تازه یا برداشته‌شده از شیفت بعد اثر می‌کند؛ ورود و دسترسی‌ها از همین فهرست خوانده می‌شود.</p>
+  </header>
+
+  <section class="mg-section" aria-labelledby="st-add-title">
+    <h2 id="st-add-title" class="mg-section-title">افزودن کارمند</h2>
+    <form class="mg-baseline" id="staff-add" autocomplete="off">
+      <div class="mg-setting-control">
+        <label class="mg-hint" for="st-name">نام و نام خانوادگی</label>
+        <input class="form-control mg-input" id="st-name" name="full_name" type="text" maxlength="80" required>
+      </div>
+      <div class="mg-setting-control">
+        <label class="mg-hint" for="st-mobile">موبایل (نام ورود)</label>
+        <input class="form-control mg-input" id="st-mobile" name="mobile" type="tel" inputmode="numeric" dir="ltr" required>
+      </div>
+      <div class="mg-setting-control">
+        <label class="mg-hint" for="st-pin">رمز اول (۶ رقم)</label>
+        <input class="form-control mg-input" id="st-pin" name="pin" type="password" inputmode="numeric" dir="ltr" maxlength="6" required>
+      </div>
+      <fieldset class="mg-setting-control">
+        <legend class="mg-hint">نقش‌ها (یک یا چند)</legend>
+        {% for role in roles %}
+        <label class="mg-line"><input type="checkbox" name="roles" value="{{ role.id }}"> {{ role.label }}</label>
+        {% endfor %}
+      </fieldset>
+      <div class="mg-setting-control">
+        <button class="btn btn-primary mg-save" type="submit">افزودن</button>
+      </div>
+      <p class="mg-status" role="status"></p>
+    </form>
+  </section>
+
+  <section class="mg-section" aria-labelledby="st-list-title">
+    <h2 id="st-list-title" class="mg-section-title">فهرست کارکنان</h2>
+    {% for person in staff %}
+    <article class="mg-row" data-staff="{{ person.id }}">
+      <p class="mg-line mg-strong">{{ person.name }} <span class="mg-muted" dir="ltr">{{ person.mobile }}</span></p>
+      <p class="mg-line mg-muted">{% if person.active %}فعال{% else %}غیرفعال{% endif %}{% if person.pending %} · تغییر نقش از شیفت بعد اثر می‌کند{% endif %}</p>
+      <p class="mg-line">
+        {% for role in roles %}
+        <label class="mg-line"><input type="checkbox" data-role="{{ role.id }}" {% if role.id in person.next_roles %}checked{% endif %} {% if not person.active %}disabled{% endif %}> {{ role.label }}</label>
+        {% endfor %}
+      </p>
+      <p class="mg-line mg-actions" dir="rtl">
+        {% if person.active %}
+        <button type="button" class="btn btn-secondary btn-compact" data-active="false">غیرفعال‌کردن</button>
+        {% else %}
+        <button type="button" class="btn btn-primary btn-compact" data-active="true">فعال‌کردن</button>
+        {% endif %}
+      </p>
+      <p class="mg-status" role="status"></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">هنوز کسی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/manager-staff.js"></script>
+{% endblock %}

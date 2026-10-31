@@ -108,3 +108,13 @@ class WasteReported(StockDelta):
 
 class ConsumptionRecorded(StockDelta):
     pass
+
+
+class PresenceDeclared(Payload):
+    """ADR-021: a second receptionist or the shift doctor is on shift from now until this shift ends.
+
+    The role is the bound role being claimed; who and when come from the event's own `actor_id` and
+    `client_at`, so the record cannot say one thing and mean another.
+    """
+
+    role: Literal["reception", "shift_doctor"]

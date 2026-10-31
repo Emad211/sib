@@ -18,7 +18,8 @@ from shift.domain.payloads import Identifier, Note, Payload
 class SubmissionHeld(Payload):
     """One record kept aside: what it was, when it happened and why it waits."""
 
-    reason: Literal["future", "stale"]
+    # `off_shift` is R-15's reason (ADR-021): the record's own instant fell outside the recorder's shift.
+    reason: Literal["future", "stale", "off_shift"]
     type: Annotated[str, Field(min_length=1, max_length=64)]
     event_id: Identifier
     occurred_at: datetime

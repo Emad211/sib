@@ -16,23 +16,28 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from argon2.low_level import Type
 from sqlalchemy import Connection
+from sqlalchemy.exc import IntegrityError
 
 from shift.adapters.db import devices_repo, sessions_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.devices_repo import DeviceRecord
 from shift.adapters.db.sessions_repo import SessionRecord
 from shift.adapters.db.staff_repo import StaffRecord
-from shift.common.clock import Clock, SystemClock, parse_iso, utc_iso
+from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran, utc_iso
 from shift.common.hashing import sha256_hex
+from shift.common.ids import new_ulid
 from shift.config.logging import get_audit_logger
-from shift.domain.permissions import Permission, UnknownRole, permissions_for
+from shift.domain.on_shift import effective_permissions
+from shift.domain.permissions import Permission, Role, UnknownRole, parse_role
 from shift.domain.pin_policy import (
     LOCKOUT_MINUTES,
     MAX_FAILED_ATTEMPTS,
     normalise_digits,
     validate_new_pin,
 )
+from shift.domain.shift_clock import covering
 from shift.services.audit import AuditOutcome, AuditService, record_action
+from shift.services.on_shift import on_shift_roles
 
 SESSION_TTL = timedelta(hours=12)
 SESSION_COOKIE = "shift_session"
@@ -77,6 +82,15 @@ class StaffNotFound(AuthError):
     """Credential administration asked for a staff id that does not exist."""
 
 
+class StaffInputError(AuthError):
+    """A staff change the manager asked for is not acceptable; `message_fa` is what the screen shows."""
+
+    def __init__(self, message_fa: str, *, conflict: bool = False) -> None:
+        super().__init__(message_fa)
+        self.message_fa = message_fa
+        self.conflict = conflict
+
+
 class SessionInvalid(AuthError):
     """No usable session for the presented cookie (`reason` says why)."""
 
@@ -98,6 +112,9 @@ class Principal:
     session_hash: str
     csrf_token: str
     expires_at: datetime
+    # ADR-021: the bound roles the person is on shift for right now; everything else they hold is
+    # waiting for a handover. The permission dependency reads the effective set already.
+    on_shift_roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +136,8 @@ class StaffSummary:
     roles: tuple[str, ...]
     active: bool
     locked_until: str | None
+    # The roles from the next shift on (R-09): what the manager's latest change will make true.
+    next_roles: tuple[str, ...] = ()
 
 
 def normalise_mobile(raw: str) -> str:
@@ -359,7 +378,7 @@ class AuthService:
             device = devices_repo.find_device(connection, session.device_id)
             if device is None or not device.is_active:
                 raise SessionInvalid("device_revoked")
-            return self._principal(connection, staff, device, session)
+            return self._principal(connection, staff, device, session, now)
 
     def logout(self, *, token: str, reason: str = "logout") -> None:
         """Revoke the presented session; logging out twice is not an error."""
@@ -391,8 +410,13 @@ class AuthService:
         return revoked
 
     def directory(self) -> Sequence[StaffSummary]:
-        """Every staff member with roles and lock state, in one query."""
+        """Every staff member with roles (now and from the next shift) and lock state."""
+        shift = covering(to_tehran(self._clock.now_utc()))
         with self._database.read() as connection:
+            upcoming = {
+                entry.staff.staff_id: entry.roles
+                for entry in staff_repo.list_with_roles(connection, shift.following().text)
+            }
             return [
                 StaffSummary(
                     staff_id=entry.staff.staff_id,
@@ -401,9 +425,100 @@ class AuthService:
                     roles=entry.roles,
                     active=entry.staff.active,
                     locked_until=entry.staff.locked_until,
+                    next_roles=upcoming.get(entry.staff.staff_id, entry.roles),
                 )
-                for entry in staff_repo.list_with_roles(connection)
+                for entry in staff_repo.list_with_roles(connection, shift.text)
             ]
+
+    def create_staff(
+        self, *, full_name: str, mobile: str, pin: str, roles: Sequence[str], actor_id: str
+    ) -> StaffSummary:
+        """Add one person who can sign in at once: name, mobile, a policy-compliant PIN and their roles.
+
+        The starting roles live in `staff_role` and apply immediately, because there is no earlier
+        shift to wait out; every later change goes through the catalog and starts at the next shift
+        (ADR-022). The PIN is hashed before the writer is taken, like every Argon2id run here.
+        """
+        name = " ".join(full_name.split())
+        if not 1 <= len(name) <= 80:
+            raise StaffInputError("نام باید بین ۱ تا ۸۰ نویسه باشد.")
+        try:
+            normalised = normalise_mobile(mobile)
+        except InvalidCredentials as exc:
+            raise StaffInputError("موبایل باید شمارهٔ ۰۹xxxxxxxxx باشد.") from exc
+        try:
+            parsed = tuple(dict.fromkeys(parse_role(value) for value in roles))
+        except UnknownRole as exc:
+            raise StaffInputError("نقش انتخاب‌شده شناخته‌شده نیست.") from exc
+        if not parsed:
+            raise StaffInputError("دست‌کم یک نقش لازم است.")
+        digest = hash_pin(validate_new_pin(pin), pepper=self._pepper, hasher=self._hasher)
+        stamp = utc_iso(self._clock.now_utc())
+        staff_id = f"staff-{new_ulid().lower()[-10:]}"
+        try:
+            with self._database.write() as connection:
+                staff_repo.insert(
+                    connection, staff_id=staff_id, full_name=name, mobile=normalised, pin_hash=digest, created_at=stamp
+                )
+                for role in parsed:
+                    staff_repo.insert_role(connection, staff_id=staff_id, role=role.value, granted_at=stamp)
+        except IntegrityError as exc:
+            raise StaffInputError("این موبایل قبلاً برای یک کارمند ثبت شده است.", conflict=True) from exc
+        self._note(
+            "staff.create",
+            "staff.create staff=%s actor=%s roles=%s",
+            (staff_id, actor_id, [role.value for role in parsed]),
+            actor=actor_id,
+            subject=staff_id,
+            detail={"roles": [role.value for role in parsed]},
+        )
+        role_names = tuple(sorted(role.value for role in parsed))
+        return StaffSummary(staff_id, name, normalised, role_names, True, None, role_names)
+
+    def set_active(self, *, staff_id: str, active: bool, actor_id: str) -> None:
+        """Deactivate or reactivate one person; a deactivated person loses every session at once.
+
+        A manager cannot lock themselves out, and the clinic never ends up with no active manager.
+        """
+        if not active and staff_id == actor_id:
+            raise StaffInputError("نمی‌توانید حساب خودتان را غیرفعال کنید.")
+        now = self._clock.now_utc()
+        with self._database.write() as connection:
+            if staff_repo.find(connection, staff_id) is None:
+                raise StaffNotFound(staff_id)
+            if not active:
+                # The clinic needs a manager from the *next* shift on, not only for the shift that is
+                # running when the button is pressed (ADR-022 §2).
+                self._require_other_manager(connection, staff_id, covering(to_tehran(now)).following().text)
+            staff_repo.set_active(connection, staff_id=staff_id, active=active)
+            if not active:
+                sessions_repo.revoke_for_staff(
+                    connection, staff_id=staff_id, revoked_at=utc_iso(now), reason="deactivated"
+                )
+        self._note(
+            "staff.activate" if active else "staff.deactivate",
+            "staff.set_active staff=%s active=%s actor=%s",
+            (staff_id, active, actor_id),
+            actor=actor_id,
+            subject=staff_id,
+            detail={"active": active},
+        )
+
+    def require_manager_remains(self, *, staff_id: str, role: str) -> None:
+        """Refuse a role change that would leave the clinic without an active manager from the next shift."""
+        if role != Role.MANAGER.value:
+            return
+        following = covering(to_tehran(self._clock.now_utc())).following().text
+        with self._database.read() as connection:
+            self._require_other_manager(connection, staff_id, following)
+
+    @staticmethod
+    def _require_other_manager(connection: Connection, staff_id: str, shift_key: str) -> None:
+        """Some other active person holds the manager role at `shift_key`, or the change is refused."""
+        for entry in staff_repo.list_with_roles(connection, shift_key):
+            if entry.staff.staff_id != staff_id and entry.staff.active and Role.MANAGER.value in entry.roles:
+                return
+        raise StaffInputError("دست‌کم یک مدیر فعال باید بماند.")
 
     def unlock(self, *, staff_id: str, actor_id: str) -> None:
         """Clear the failure counter and lock; the manager-only recovery path (S4)."""
@@ -508,15 +623,19 @@ class AuthService:
         if staff.failed_attempts:
             staff_repo.clear_failures(connection, staff_id=staff.staff_id)
         sessions_repo.purge_expired(connection, before=session.issued_at)
-        principal = self._principal(connection, staff, device, session)
+        principal = self._principal(connection, staff, device, session, now)
         return IssuedSession(token=token, csrf_token=csrf_token, principal=principal)
 
     def _principal(
-        self, connection: Connection, staff: StaffRecord, device: DeviceRecord, session: SessionRecord
+        self, connection: Connection, staff: StaffRecord, device: DeviceRecord, session: SessionRecord, now: datetime
     ) -> Principal:
-        roles = staff_repo.roles_for(connection, staff.staff_id)
+        # One source of truth (ADR-022): the roles the clinic clock's running shift sees.
+        roles = staff_repo.roles_for(connection, staff.staff_id, covering(to_tehran(now)).text)
         try:
-            permissions = permissions_for(roles)
+            # ADR-021: handing over is the key to access. The effective set — free roles always,
+            # bound roles only on shift, plus the always-allowed few — is what every guard reads.
+            working = on_shift_roles(connection, staff_id=staff.staff_id, roles=roles, instant=now)
+            permissions = effective_permissions(roles, working)
         except UnknownRole as exc:
             raise SessionInvalid(f"unknown_role:{exc}") from exc
         return Principal(
@@ -529,4 +648,5 @@ class AuthService:
             session_hash=session.token_hash,
             csrf_token=session.csrf_token,
             expires_at=parse_iso(session.expires_at),
+            on_shift_roles=working,
         )

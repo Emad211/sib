@@ -21,6 +21,7 @@ from shift.api import (
     routes_handover,
     routes_held,
     routes_manager,
+    routes_on_shift,
     routes_photos,
     routes_purchase,
     routes_rewards,
@@ -316,6 +317,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     app.include_router(routes_events.router)
+    # ADR-021: the one button a second receptionist or the shift doctor presses to come on shift.
+    app.include_router(routes_on_shift.router)
     # The receipt photos (SHF-7): upload by the recorder, read by the manager and the approvers.
     app.include_router(routes_photos.router)
     app.include_router(routes_handover.router)

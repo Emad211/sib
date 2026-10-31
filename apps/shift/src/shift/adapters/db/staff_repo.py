@@ -6,6 +6,8 @@ from typing import Any
 
 from sqlalchemy import Connection
 
+from shift.adapters.db import catalog_repo
+
 _COLUMNS = (
     "staff_id",
     "full_name",
@@ -95,28 +97,65 @@ def insert_role(connection: Connection, *, staff_id: str, role: str, granted_at:
     )
 
 
-def roles_for(connection: Connection, staff_id: str) -> tuple[str, ...]:
-    """Every role the person holds, in a stable order."""
+def _overlay(base: set[str], decisions: Mapping[str, bool]) -> tuple[str, ...]:
+    """One source of truth for a person's roles (ADR-022): the catalog decision wins, the base fills the gaps.
+
+    `staff_role` holds the roles a person was given when they were created (and the older installs'
+    roles); `catalog_staff_role_versions` holds every later change, effective from one shift. For each
+    role the newest decision that has started decides; a role with no decision keeps what `staff_role`
+    says. Nothing is ever deleted, so history stays and the answer is the same on every machine.
+    """
+    held = {role for role in base if decisions.get(role, True)}
+    held |= {role for role, granted in decisions.items() if granted}
+    return tuple(sorted(held))
+
+
+def roles_for(connection: Connection, staff_id: str, shift_key: str | None = None) -> tuple[str, ...]:
+    """Every role the person holds, in a stable order.
+
+    With `shift_key` the roles are the ones that shift sees (the manager's changes apply from the next
+    shift, R-09); without it they are the base roles alone, which is what a fresh account carries.
+    """
     rows = connection.exec_driver_sql("SELECT role FROM staff_role WHERE staff_id = ? ORDER BY role", (staff_id,))
-    return tuple(str(row[0]) for row in rows)
+    base = {str(row[0]) for row in rows}
+    if shift_key is None:
+        return tuple(sorted(base))
+    decisions = {
+        row.role: row.granted for row in catalog_repo.list_staff_roles_effective(connection, staff_id, shift_key)
+    }
+    return _overlay(base, decisions)
 
 
-def list_with_roles(connection: Connection) -> list[StaffWithRoles]:
-    """All staff with their roles in one query (no per-row round trip)."""
+def list_with_roles(connection: Connection, shift_key: str | None = None) -> list[StaffWithRoles]:
+    """All staff with their roles (as `shift_key` sees them); one query for the roster, one per person.
+
+    A staff screen holds tens of rows, so the per-person read of the catalog decisions is fine and
+    keeps `roles_for` the only place that decides a role.
+    """
     rows = connection.exec_driver_sql(
         "SELECT s.staff_id, s.full_name, s.mobile, s.pin_hash, s.pin_updated_at, s.active, "
         "s.failed_attempts, s.locked_until, s.created_at, r.role "
         "FROM staff AS s LEFT JOIN staff_role AS r ON r.staff_id = s.staff_id "
         "ORDER BY s.full_name, s.staff_id, r.role"
     ).mappings()
-    grouped: dict[str, tuple[StaffRecord, list[str]]] = {}
+    grouped: dict[str, tuple[StaffRecord, set[str]]] = {}
     for row in rows:
         staff_id = str(row["staff_id"])
         if staff_id not in grouped:
-            grouped[staff_id] = (_record(row), [])
+            grouped[staff_id] = (_record(row), set())
         if row["role"] is not None:
-            grouped[staff_id][1].append(str(row["role"]))
-    return [StaffWithRoles(staff, tuple(roles)) for staff, roles in grouped.values()]
+            grouped[staff_id][1].add(str(row["role"]))
+    decisions: dict[str, dict[str, bool]] = {staff_id: {} for staff_id in grouped}
+    if shift_key is not None:
+        for staff_id in grouped:
+            for row in catalog_repo.list_staff_roles_effective(connection, staff_id, shift_key):
+                decisions[staff_id][row.role] = row.granted
+    return [
+        StaffWithRoles(
+            staff, _overlay(base, decisions[staff.staff_id]) if shift_key is not None else tuple(sorted(base))
+        )
+        for staff, base in grouped.values()
+    ]
 
 
 def set_active(connection: Connection, *, staff_id: str, active: bool) -> None:

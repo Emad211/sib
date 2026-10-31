@@ -110,6 +110,10 @@ class NotASigner(HandoverError):
     """The caller is neither the incoming nor the outgoing person of this flow (H-04, R-04)."""
 
 
+class NotOfTheFlow(NotASigner):
+    """A colleague who is not one of the flow's two people tried to work on it (A5, H-10)."""
+
+
 @dataclass(frozen=True, slots=True)
 class HandoverState:
     """What a client may know about a flow: where it is, never a reference and never a count."""
@@ -366,6 +370,7 @@ class HandoverService:
     def count(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """Take one blind count and answer with a status only; the reference stays here (R-02)."""
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
+        _part_of_the_flow(flow.row, caller)
         chain = self._current(flow, target)
         if chain.status is CountStatus.JOINT:
             raise HandoverError("the joint count is recorded through `joint`")
@@ -390,6 +395,7 @@ class HandoverService:
     def joint(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """The figure both people counted together; it settles the chain (H-05, H-13)."""
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
+        _part_of_the_flow(flow.row, caller)
         chain = self._current(flow, target)
         if chain.status is not CountStatus.JOINT:
             raise HandoverError("this target has no joint count to record")
@@ -404,6 +410,7 @@ class HandoverService:
     def advance(self, handover_id: str, *, caller: Caller) -> HandoverState:
         """Leave the current step for the next one; the walk is ordered and never skips (H-04)."""
         flow = self._live(handover_id)
+        _part_of_the_flow(flow.row, caller)
         advanced = flow.handover.advance()  # the domain refuses a closed flow, a skipped sign or H-08
         self._require_step_done(flow)
         step = advanced.step
@@ -423,6 +430,7 @@ class HandoverService:
         photo_id: str | None = None,
     ) -> HandoverState:
         """Record one checklist answer on the checklists step (H-04); it changes no projection."""
+        _part_of_the_flow(self._row(handover_id), caller)
         flow = self._require_step(handover_id, HandoverStep.CHECKLISTS)
         asked = ChecklistAsker(self._catalog, self._database).owned(flow.row.flow, ShiftKey.parse(flow.row.shift_id))
         if item_id not in {item.item_id for item in asked}:
@@ -433,6 +441,7 @@ class HandoverService:
 
     def hand_parcel(self, handover_id: str, parcel_id: str, packages: int, *, caller: Caller) -> HandoverState:
         """Record one parcel in transit changing hands on the parcels step (H-04)."""
+        _part_of_the_flow(self._row(handover_id), caller)
         flow = self._require_step(handover_id, HandoverStep.PARCELS)
         payload = {"parcel_id": parcel_id, "packages": packages}
         self._append(flow.row, caller, [(EventType.HANDOVER_PARCEL_HANDED.value, payload)])
@@ -469,6 +478,7 @@ class HandoverService:
     def report_early_leave(self, handover_id: str, *, caller: Caller) -> HandoverState:
         """Note that the outgoing person left before handing over (H-08); nothing happens by itself."""
         flow = self._live(handover_id)
+        _part_of_the_flow(flow.row, caller)
         flow.handover.report_early_leave()
         payload = {"staff_id": flow.row.outgoing_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_EARLY_LEAVE_REPORTED.value, payload)])
@@ -817,6 +827,17 @@ class HandoverService:
         # The projection catches up immediately: the next count's step and the next flow's reference
         # are read from it, and a rebuild has to equal what it shows (ADR-010).
         self._projections.sync()
+
+
+def _part_of_the_flow(row: FlowRow, caller: Caller) -> None:
+    """A5 (H-10): counting, advancing, checklists and parcels belong to this flow's two people.
+
+    A second receptionist of the same shift, or any other colleague holding the count permission, is
+    not one of them: the box and the shelves are counted by the person handing them over and the one
+    taking them, on their own phones, and nobody else can push a figure into their flow.
+    """
+    if caller.actor_id not in (row.incoming_id, row.outgoing_id):
+        raise NotOfTheFlow("the caller is not part of this handover")
 
 
 def _signer_of(row: FlowRow, caller: Caller) -> Signer:

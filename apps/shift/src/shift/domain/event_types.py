@@ -56,6 +56,9 @@ class EventType(StrEnum):
     EVENT_HELD = "event.held"
     EVENT_RELEASED = "event.released"
     EVENT_HOLD_REJECTED = "event.hold_rejected"
+    # ADR-021: a second receptionist or the shift doctor says «حضور در شیفت»; the record carries who
+    # and when, and who is on shift is derived from it, never stored as a flag.
+    SHIFT_PRESENCE_DECLARED = "shift.presence_declared"
     # SHF-5 rewards (S01 §5): written by the reward service or the manager's screen, never a phone
     # button, and none of them moves a projection — the ledger is derived from these three records.
     REWARD_EARNED = "reward.earned"

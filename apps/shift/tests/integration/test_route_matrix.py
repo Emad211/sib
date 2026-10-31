@@ -27,6 +27,7 @@ MATRIX_PATH = Path(__file__).resolve().parents[1] / "data" / "route_matrix.json"
 PUBLIC = "public"
 AUTHENTICATED = "authenticated"
 PERMISSION = "permission:"
+PERMISSION_ANY = "permission_any:"
 ROLE_NAMES = (
     "anon",
     "reception",
@@ -95,6 +96,8 @@ BODIES = {
         "starts_on": "2026-10-01",
         "ends_on": "2026-12-31",
     },
+    # ADR-021: the presence button's own body; only the role the person holds may be declared.
+    "POST /api/v1/shift/presence": {"role": "reception"},
     # A body the flow vocabulary cannot accept, so probing the start cell never opens a real flow
     # (a second reception flow of the same shift would answer 409 instead of the recorded status).
     "POST /api/v1/handover/start": {"flow": "not-a-flow"},
@@ -201,7 +204,7 @@ def matrix_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClie
         secret_file=root / ".secret",
     )
     with TestClient(create_app(settings)) as client:
-        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key, presence=True)
         seed_catalog(client.app.state.database)
         yield client
 
@@ -283,7 +286,11 @@ def test_the_matrix_covers_every_role_and_names_them_once() -> None:
     assert len(ROLE_NAMES) == len(set(ROLE_NAMES))
     for key, row in rows.items():
         assert set(row["roles"]) == set(ROLE_NAMES), key
-        assert row["guard"] == PUBLIC or row["guard"] == AUTHENTICATED or row["guard"].startswith(PERMISSION)
+        assert (
+            row["guard"] == PUBLIC
+            or row["guard"] == AUTHENTICATED
+            or row["guard"].startswith((PERMISSION, PERMISSION_ANY))
+        )
 
 
 def test_unknown_paths_use_the_same_error_envelope(matrix_client: TestClient) -> None:

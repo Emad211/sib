@@ -11,6 +11,7 @@ from shift.__version__ import __version__
 from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
 from shift.api.templating import templates
+from shift.domain.on_shift import off_shift_notice
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
 from shift.services.purchase import PURCHASE_PERMISSIONS
@@ -161,6 +162,27 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
         "hint": "سقف‌ها، ساعت‌ها و کمپین‌ها",
     },
     {
+        "needs": frozenset({Permission.STAFF_MANAGE}),
+        "href": "/manager/staff",
+        "icon": "👥",
+        "title": "کارکنان",
+        "hint": "افزودن کارمند، نقش‌ها و غیرفعال‌کردن",
+    },
+    {
+        "needs": frozenset({Permission.REWARD_GRANT}),
+        "href": "/manager/rewards",
+        "icon": "🏆",
+        "title": "پاداش کارکنان",
+        "hint": "تأیید پاداش، نرخ‌ها و هدف تیمی",
+    },
+    {
+        "needs": frozenset({Permission.SETTINGS_CHANGE}),
+        "href": "/manager/campaigns",
+        "icon": "🏷️",
+        "title": "کمپین‌های تخفیف",
+        "hint": "بازهٔ تخفیف و مبلغ هر کمپین",
+    },
+    {
         "needs": frozenset({Permission.DEVICE_ENROLL}),
         "href": "/admin/devices",
         "icon": "📱",
@@ -177,13 +199,36 @@ def get_home(request: Request) -> HTMLResponse:
     # A visitor with no session keeps no tile; the sections inside each screen are cut down by the API.
     granted = principal.permissions if principal is not None else frozenset()
     tiles = [tile for tile in HOME_TILES if granted & tile["needs"]]
+    # ADR-021: an off-shift person reads that their shift is not open and keeps the handover tile.
+    notice = None if principal is None else off_shift_notice(principal.roles, principal.on_shift_roles)
     return _shell_page(
         request,
         "home.html",
-        {"tiles": tiles},
+        {
+            "tiles": tiles,
+            "shift_notice": notice,
+            # ADR-021: the second receptionist and the shift doctor come on shift with one button.
+            "presence_options": _presence_options(principal),
+        },
         # The guest page must not become what the installed app shows offline.
         **({"cache_control": "no-store"} if principal is None else {}),
     )
+
+
+# ADR-021: the two roles whose shift opens with «حضور در شیفت» instead of taking the box over.
+_PRESENCE_LABELS = {"reception": "پذیرش (شیفت دوم)", "shift_doctor": "پزشک شیفت"}
+
+
+def _presence_options(principal: Principal | None) -> list[dict[str, str]]:
+    """The «حضور در شیفت» buttons this person may still press, one per bound role not yet on shift."""
+    if principal is None or Permission.SHIFT_PRESENCE_DECLARE not in principal.permissions:
+        return []
+    working = set(principal.on_shift_roles)
+    return [
+        {"role": role, "label": label}
+        for role, label in _PRESENCE_LABELS.items()
+        if role in principal.roles and role not in working
+    ]
 
 
 @router.get("/events", response_class=HTMLResponse, summary="Serve the staff shift-event screen")

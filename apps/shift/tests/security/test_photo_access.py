@@ -29,7 +29,7 @@ OTHERS = ("reception", "nurse", "purchaser")
 @pytest.fixture()
 def staff_client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as client:
-        seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+        seed_roster(client.app.state.database, pepper=client.app.state.secret_key, presence=True)
         seed_catalog(client.app.state.database)
         yield client
 

@@ -34,6 +34,10 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.FAULT_FIX,
                 _P.CLEANING_CONFIRM,
                 _P.REWARD_VIEW,
+                # ADR-021: the second receptionist of a shift says «حضور در شیفت» to come on shift.
+                _P.SHIFT_PRESENCE_DECLARE,
+                # R-15: a queued record made while off shift is held for the manager, never refused.
+                _P.SHIFT_RECORD_HOLD,
                 # The owner's document: the parcel arrives in whatever shift it arrives in, so the
                 # counter takes it in and flags a problem instead of waiting for the storekeeper.
                 _P.PURCHASE_DELIVERY_RECEIVE,
@@ -58,6 +62,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.VITALS_RECORD,
                 _P.CLEANING_CONFIRM,
                 _P.REWARD_VIEW,
+                # R-15: the nurse's queued record made while off shift is held, not refused.
+                _P.SHIFT_RECORD_HOLD,
             }
         ),
         Role.STOREKEEPER: frozenset(
@@ -92,11 +98,11 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.REWARD_VIEW,
             }
         ),
+        # ADR-022 (owner decision 10): the accountant counts no cash and signs no handover. The
+        # counters of the box are the two people of a reception flow; the accountant sees the result.
         Role.ACCOUNTANT: frozenset(
             {
                 _P.EVENTS_APPEND,
-                _P.HANDOVER_CASH_SUBMIT,
-                _P.HANDOVER_SIGN,
                 _P.CASH_DEPOSIT_RECORD,
                 _P.STOCK_COUNT_SUBMIT,
                 _P.PURCHASE_PAYMENT_RECORD,
@@ -121,6 +127,9 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.VITALS_RECORD,
                 _P.SHIFT_EVENT_APPROVE,
                 _P.REWARD_VIEW,
+                # ADR-021: «حضور در شیفت»; R-15: an off-shift queued record is held, not refused.
+                _P.SHIFT_PRESENCE_DECLARE,
+                _P.SHIFT_RECORD_HOLD,
             }
         ),
         Role.MANAGER: frozenset(Permission),

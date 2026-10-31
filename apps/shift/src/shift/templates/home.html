@@ -5,6 +5,23 @@
 {% block content %}
 <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
 
+{% if shift_notice %}
+<section class="card" aria-live="polite">
+  <p class="card-subtitle">{{ shift_notice }}</p>
+</section>
+{% endif %}
+
+{% if presence_options %}
+<section class="card" aria-labelledby="presence-title">
+  <h2 id="presence-title" class="card-title">حضور در شیفت</h2>
+  <p class="card-subtitle">اگر در این شیفت کار می‌کنید، حضورتان را اینجا ثبت کنید.</p>
+  {% for option in presence_options %}
+  <button type="button" class="btn btn-primary btn-block" data-presence-role="{{ option.role }}">حضور در شیفت — {{ option.label }}</button>
+  {% endfor %}
+  <p id="presence-feedback" class="badge hidden" role="status" aria-live="polite"></p>
+</section>
+{% endif %}
+
 {% if tiles %}
 <h1 class="home-title">کارهای من</h1>
 <nav class="home-tiles" aria-label="کارهای من">
@@ -36,4 +53,8 @@
   </ul>
 </section>
 
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/presence.js"></script>
 {% endblock %}

@@ -93,9 +93,11 @@ def _start(service: HandoverService, *, opening_cash: int | None = None, incomin
     return service.start(HandoverFlow.RECEPTION, incoming_id=incoming, caller=CALLER).handover_id
 
 
-def _settle(service: HandoverService, handover_id: str, counted: int) -> None:
-    assert service.count(handover_id, CASH, counted, caller=CALLER) is CountStatus.INCOMING
-    assert service.count(handover_id, CASH, counted, caller=CALLER) in {CountStatus.MATCHED, CountStatus.SETTLED}
+def _settle(service: HandoverService, handover_id: str, counted: int, *, actor: str = INCOMING) -> None:
+    """Both counts of one flow, taken by the person who took it over (A5: only its own two people)."""
+    caller = Caller(actor_id=actor, device_id="device-1")
+    assert service.count(handover_id, CASH, counted, caller=caller) is CountStatus.INCOMING
+    assert service.count(handover_id, CASH, counted, caller=caller) in {CountStatus.MATCHED, CountStatus.SETTLED}
 
 
 def _move(
@@ -165,12 +167,12 @@ def test_several_consecutive_shifts_carry_only_the_money_that_happened_after_eac
     second = _start(service, incoming="staff-in-2")
     # A withdrawal happens after the second flow's cutoff and arrives while it is being counted.
     _move(store, projections, "cash.withdrawn", 100_000, at=clock.moment + timedelta(minutes=5))
-    _settle(service, second, 550_000)
+    _settle(service, second, 550_000, actor="staff-in-2")
     assert _box(database) == 450_000
 
     clock.moment = clock.moment + timedelta(hours=8)
     third = _start(service, incoming="staff-in-3")
-    _settle(service, third, 450_000)
+    _settle(service, third, 450_000, actor="staff-in-3")
     assert _box(database) == 450_000
     carries = [row["carry"] for row in _payloads(database, "handover.count_settled", second) if row["scope"] == "cash"]
     assert carries == [-100_000]
@@ -281,7 +283,7 @@ def test_a_late_record_from_the_previous_flow_never_moves_the_next_flow_referenc
     projections.sync()
     assert _box(database) == 400_000
 
-    _settle(service, second, 400_000)
+    _settle(service, second, 400_000, actor="staff-in-2")
 
     assert _payloads(database, "handover.cash_reference_adjusted", second) == []
     assert _payloads(database, "discrepancy.recorded", second) == []
