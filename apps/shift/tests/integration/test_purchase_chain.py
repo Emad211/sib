@@ -436,6 +436,26 @@ def test_a_flag_locks_the_payment_until_the_manager_approves_it(desk: Desk) -> N
     assert (invoice["payment_locked"], invoice["paid_total"]) == (False, 10_000)
 
 
+def test_a_flagged_parcel_is_still_digitized_and_only_its_payment_waits(desk: Desk) -> None:
+    """P-06: the label locks the money, not the accountant's price entry (the card's own chain)."""
+    delivery_id = _received_delivery(desk, _placed_order(desk))
+    _act(desk, desk.reception, "delivery.flag", delivery_id=delivery_id, reason="short", note=None)
+
+    _act(
+        desk,
+        desk.accountant,
+        "invoice.digitize",
+        delivery_id=delivery_id,
+        lines=[{"item_id": ITEM, "quantity": 4, "unit_price_toman": 25_000}],
+        reference=None,
+    )
+
+    invoice = _invoice(desk, delivery_id)
+    assert (invoice["invoice_total"], invoice["payment_locked"]) == (100_000, True)
+    with pytest.raises(PurchaseRuleError, match="قفل"):
+        _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=100_000, method="cash")
+
+
 def test_a_rejected_flag_keeps_the_payment_locked(desk: Desk) -> None:
     """The owner's rule: a refused parcel stays on the return path instead of being paid for."""
     delivery_id = _digitized_delivery(desk)

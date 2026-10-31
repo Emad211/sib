@@ -129,7 +129,10 @@ PURCHASE_PERMISSIONS: tuple[Permission, ...] = (
     Permission.STOCK_COUNT_SUBMIT,
 )
 RESTOCK_HISTORY = 20
-_RECEIVABLE = RECEIVED_STATUSES - {FLAGGED}
+# A received parcel may be digitized whatever its flag says: the owner's rule locks the PAYMENT of a
+# flagged delivery until the manager decides (P-06), never the accountant's price entry. `RECEIVED_STATUSES`
+# already leaves out a parcel that went back to the vendor or is already paid.
+_RECEIVABLE = RECEIVED_STATUSES
 
 
 class PurchaseRuleError(ValueError):
