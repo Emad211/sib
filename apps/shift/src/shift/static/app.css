@@ -414,3 +414,10 @@ body {
   color: var(--color-warning);
   margin-bottom: 1rem;
 }
+
+/* F6: a refused record says why, in the server's own Persian words, beside its two actions. */
+.outbox-item-reason {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-danger, #b3261e);
+}

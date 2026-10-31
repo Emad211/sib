@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, seed_roster
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
@@ -30,7 +31,14 @@ async () => {
     client_event_id: ulid,
     idempotency_key: ulid,
     type: "stock.waste_reported",
-    payload: { item_id: "bandage_roll", location_id: "emergency_cabinet", quantity: 5 },
+    payload: {
+      item_id: "para_500_amp",
+      location_id: "shelf_reception",
+      quantity: 5,
+      waste_kind: "broken",
+      culprit_id: "staff-reception",
+      confirmer_id: "staff-spare",
+    },
     client_at: new Date().toISOString(),
     work_date: window.ShiftOutbox.tehranBusinessDate(),
   });
@@ -76,6 +84,7 @@ def live_server(tmp_path: Path) -> Generator[tuple[str, Database]]:
     try:
         setup.migrate()
         seed_roster(setup, pepper=settings.read_or_create_secret())
+        seed_catalog(setup)
     finally:
         setup.close()
     application = create_app(settings)
@@ -225,14 +234,10 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
         )
         assert "error" in offline_post
 
-        page.select_option("#event-type", "stock.waste_reported")
-        page.fill("#event-item", "bandage_roll")
-        page.fill("#event-location", "emergency_cabinet")
-        page.fill("#event-quantity", "5")
-        page.click("#submit-event-btn")
+        queued = page.evaluate(_SUBMIT_EVENT)
+        assert queued is not None
 
         _wait_for_queue_length(page, 1)
-        queued = _first_queued_item(page)
         assert "actor_id" not in queued["body"]
         assert "device_id" not in queued["body"]
         assert "shift_id" not in queued["body"]
@@ -258,7 +263,7 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
             assert event.work_date == queued["body"]["work_date"]
             assert event.payload["quantity"] == 5
             assert projections_repo.stock_rows(connection) == [
-                {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "qty": -5}
+                {"item_id": "para_500_amp", "location_id": "shelf_reception", "qty": -5}
             ]
 
         # A direct replay with forged identity fields still dedupes and keeps the principal.
@@ -271,7 +276,14 @@ def test_offline_form_submit_then_replay_records_one_principal_owned_event(
                         client_event_id: ulid,
                         idempotency_key: ulid,
                         type: "stock.waste_reported",
-                        payload: { item_id: "bandage_roll", location_id: "emergency_cabinet", quantity: 5 },
+                        payload: {
+                            item_id: "para_500_amp",
+                            location_id: "shelf_reception",
+                            quantity: 5,
+                            waste_kind: "broken",
+                            culprit_id: "staff-reception",
+                            confirmer_id: "staff-spare",
+                        },
                         actor_id: "staff_forged",
                         device_id: "device_forged",
                         shift_id: "shift_forged",

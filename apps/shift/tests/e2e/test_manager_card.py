@@ -3,14 +3,15 @@
 Marker: e2e
 
 S01 §6 gives the manager one screen in the morning, and R-10 keeps it to one job a page: an
-emergency start leads the card, the day's gaps follow, the history opens any stored card and the
-settings screen is where the card time lives. This journey walks that morning once, on a
-phone-sized browser, against a real uvicorn server: the app shell links the manager to the card, the
-emergency start a receptionist recorded leads the screen with who recorded it, the manager who
-confirmed it by phone and the Tehran instant the log stamped, the gap the alone chain left reads
-«بدون مقصر», the history lists the stored card and opens it, the settings screen saves the card time
-and shows it waiting for the next shift (R-09), and the same browser signed in as a receptionist is
-refused with a `403` that carries no card text at all.
+emergency start leads the card, the day's gaps follow, the day's shift events and whatever still waits
+on somebody come next (SHF-3), the history opens any stored card and the settings screen is where the
+card time lives. This journey walks that morning once, on a phone-sized browser, against a real uvicorn
+server: the app shell links the manager to the card, the emergency start a receptionist recorded leads
+the screen with who recorded it, the manager who confirmed it by phone and the Tehran instant the log
+stamped, the gap the alone chain left reads «بدون مقصر», the transfer the accountant has not decided
+reads «در انتظار تأیید» in both shift-event blocks, the history lists the stored card and opens it, the
+settings screen saves the card time and shows it waiting for the next shift (R-09), and the same browser
+signed in as a receptionist is refused with a `403` that carries no card text at all.
 
 The emergency flow is recorded through the real HTTP API before the browser opens — the outgoing
 person has left, the manager confirms by phone and the incoming person settles the box alone (H-08) —
@@ -34,13 +35,14 @@ import httpx
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, Seeded, seed_roster
-from seed_reference_data import seed as seed_catalog
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo
 from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.common.clock import TEHRAN, SystemClock, parse_iso, to_tehran
+from shift.common.ids import new_ulid
 from shift.common.jalali import format_jalali
 from shift.config.settings import Settings
 from shift.domain.daily_card import FRIDAY, window_for
@@ -68,12 +70,20 @@ CASH_GAP = 4_321
 SHELF_COUNTS = {"para_500_amp": 987_654, "diclofenac_75_amp": 532_119}
 SETTING_DEFAULT = "07:30"
 CARD_TIME = "08:15"
+# The shift event of the day (SHF-3): a transfer the accountant has not decided, so it reads pending.
+TRANSFER_AMOUNT = 150_000
+TRANSFER_ADMISSION = "A-9001"
 
 PHONE_VIEWPORT = {"width": 390, "height": 844}
 EMERGENCY_HEADING = "شروع اضطراری تحویل"
 GAP_HEADING = "مغایرت‌ها"
 UNNAMED = "بدون مقصر"
 CARD_TITLE = "کارت روزانهٔ مدیر"
+SHIFT_EVENTS_HEADING = "رویدادهای شیفت"
+OPEN_EVENTS_HEADING = "رویدادهای باز"
+TRANSFER_LABEL = "کارت‌به‌کارت"
+PENDING_STATUS = "در انتظار تأیید"
+TOMAN = "تومان"
 REFUSAL = "نقش شما اجازهٔ این کار را ندارد."
 # Text that only the card page carries: a 403 may not be that page with its figures stripped out.
 CARD_MARKERS = (EMERGENCY_HEADING, GAP_HEADING, UNNAMED, CARD_TITLE, "mg-amount", "mg-section")
@@ -250,6 +260,26 @@ def _emergency_start(base_url: str) -> str:
     return handover_id
 
 
+def _report_a_card_transfer(base_url: str) -> str:
+    """Record the shift event of the day: a transfer the accountant has not decided yet (SHF-3)."""
+    with httpx.Client(base_url=base_url, timeout=15.0) as api:
+        headers = {"X-CSRFToken": _sign_in_over_http(api, RECEPTIONIST)}
+        now = SystemClock().now_utc()
+        reported = api.post(
+            "/api/v1/events",
+            json={
+                "type": "card.transfer_reported",
+                "payload": {"amount": TRANSFER_AMOUNT, "admission_no": TRANSFER_ADMISSION},
+                "client_at": now.isoformat(),
+                "client_event_id": new_ulid(now),
+            },
+            headers=headers,
+        )
+        assert reported.status_code == 200, reported.text
+        assert reported.json()["created"] is True, reported.text
+        return str(reported.json()["event_id"])
+
+
 def _card_day_for(moment: datetime) -> date:
     """The card date whose window covers `moment`'s Tehran day: the next run the scheduler makes.
 
@@ -296,11 +326,13 @@ def test_the_manager_reads_the_card_on_a_phone_and_a_receptionist_is_refused(
 ) -> None:
     """One morning: the shell link, the emergency lead, the unnamed gap, the history, settings, 403."""
     handover_id = _emergency_start(live_shift.base_url)
+    _report_a_card_transfer(live_shift.base_url)
     card = _generate_the_card(live_shift)
     emergency = card.emergency_starts[0]
     assert emergency.recorded_by.name == RECEPTIONIST.full_name
     (gap,) = card.discrepancies
     assert (gap.difference, gap.culprit) == (CASH_GAP, None), "the alone settlement stays unnamed (H-08)"
+    assert [(row.event_type, row.status) for row in card.shift_events] == [("card.transfer_reported", "pending")]
     confirmed_at = _stamp(_emergency_confirmed_at(live_shift.database, handover_id))
 
     context, page = _open_phone(browser)
@@ -333,7 +365,23 @@ def test_the_manager_reads_the_card_on_a_phone_and_a_receptionist_is_refused(
         assert UNNAMED in gap_text
         assert emergency_section.bounding_box()["y"] < gap_section.bounding_box()["y"], "the emergency block leads"
 
-        # 4. The history lists the stored card and opens it.
+        # 4. The shift event of the day: the transfer still waiting for the accountant (SHF-3), and
+        #    the same row in the open block, because a waiting approval is what the card exists for.
+        events_section = page.locator("section[aria-labelledby='mg-shift-events-title']")
+        assert SHIFT_EVENTS_HEADING in events_section.inner_text()
+        events_text = events_section.inner_text()
+        assert TRANSFER_LABEL in events_text
+        assert PENDING_STATUS in events_text
+        assert RECEPTIONIST.full_name in events_text
+        assert f"{TRANSFER_AMOUNT:,} {TOMAN}" in events_text
+        assert TRANSFER_ADMISSION in events_text
+        open_section = page.locator("section[aria-labelledby='mg-open-events-title']")
+        assert OPEN_EVENTS_HEADING in open_section.inner_text()
+        open_text = open_section.inner_text()
+        assert TRANSFER_LABEL in open_text and PENDING_STATUS in open_text
+        assert gap_section.bounding_box()["y"] < events_section.bounding_box()["y"], "the events follow the gaps"
+
+        # 5. The history lists the stored card and opens it.
         page.click('a.mg-nav-link[href="/manager/cards"]')
         page.wait_for_selector(".mg-list-link", timeout=15000)
         rows = page.locator(".mg-list-link")
@@ -344,7 +392,7 @@ def test_the_manager_reads_the_card_on_a_phone_and_a_receptionist_is_refused(
         page.wait_for_selector("#mg-emergency-title", timeout=15000)
         assert page.url.endswith(f"/manager/card/{card.card_date.isoformat()}")
 
-        # 5. The settings screen saves the card time and shows it waiting for the next shift (R-09).
+        # 6. The settings screen saves the card time and shows it waiting for the next shift (R-09).
         page.click('a.mg-nav-link[href="/manager/settings"]')
         page.wait_for_selector("#set-card_time", timeout=15000)
         assert page.input_value("#set-card_time") == SETTING_DEFAULT
@@ -356,7 +404,7 @@ def test_the_manager_reads_the_card_on_a_phone_and_a_receptionist_is_refused(
         pending = page.inner_text("form[data-setting='card_time'] .mg-pending")
         assert CARD_TIME in pending and "تغییر در انتظار" in pending
 
-        # 6. The same browser signed in as a receptionist is refused, and the refusal is bare.
+        # 7. The same browser signed in as a receptionist is refused, and the refusal is bare.
         context.clear_cookies()
         _login(page, live_shift.base_url, RECEPTIONIST)
         refused = page.goto(f"{live_shift.base_url}/manager/card", wait_until="domcontentloaded")

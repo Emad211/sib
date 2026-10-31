@@ -18,9 +18,8 @@ from shift.api.deps import require, running_shift
 from shift.domain.permissions import Permission
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
-from shift.services.event_store import EventStore
-from shift.services.outbox import EventSubmission, OutboxService, OutboxValidationError
-from shift.services.projections import ProjectionEngine
+from shift.services.outbox import EventSubmission, OutboxValidationError
+from shift.services.shift_events import ShiftEventService
 
 MAX_REQUEST_BYTES = 64 * 1024
 _MAX_IDENTIFIER = 128
@@ -77,22 +76,98 @@ class EventIn(BaseModel):
 
 
 class EventOut(BaseModel):
-    """Event ingestion response."""
+    """Event ingestion response; `held` is additive, so an older cached shell keeps working (F5)."""
 
     seq: int
     event_id: str
     created: bool
     status: str
+    held: bool = False
 
 
-def get_event_store(request: Request) -> EventStore:
-    """Retrieve the app EventStore from application state."""
-    return request.app.state.events
+class PendingEventOut(BaseModel):
+    """One open shift event the signed-in person may decide, whatever shift opened it."""
+
+    event_id: str
+    type: str
+    code: str
+    label: str
+    at_tehran: str
+    shift_id: str
+    actor: dict[str, str | None]
+    summary: dict[str, Any]
 
 
-def get_projections(request: Request) -> ProjectionEngine:
-    """Retrieve the app projection engine so each append becomes visible immediately."""
-    return request.app.state.projections
+class OpenTargetOut(BaseModel):
+    """One open record the signed-in person may act on from the wizard (SHF-7, F2)."""
+
+    event_id: str
+    type: str
+    code: str
+    label: str
+    at_tehran: str
+    actor: dict[str, str | None]
+    summary: dict[str, Any]
+    actions: list[str]
+
+
+def get_shift_events(request: Request) -> ShiftEventService:
+    """The shift-event service created in the lifespan (routes never build their own)."""
+    return request.app.state.shift_events
+
+
+PHOTO_MISSING = "عکس رسید پیدا نشد؛ ابتدا عکس را بفرستید."
+
+
+def _require_photo(request: Request, payload: dict[str, Any]) -> None:
+    """An event that names a receipt photo may only point at a photo this server already holds.
+
+    The phone uploads the blob before it replays the event (SHF-7), so a hash with no file behind it
+    is a broken reference on the manager's card, not a record worth keeping: the route refuses it
+    here, before the service applies any projection effect.
+    """
+    sha = payload.get("photo_sha256")
+    if sha is None:
+        return
+    store = getattr(request.app.state, "photos", None)
+    if store is None or not store.exists(str(sha)):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=PHOTO_MISSING)
+
+
+@router.get(
+    "/shift-events/pending",
+    response_model=list[PendingEventOut],
+    summary="The open items this signed-in person may decide now",
+)
+def get_pending_events(
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
+) -> list[PendingEventOut]:
+    """Any phone that may append may ask; the service answers with its own open items only (R-01, R-07).
+
+    The confirmation the owner asks for may be a nurse's or a receptionist's, so the route cannot be
+    the approval roles' alone. It returns the item, its actor and its time — no shift's figures and
+    nothing another person could decide.
+    """
+    return [PendingEventOut(**entry.to_payload()) for entry in service.pending_for(principal)]
+
+
+@router.get(
+    "/shift-events/open",
+    response_model=list[OpenTargetOut],
+    summary="The open records this signed-in person may act on in the wizard",
+)
+def get_open_events(
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    shift: Annotated[ShiftKey, Depends(running_shift)],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
+) -> list[OpenTargetOut]:
+    """The record a closing event points at: a fault to assign or fix, a belonging to deliver.
+
+    Any phone that may append asks; the service answers with the records this person may act on and
+    nothing else, whatever shift opened them (F2, R-01, R-07). No cash figure is in the answer.
+    """
+    return [OpenTargetOut(**entry.to_payload()) for entry in service.open_targets(principal, shift)]
 
 
 @router.post(
@@ -103,17 +178,18 @@ def get_projections(request: Request) -> ProjectionEngine:
 )
 def post_event(
     event_in: EventIn,
+    request: Request,
     response: Response,
     principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
     shift: Annotated[ShiftKey, Depends(running_shift)],
-    store: Annotated[EventStore, Depends(get_event_store)],
-    projections: Annotated[ProjectionEngine, Depends(get_projections)],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
 ) -> EventOut:
     """Validate an event payload and insert it idempotently for the session principal.
 
     Duplicate idempotency_key replays return the existing seq with HTTP 200.
-    Invalid payloads return HTTP 422; anonymous requests fail closed with 401.
+    Invalid payloads or a clinic rule refusal return HTTP 422; anonymous requests fail closed with 401.
     """
+    _require_photo(request, event_in.payload)
     submission = EventSubmission(
         type=event_in.type,
         payload=event_in.payload,
@@ -129,9 +205,8 @@ def post_event(
         shift_work_date=shift.work_date,
     )
 
-    outbox_svc = OutboxService(store, projections)
     try:
-        result = outbox_svc.record_event(submission)
+        result = service.record(submission, principal=principal, shift=shift)
     except OutboxValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -146,4 +221,5 @@ def post_event(
         event_id=result.event_id,
         created=result.created,
         status=result.status,
+        held=result.held,
     )

@@ -11,6 +11,8 @@
   <nav class="mg-nav" aria-label="صفحه‌های مدیر">
     <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
     <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
+    <a class="mg-nav-link" href="/manager/items">اقلام و کد کالا</a>
   </nav>
 
   {% if card %}
@@ -38,13 +40,30 @@
   </section>
   {% endif %}
 
+  {% if "over_cap_withdrawals" in card.sections %}
+  {% set withdrawals = card.sections.over_cap_withdrawals %}
+  <section class="mg-section mg-emergency{% if not withdrawals %} mg-clear{% endif %}" aria-labelledby="mg-withdrawals-title">
+    <h2 id="mg-withdrawals-title" class="mg-section-title">برداشت بالای سقف از صندوق</h2>
+    {% for row in withdrawals %}
+    <article class="mg-alert-row">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-alert-who">گیرنده: {{ row.recipient }} · مدیر نام‌برده: {{ row.manager }}</p>
+      <p class="mg-line">دلیل: {{ row.reason }}</p>
+      <p class="mg-line mg-muted">{{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
   {% if "cash_exceptions" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-cash-title">
     <h2 id="mg-cash-title" class="mg-section-title">نقد ثبت‌شده در تحویل</h2>
     <p class="mg-note">این نقد داخل تحویل ثبت شده و مال شیفت بعد است.</p>
     {% for row in card.sections.cash_exceptions %}
     <article class="mg-row">
-      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان رسید</span></p>
+      {% if row.outflow != "0" %}<p class="mg-amount">{{ row.outflow }} <span class="mg-unit">تومان برداشت</span></p>{% endif %}
       <p class="mg-line">{{ row.flow }} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span></p>
       <p class="mg-line mg-muted">{{ row.at }}</p>
     </article>
@@ -101,6 +120,79 @@
   </section>
   {% endif %}
 
+  {% if "shift_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-shift-events-title">
+    <h2 id="mg-shift-events-title" class="mg-section-title">رویدادهای شیفت</h2>
+    {% for row in card.sections.shift_events %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.status }}</p>
+      <p class="mg-line">{{ row.actor }} · {{ row.at }}</p>
+      {% for field in row.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+      {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "open_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-open-events-title">
+    <h2 id="mg-open-events-title" class="mg-section-title">رویدادهای باز</h2>
+    {% for row in card.sections.open_events %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.label }} <span class="mg-id">({{ row.code }})</span> — {{ row.status }}</p>
+      <p class="mg-line">{{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-muted">{{ row.age_hours }} ساعت باز</p>
+      {% for field in row.fields %}
+      <p class="mg-line mg-muted">{{ field.label }}: {{ field.value }}</p>
+      {% endfor %}
+      {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس رسید</a></p>{% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "late_cash" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-late-cash-title">
+    <h2 id="mg-late-cash-title" class="mg-section-title">نقد دیررسیده</h2>
+    <p class="mg-note">این نقد پیش از برش تحویل رخ داده ولی پس از تسویه رسیده است؛ صندوق دو بار کم نشد.</p>
+    {% for row in card.sections.late_cash %}
+    <article class="mg-row">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }}</p>
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}{% if row.handover_id %} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span>{% endif %}</p>
+      <p class="mg-line mg-muted">توضیح مغایرت همان تحویل: {{ row.explains }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "held_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-held-title">
+    <h2 id="mg-held-title" class="mg-section-title">رویدادهای نگه‌داشته‌شده</h2>
+    <p class="mg-note">این رویدادها زمان نامعتبر دارند و تا تصمیم شما روی صندوق و قفسه اثر نکرده‌اند.</p>
+    {% for row in card.sections.held_events %}
+    <article class="mg-row" data-held-row>
+      <p class="mg-line mg-strong">{{ row.label }}</p>
+      <p class="mg-line">{{ row.message }}</p>
+      <p class="mg-line mg-muted">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }} · ثبت‌کننده: {{ row.actor }}</p>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-held-release="{{ row.held_event_id }}">آزادسازی</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-held-reject="{{ row.held_event_id }}">رد</button>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
   {% else %}
   <section class="mg-section" aria-labelledby="mg-empty-title">
     <h1 id="mg-empty-title" class="mg-title">کارت روزانهٔ مدیر</h1>
@@ -110,4 +202,8 @@
   </section>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/manager.js"></script>
 {% endblock %}

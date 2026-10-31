@@ -14,6 +14,7 @@ from auth_fixtures import login as login_request
 from clocks import FixedClock
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import events_repo, migrations, projections_repo
@@ -31,6 +32,7 @@ PUBKEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE-e2e-test-public-key"
 def _bootstrap(client: TestClient) -> None:
     """Install the manager phone and the nurse account that will enroll over QR."""
     database: Database = client.app.state.database
+    seed_catalog(database)
     create_staff(
         database,
         staff_id=MANAGER["staff_id"],
@@ -100,7 +102,14 @@ def test_the_whole_shift_path_from_qr_to_rebuilt_projections(client: TestClient,
             "client_event_id": event_id,
             "idempotency_key": event_id,
             "type": "stock.waste_reported",
-            "payload": {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5},
+            "payload": {
+                "item_id": "para_500_amp",
+                "location_id": "shelf_reception",
+                "quantity": 5,
+                "waste_kind": "broken",
+                "culprit_id": "staff-e2e-nurse",
+                "confirmer_id": "staff-e2e-manager",
+            },
             "client_at": datetime.now(UTC).isoformat(),
             "actor_id": "staff-forged",
             "device_id": "device-forged",
@@ -119,7 +128,7 @@ def test_the_whole_shift_path_from_qr_to_rebuilt_projections(client: TestClient,
     assert event.device_id == enrolled_device
     assert event.shift_id == shift.text
     assert event.work_date == shift.work_date.isoformat()
-    assert stock == [{"item_id": "bandage_roll", "location_id": "emergency_cabinet", "qty": -5}]
+    assert stock == [{"item_id": "para_500_amp", "location_id": "shelf_reception", "qty": -5}]
 
     scenario = build(tmp_path / "accounting.db")
     bridge = AccountingBridge(database, client.app.state.events, clock=FixedClock(parse_time(scenario.cutoff_at)))

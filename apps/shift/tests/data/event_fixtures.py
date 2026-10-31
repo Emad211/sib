@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from shift.common.ids import new_ulid
+from shift.domain.shift_events import kind_for
 from shift.services.event_store import NewEvent
 
 WORK_DATE = date(2026, 10, 28)
@@ -45,6 +46,14 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"staff_id": "staff-out"}
     if event_type == "handover.emergency_start_confirmed":
         return {"manager_id": "manager-1"}
+    if event_type == "handover.cash_reference_adjusted":
+        return {"delta": -100_000}
+    if event_type == "handover.late_cash_recorded":
+        return {
+            "handover_id": "handover-1",
+            "amount": -100_000,
+            "occurred_at": "2026-10-28T09:00:00+00:00",
+        }
     if event_type == "discrepancy.recorded":
         return {"scope": "item", "item_id": "item-1", "location_id": "location-1", "difference": 1}
     if event_type in {"cash.withdrawn", "cash.deposited", "acc.cash_receipt"}:
@@ -60,6 +69,19 @@ def default_payload(event_type: str) -> dict[str, Any]:
         "acc.consumption",
     }:
         return {"item_id": "item-1", "location_id": "location-1", "quantity": 2}
+    if event_type == "event.held":
+        return {
+            "reason": "stale",
+            "type": "cash.withdrawn",
+            "event_id": "event-held-1",
+            "occurred_at": "2026-10-20T09:00:00+00:00",
+            "payload": {"amount": 100_000, "recipient_id": "staff-2", "reason": "خرید فوری"},
+        }
+    if event_type in {"event.released", "event.hold_rejected"}:
+        return {"event_id": "event-held-1"}
+    kind = kind_for(event_type)
+    if kind is not None:
+        return kind.sample()
     raise ValueError(f"no default payload for {event_type}")
 
 

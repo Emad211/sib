@@ -2,8 +2,8 @@
  "GET / [get_home]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -16,8 +16,8 @@
  "GET /admin/devices [device_admin_page]": {
   "guard": "permission:device.enroll",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -30,8 +30,8 @@
  "GET /api/v1/auth/me [me]": {
   "guard": "authenticated",
   "roles": {
-   "anon": 401,
    "accountant": 200,
+   "anon": 401,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -41,11 +41,25 @@
    "storekeeper": 200
   }
  },
+ "GET /api/v1/campaigns [list_campaigns]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /api/v1/catalog/items [list_items]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -58,8 +72,8 @@
  "GET /api/v1/catalog/locations [list_locations]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -72,8 +86,8 @@
  "GET /api/v1/catalog/roles [list_roles]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -86,8 +100,8 @@
  "GET /api/v1/catalog/staff/{staff_id}/roles [list_staff_roles]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -100,8 +114,8 @@
  "GET /api/v1/devices [list_devices]": {
   "guard": "permission:device.enroll",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -115,8 +129,8 @@
   "guard": "permission:handover.count.submit",
   "note": "the open flows of this shift, so a second phone joins instead of needing the first one (S03 §3)",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -129,8 +143,8 @@
  "GET /api/v1/handover/managers [list_managers]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -143,8 +157,8 @@
  "GET /api/v1/handover/{handover_id} [get_handover_state]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -157,8 +171,8 @@
  "GET /api/v1/handover/{handover_id}/targets [handover_targets]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -168,11 +182,25 @@
    "storekeeper": 404
   }
  },
- "GET /api/v1/settings [list_settings]": {
+ "GET /api/v1/manager/held-events [list_held]": {
+  "guard": "permission:daily_card.view",
+  "note": "F5: the manager's held records; the manager releases or rejects each one on the card",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ }, "GET /api/v1/settings [list_settings]": {
   "guard": "permission:settings.change",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -185,8 +213,8 @@
  "GET /api/v1/settings/{setting}/history [setting_history]": {
   "guard": "permission:settings.change",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -196,11 +224,41 @@
    "storekeeper": 403
   }
  },
- "GET /api/v1/staff [list_staff]": {
+ "GET /api/v1/shift-events/pending [get_pending_events]": {
+  "guard": "permission:events.append",
+  "note": "my open items: any phone that may append asks, because the named confirmer of a record may be a nurse or a receptionist; the service returns only the records this person may decide (R-01, R-07)",
+  "roles": {
+   "accountant": 200,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+  "GET /api/v1/shift-events/open [get_open_events]": {
+  "guard": "permission:events.append",
+  "note": "the open record a closing event points at (fault assign/fix, belonging delivery); the service returns only records this person may act on, whatever shift opened them (F2, SHF-7)",
+  "roles": {
+   "accountant": 200,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+"GET /api/v1/staff [list_staff]": {
   "guard": "permission:staff.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -213,8 +271,22 @@
  "GET /enroll [enroll_page]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /events [get_events_page]": {
+  "guard": "permission:events.append",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -228,8 +300,8 @@
   "guard": "permission:handover.count.submit",
   "note": "the phone handover screen: a receptionist and a nurse both open it (H-10, H-12)",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -242,8 +314,8 @@
  "GET /healthz [healthz]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -256,8 +328,8 @@
  "GET /login [login_page]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -267,12 +339,26 @@
    "storekeeper": 200
   }
  },
+ "GET /manager/campaigns [get_manager_campaigns]": {
+  "guard": "permission:settings.change",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /manager/card [get_manager_card]": {
   "guard": "permission:daily_card.view",
   "note": "the manager's newest daily card; an install with no card yet gets the empty state",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -286,8 +372,8 @@
   "guard": "permission:daily_card.view",
   "note": "one stored card by its ISO date; a day without a stored card is the 404 page",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 404,
    "multi_role": 403,
    "nurse": 403,
@@ -301,8 +387,8 @@
   "guard": "permission:daily_card.view",
   "note": "the stored cards, newest first",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -316,8 +402,8 @@
   "guard": "permission:settings.change",
   "note": "the settings screen the existing settings API already drives (R-09)",
   "roles": {
-   "anon": 303,
    "accountant": 403,
+   "anon": 303,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -330,8 +416,8 @@
  "GET /manifest.webmanifest [get_manifest]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -344,8 +430,8 @@
  "GET /offline.html [get_offline]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -358,8 +444,8 @@
  "GET /sw.js [get_service_worker]": {
   "guard": "public",
   "roles": {
-   "anon": 200,
    "accountant": 200,
+   "anon": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
@@ -373,8 +459,8 @@
   "guard": "public",
   "note": "public by design; the empty body is refused by validation after the double-submit check",
   "roles": {
-   "anon": 422,
    "accountant": 422,
+   "anon": 422,
    "manager": 422,
    "multi_role": 422,
    "nurse": 422,
@@ -387,8 +473,8 @@
  "POST /api/v1/auth/logout [logout]": {
   "guard": "authenticated",
   "roles": {
-   "anon": 401,
    "accountant": 204,
+   "anon": 401,
    "manager": 204,
    "multi_role": 204,
    "nurse": 204,
@@ -402,8 +488,8 @@
   "guard": "public",
   "note": "the one-time token is the credential; an empty body never reaches the service",
   "roles": {
-   "anon": 422,
    "accountant": 422,
+   "anon": 422,
    "manager": 422,
    "multi_role": 422,
    "nurse": 422,
@@ -416,8 +502,8 @@
  "POST /api/v1/devices/enrollment-tokens [mint_enrollment_token]": {
   "guard": "permission:device.enroll",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 201,
    "multi_role": 403,
    "nurse": 403,
@@ -430,8 +516,8 @@
  "POST /api/v1/devices/{device_id}/revoke [revoke_device]": {
   "guard": "permission:device.revoke",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 204,
    "multi_role": 403,
    "nurse": 403,
@@ -444,12 +530,12 @@
  "POST /api/v1/events [post_event]": {
   "guard": "permission:events.append",
   "roles": {
+   "accountant": 422,
    "anon": 401,
-   "accountant": 200,
    "manager": 200,
    "multi_role": 200,
    "nurse": 200,
-   "purchaser": 200,
+   "purchaser": 422,
    "reception": 200,
    "shift_doctor": 200,
    "storekeeper": 200
@@ -458,8 +544,8 @@
  "POST /api/v1/handover/start [start_handover]": {
   "guard": "permission:handover.start",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 422,
    "multi_role": 422,
    "nurse": 422,
@@ -472,8 +558,8 @@
  "POST /api/v1/handover/{handover_id}/advance [advance_handover]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -486,8 +572,8 @@
  "POST /api/v1/handover/{handover_id}/checklists [answer_checklist]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -500,8 +586,8 @@
  "POST /api/v1/handover/{handover_id}/counts [submit_count]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -514,8 +600,8 @@
  "POST /api/v1/handover/{handover_id}/early-leave [report_early_leave]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -528,8 +614,8 @@
  "POST /api/v1/handover/{handover_id}/emergency-start [confirm_emergency_start]": {
   "guard": "permission:handover.start",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -542,8 +628,8 @@
  "POST /api/v1/handover/{handover_id}/joint [submit_joint_count]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -556,8 +642,8 @@
  "POST /api/v1/handover/{handover_id}/parcels [hand_parcel]": {
   "guard": "permission:handover.count.submit",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -570,8 +656,8 @@
  "POST /api/v1/handover/{handover_id}/sign [sign_handover]": {
   "guard": "permission:handover.sign",
   "roles": {
-   "anon": 401,
    "accountant": 404,
+   "anon": 401,
    "manager": 404,
    "multi_role": 404,
    "nurse": 404,
@@ -581,11 +667,38 @@
    "storekeeper": 403
   }
  },
- "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
+ "POST /api/v1/manager/held-events/{held_event_id}/release [release_held]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/held-events/{held_event_id}/reject [reject_held]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ }, "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
   "guard": "permission:staff.pin.reset",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 204,
    "multi_role": 403,
    "nurse": 403,
@@ -598,9 +711,23 @@
  "POST /api/v1/staff/{staff_id}/unlock [unlock]": {
   "guard": "permission:staff.unlock",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "PUT /api/v1/campaigns/{campaign_id} [save_campaign]": {
+  "guard": "permission:catalog.manage",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,
@@ -612,8 +739,8 @@
  "PUT /api/v1/catalog/items/{item_id} [save_item]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -626,8 +753,8 @@
  "PUT /api/v1/catalog/locations/{location_id} [save_location]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -640,8 +767,8 @@
  "PUT /api/v1/catalog/staff/{staff_id}/roles/{role} [set_staff_role]": {
   "guard": "permission:catalog.manage",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -654,8 +781,8 @@
  "PUT /api/v1/settings/{setting} [change_setting]": {
   "guard": "permission:settings.change",
   "roles": {
-   "anon": 401,
    "accountant": 403,
+   "anon": 401,
    "manager": 200,
    "multi_role": 403,
    "nurse": 403,
@@ -664,5 +791,80 @@
    "shift_doctor": 403,
    "storekeeper": 403
   }
+ },
+ "GET /api/v1/photos/{sha256} [get_photo]": {
+ "guard": "permission:shift_event.approve",
+ "note": "a receipt photo: only the manager and the approvers may read the bytes; the hash is the whole path (SHF-7)",
+ "roles": {
+  "accountant": 404,
+  "anon": 401,
+  "manager": 404,
+  "multi_role": 404,
+  "nurse": 403,
+  "purchaser": 403,
+  "reception": 403,
+  "shift_doctor": 404,
+  "storekeeper": 404
  }
+},
+ "PUT /api/v1/photos/{sha256} [put_photo]": {
+ "guard": "permission:events.append",
+ "note": "the recorder uploads the receipt before the event that names it; a body that is not a JPEG is refused (SHF-7)",
+ "roles": {
+  "accountant": 415,
+  "anon": 401,
+  "manager": 415,
+  "multi_role": 415,
+  "nurse": 415,
+  "purchaser": 415,
+  "reception": 415,
+  "shift_doctor": 415,
+  "storekeeper": 415
+ }
+},
+ "GET /manager/baseline [get_manager_baseline]": {
+ "guard": "permission:handover.baseline",
+ "note": "the manager records the app's opening count on the phone, through the same service as the CLI (SHF-7.1)",
+ "roles": {
+  "accountant": 403,
+  "anon": 303,
+  "manager": 200,
+  "multi_role": 403,
+  "nurse": 403,
+  "purchaser": 403,
+  "reception": 403,
+  "shift_doctor": 403,
+  "storekeeper": 403
+ }
+},
+ "GET /manager/items [get_manager_items]": {
+ "guard": "permission:catalog.manage",
+ "note": "the clinic's items with their accounting codes, the items without a code first (SHF-7.1, Q-17)",
+ "roles": {
+  "accountant": 403,
+  "anon": 303,
+  "manager": 200,
+  "multi_role": 403,
+  "nurse": 403,
+  "purchaser": 403,
+  "reception": 403,
+  "shift_doctor": 403,
+  "storekeeper": 403
+ }
+},
+ "POST /api/v1/manager/baseline [post_manager_baseline]": {
+ "guard": "permission:handover.baseline",
+ "note": "the opening count as JSON; an unknown flow is refused before anything is written (SHF-7.1)",
+ "roles": {
+  "accountant": 403,
+  "anon": 401,
+  "manager": 422,
+  "multi_role": 403,
+  "nurse": 403,
+  "purchaser": 403,
+  "reception": 403,
+  "shift_doctor": 403,
+  "storekeeper": 403
+ }
+}
 }

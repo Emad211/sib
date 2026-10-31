@@ -53,6 +53,9 @@ class Settings:
     backup_dir: Path | None = None
     backup_mirror_dir: Path | None = None
     backup_keep: int = DEFAULT_BACKUP_KEEP
+    # The receipt photos (SHF-7): files on the clinic PC, next to the database unless SHIFT_PHOTOS_DIR
+    # says otherwise. They are content-addressed, so the backup copies them once and keeps them.
+    photos_dir: Path | None = None
     # Off by default so a test or a one-off script never starts a timer by accident; the
     # production entry point turns them on through `SHIFT_BACKGROUND_JOBS` (see `from_env`).
     background_jobs: bool = False
@@ -78,6 +81,7 @@ class Settings:
             backup_dir=Path(env.get("SHIFT_BACKUP_DIR", root / "backups")).resolve(),
             backup_mirror_dir=Path(mirror).resolve() if mirror else None,
             backup_keep=_as_count(env.get("SHIFT_BACKUP_KEEP", str(DEFAULT_BACKUP_KEEP))),
+            photos_dir=Path(env.get("SHIFT_PHOTOS_DIR", root / "photos")).resolve(),
             background_jobs=_as_bool(env.get("SHIFT_BACKGROUND_JOBS", "1")),
         )
 
@@ -85,6 +89,11 @@ class Settings:
     def resolved_backup_dir(self) -> Path:
         """Where snapshots land: next to the database unless `SHIFT_BACKUP_DIR` says otherwise."""
         return self.backup_dir if self.backup_dir is not None else self.database_path.parent / "backups"
+
+    @property
+    def resolved_photos_dir(self) -> Path:
+        """Where receipt photos live: next to the database unless `SHIFT_PHOTOS_DIR` says otherwise."""
+        return self.photos_dir if self.photos_dir is not None else self.database_path.parent / "photos"
 
     def read_or_create_secret(self) -> str:
         """Return the signing secret, creating it atomically on first use."""

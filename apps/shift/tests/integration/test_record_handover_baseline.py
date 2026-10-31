@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import record_handover_baseline
 from clocks import FixedClock
-from seed_reference_data import seed
+from synthetic_catalog import seed
 
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database

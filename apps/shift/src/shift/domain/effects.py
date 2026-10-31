@@ -113,6 +113,20 @@ def no_effects(_payload: Any) -> Effects:
     return Effects()
 
 
+def late_cash_reversal(payload: Any) -> Effects:
+    """The opposite of a late cash event's own movement, so a settled box keeps its figure (H-11).
+
+    A cash event that occurred before a flow's cutoff but arrived only after that flow settled has
+    already moved the box once, the moment it arrived. The agreed figure the flow settled on was
+    counted with that money already in or out of the physical box, so this internal record puts the
+    box back exactly where the settlement left it. Without it the next shift would compare against a
+    figure the count had already accounted for, which is the false discrepancy H-11 exists to stop.
+    """
+    if payload.amount > 0:
+        return Effects(cash=CashEffect(CashOperation.SUBTRACT, payload.amount, CashBox.RECEPTION.value))
+    return Effects(cash=CashEffect(CashOperation.ADD, -payload.amount, CashBox.RECEPTION.value))
+
+
 def baseline_recorded(payload: Any) -> Effects:
     """The manager's baseline sets every shelf it names and seeds the box it counts (SHF-7.1).
 

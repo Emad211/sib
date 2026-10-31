@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — اقلام و کد کالا{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
+    <a class="mg-nav-link" href="/manager/card">کارت امروز</a>
+    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
+    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+    <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">اقلام و کد کالا</h1>
+    <p class="mg-meta">{{ counted }} قلم شمارشی دارد و {{ counted - missing }} قلم کد کالا گرفته است؛ {{ missing }} قلم بی‌کد مانده.</p>
+    <p class="mg-hint">کد کالا همان کدی است که در نرم‌افزار حسابداری روی این قلم است. قلم شمارشی بدون کد ذخیره نمی‌شود.</p>
+  </header>
+
+  {% for item in items %}
+  <form class="mg-section mg-item{% if item.needs_code %} is-missing-code{% endif %}" data-item="{{ item.item_id }}"
+        data-name="{{ item.name }}" data-kind="{{ item.kind }}" data-location="{{ item.location_id }}"
+        data-unit="{{ item.unit }}" data-stock-factor="{{ item.stock_factor }}">
+    <h2 class="mg-section-title">{{ item.name }}</h2>
+    <p class="mg-line mg-muted">{{ item.kind_label }} · {{ item.location_name }} · {{ item.unit }}</p>
+    <div class="mg-item-controls">
+      <label class="mg-hint" for="min-{{ item.item_id }}">حداقل</label>
+      <input class="form-control mg-input" id="min-{{ item.item_id }}" data-field="minimum"
+             type="number" inputmode="numeric" min="0" step="1" dir="ltr" value="{{ item.minimum }}">
+      <label class="mg-hint" for="code-{{ item.item_id }}">کد کالا</label>
+      <input class="form-control mg-input" id="code-{{ item.item_id }}" data-field="acc_code"
+             type="text" dir="ltr" maxlength="32" autocomplete="off" value="{{ item.acc_code }}"
+             {%- if item.kind == 'counted' %} required{% endif %}>
+      <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
+    </div>
+    {% if item.needs_code %}
+    <p class="mg-pending">این قلم هنوز کد کالا ندارد.</p>
+    {% endif %}
+    <p class="mg-status" role="status"></p>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/manager-items.js"></script>
+{% endblock %}

@@ -10,8 +10,8 @@ from pathlib import Path
 from clocks import FixedClock
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from seed_reference_data import seed
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed
 
 from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo

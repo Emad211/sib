@@ -15,32 +15,116 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
 
+from shift.adapters.db import handover_repo, staff_repo
 from shift.api import deps
 from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
 from shift.api.templating import templates
 from shift.common.clock import TEHRAN, parse_iso, to_tehran
 from shift.common.jalali import format_jalali
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.permissions import Permission
 from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
+from shift.domain.shift_events import FieldKind, KindSpec, kind_for
 from shift.services.auth import Principal
-from shift.services.daily_card import SHORTAGE, SURPLUS, Card, DailyCardService, Person
+from shift.services.catalog import CatalogService, ItemKind
+from shift.services.daily_card import (
+    SHORTAGE,
+    STATUS_APPROVED,
+    STATUS_ASSIGNED,
+    STATUS_FIXED,
+    STATUS_PENDING,
+    STATUS_RECORDED,
+    STATUS_REJECTED,
+    STATUS_REPORTED,
+    SURPLUS,
+    Card,
+    DailyCardService,
+    Person,
+    ShiftEventLine,
+)
+from shift.services.handover import HandoverError, HandoverService
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
 HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
+BASELINE_PATH = "/manager/baseline"
+ITEMS_PATH = "/manager/items"
+BASELINE_API_PATH = "/api/v1/manager/baseline"
 NO_STORE = "no-store"
 FRIDAY = 4
 SATURDAY = 5
+# SHF-7.1: which shelves each handover flow counts (H-12 splits them by custodian, not by shelf).
+FLOW_LOCATIONS: dict[HandoverFlow, tuple[str, ...]] = {
+    HandoverFlow.RECEPTION: ("shelf_reception",),
+    HandoverFlow.NURSING: ("cpr_room",),
+}
+FLOW_IDS = {HandoverFlow.RECEPTION: "reception", HandoverFlow.NURSING: "nursing"}
+ITEM_KIND_LABELS = {
+    ItemKind.COUNTED: "شمارشی",
+    ItemKind.YES_NO: "بله/خیر",
+    ItemKind.READING: "عدد خواندنی",
+    ItemKind.PHOTO: "عکس",
+}
+BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
+BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "
+BASELINE_CUSTODIAN = "نگه‌دارنده باید از کارکنان فعال درمانگاه باشد."
+BASELINE_ITEMS = "اقلام شمارش اولیه باید همان اقلام شمارشی همان جریان باشند."
 
 CARD_NOT_FOUND = "کارتی برای این روز پیدا نشد."
+
+
+class BaselineItemIn(BaseModel):
+    """One shelf of the manager's opening count: what the shelf holds right now, zero included."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(min_length=1, max_length=128)
+    location_id: str = Field(min_length=1, max_length=128)
+    quantity: int = Field(ge=0)
+
+
+class BaselineIn(BaseModel):
+    """The whole opening count of one flow, sent once by the manager's phone (SHF-7.1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flow: HandoverFlow
+    custodian_id: str = Field(min_length=1, max_length=64)
+    opening_cash: int | None = Field(default=None, ge=0)
+    items: list[BaselineItemIn] = Field(min_length=1)
+
+
+class BaselineOut(BaseModel):
+    """What the baseline fixed: the flow, who holds it, the box and how many shelves it set."""
+
+    flow: str
+    custodian_id: str
+    opening_cash: int | None
+    shelves: int
+    recorded_at_tehran: str
+
 
 FLOW_LABELS = {"reception": "پذیرش", "nursing": "پرستاری"}
 # Which way a gap went, so the manager reads a shortage from a surplus and never a bare figure.
 DIRECTION_LABELS = {SHORTAGE: "کسری", SURPLUS: "مازاد"}
+# The one status each shift-event row can carry, in the manager's words (SHF-3).
+SHIFT_EVENT_STATUS_LABELS = {
+    STATUS_PENDING: "در انتظار تأیید",
+    STATUS_APPROVED: "تأییدشده",
+    STATUS_REJECTED: "ردشده",
+    STATUS_REPORTED: "باز",
+    STATUS_ASSIGNED: "ارجاع‌شده",
+    STATUS_FIXED: "تعمیرشده",
+    STATUS_RECORDED: "ثبت‌شده",
+}
+BOOLEAN_LABELS = {True: "بله", False: "خیر"}
+MULTI_SEPARATOR = "، "
+TOMAN = "تومان"
 SHIFT_LABELS = {1: "شیفت صبح", 2: "شیفت عصر", 3: "شیفت شب"}
 WEEKDAY_LABELS = {
     0: "دوشنبه",
@@ -65,9 +149,21 @@ SETTING_LABELS = {
 # A page guard each: a signed-out browser is sent to the login screen, a non-manager gets a 403.
 CardViewer = Annotated[Principal, Depends(deps.require_page(Permission.DAILY_CARD_VIEW))]
 SettingsEditor = Annotated[Principal, Depends(deps.require_page(Permission.SETTINGS_CHANGE))]
+BaselineEditor = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE))]
+ItemsEditor = Annotated[Principal, Depends(deps.require_page(Permission.CATALOG_MANAGE))]
 
 CardsService = Callable[[Request], DailyCardService]
 SettingsServiceSource = Callable[[Request], SettingsService]
+
+
+def _handover_service(request: Request) -> HandoverService:
+    """The handover service created in the lifespan (the manager's opening count writes through it)."""
+    return request.app.state.handover
+
+
+def _catalog_service(request: Request) -> CatalogService:
+    """The catalog service created in the lifespan (the item pages read it)."""
+    return request.app.state.catalog
 
 
 def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource) -> APIRouter:
@@ -75,6 +171,8 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
     pages = APIRouter(tags=["manager"])
     CardsDep = Annotated[DailyCardService, Depends(cards)]
     SettingsDep = Annotated[SettingsService, Depends(settings)]
+    HandoverDep = Annotated[HandoverService, Depends(_handover_service)]
+    CatalogDep = Annotated[CatalogService, Depends(_catalog_service)]
 
     @pages.get(CARD_PATH, response_class=HTMLResponse, summary="The newest daily card")
     def get_manager_card(request: Request, _viewer: CardViewer, service: CardsDep, policy: SettingsDep) -> HTMLResponse:
@@ -117,6 +215,123 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         snapshot = service.snapshot(deps.running_shift(request))
         rows = [_setting_row(key, snapshot[key], service.history(key)[0]) for key in SettingKey]
         return _shell_page(request, "manager_settings.html", {"settings": rows}, cache_control=NO_STORE)
+
+    @pages.get(BASELINE_PATH, response_class=HTMLResponse, summary="The manager's initial count")
+    def get_manager_baseline(
+        request: Request,
+        _editor: BaselineEditor,
+        handover: HandoverDep,
+        catalog: CatalogDep,
+    ) -> HTMLResponse:
+        """One flow at a time: the box (reception only), its shelves and who holds them now (SHF-7.1).
+
+        A flow that already has its baseline shows a one-line note instead of the form: the first
+        count is what every later blind count compares against, so it is recorded once and never
+        rewritten (the service refuses a second one).
+        """
+        shift = deps.running_shift(request)
+        places = {place.location_id: place.name for place in catalog.locations(shift)}
+        with request.app.state.database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+            recorded = {flow: handover_repo.has_baseline(connection, flow) for flow in FLOW_LOCATIONS}
+        flows = []
+        for flow, location_ids in FLOW_LOCATIONS.items():
+            groups = [
+                {
+                    "location_id": location_id,
+                    "name": places.get(location_id, location_id),
+                    "rows": [
+                        {"item_id": item.item_id, "name": item.name, "unit": item.unit}
+                        for item in catalog.items(shift, location_id=location_id)
+                        if item.kind is ItemKind.COUNTED
+                    ],
+                }
+                for location_id in location_ids
+            ]
+            flows.append(
+                {
+                    "id": FLOW_IDS[flow],
+                    "label": FLOW_LABELS.get(FLOW_IDS[flow], FLOW_IDS[flow]),
+                    "cash": flow is HandoverFlow.RECEPTION,
+                    "recorded": recorded[flow],
+                    "locations": groups,
+                }
+            )
+        staff = [
+            {"id": person.staff.staff_id, "name": person.staff.full_name} for person in people if person.staff.active
+        ]
+        return _shell_page(request, "manager_baseline.html", {"flows": flows, "staff": staff}, cache_control=NO_STORE)
+
+    @pages.post(BASELINE_API_PATH, response_model=BaselineOut, status_code=status.HTTP_201_CREATED)
+    def post_manager_baseline(
+        body: BaselineIn,
+        request: Request,
+        manager: Annotated[Principal, Depends(deps.require(Permission.HANDOVER_BASELINE))],
+        handover: HandoverDep,
+        catalog: CatalogDep,
+    ) -> BaselineOut:
+        """Record the opening count through the service that owns it; the CLI stays the fallback."""
+        if body.flow is HandoverFlow.RECEPTION and body.opening_cash is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "شمارش اولیهٔ پذیرش باید موجودی صندوق را هم داشته باشد.")
+        if body.flow is HandoverFlow.NURSING and body.opening_cash is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "جریان پرستاری صندوق نقدی ندارد.")
+        shift = deps.running_shift(request)
+        allowed = {
+            (item.item_id, item.location_id)
+            for location_id in FLOW_LOCATIONS[body.flow]
+            for item in catalog.items(shift, location_id=location_id)
+            if item.kind is ItemKind.COUNTED
+        }
+        if any((entry.item_id, entry.location_id) not in allowed for entry in body.items):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_ITEMS)
+        with request.app.state.database.read() as connection:
+            custodian = staff_repo.find(connection, body.custodian_id)
+        if custodian is None or not custodian.active:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, BASELINE_CUSTODIAN)
+        try:
+            record = handover.record_baseline(
+                flow=body.flow,
+                custodian_id=body.custodian_id,
+                manager_id=manager.staff_id,
+                opening_cash=body.opening_cash,
+                items=[entry.model_dump() for entry in body.items],
+            )
+        except HandoverError as error:
+            message = BASELINE_ALREADY if "already recorded" in str(error) else BASELINE_REFUSED + str(error)
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, message) from error
+        return BaselineOut(
+            flow=record.flow.value,
+            custodian_id=record.custodian_id,
+            opening_cash=record.opening_cash,
+            shelves=record.shelves,
+            recorded_at_tehran=to_tehran(record.recorded_at).isoformat(),
+        )
+
+    @pages.get(ITEMS_PATH, response_class=HTMLResponse, summary="The clinic's items and their codes")
+    def get_manager_items(
+        request: Request,
+        _editor: ItemsEditor,
+        catalog: CatalogDep,
+    ) -> HTMLResponse:
+        """Every item as the **next** shift will see it, the ones without an accounting code first.
+
+        A catalog change takes effect from the next shift and never in the middle of one (R-09), so
+        the page reads the next shift: after the manager saves a code, the reload must show the code
+        it just typed. Reading the running shift here showed the old version and looked like a
+        refusal (review F1).
+        """
+        target = deps.running_shift(request).following()
+        places = {place.location_id: place.name for place in catalog.locations(target)}
+        items = catalog.items(target)
+        counted = [item for item in items if item.kind is ItemKind.COUNTED]
+        rows = [_item_row(item, places) for item in sorted(items, key=_item_order)]
+        missing = sum(1 for item in counted if not item.acc_code)
+        return _shell_page(
+            request,
+            "manager_items.html",
+            {"items": rows, "counted": len(counted), "missing": missing},
+            cache_control=NO_STORE,
+        )
 
     return pages
 
@@ -188,17 +403,21 @@ def _card_view(card: Card) -> dict[str, Any]:
     }
 
 
-def _sections(card: Card) -> dict[str, list[dict[str, str]]]:
-    """The card's five sections as rows of text; a section the stored card lacks is left out."""
-    stored = card.to_payload()["sections"]
-    builders: dict[str, Callable[[Card], list[dict[str, str]]]] = {
+def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
+    """The card's seven sections as rows of text; a section the stored card lacks is left out."""
+    builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
+        "over_cap_withdrawals": _withdrawal_rows,
+        "late_cash": _late_cash_rows,
+        "held_events": _held_rows,
         "cash_exceptions": _cash_rows,
         "discrepancies": _discrepancy_rows,
         "flows": _flow_rows,
         "open_flows": _open_flow_rows,
+        "shift_events": _shift_event_rows,
+        "open_events": _open_event_rows,
     }
-    return {name: build(card) for name, build in builders.items() if name in stored}
+    return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
 
 def _emergency_rows(card: Card) -> list[dict[str, str]]:
@@ -222,6 +441,7 @@ def _cash_rows(card: Card) -> list[dict[str, str]]:
             "handover_id": entry.handover_id,
             "flow": _flow(entry.flow),
             "amount": f"{entry.amount:,}",
+            "outflow": f"{entry.outflow:,}",
             "at": _stamp_fa(entry.at_tehran),
         }
         for entry in card.cash_exceptions
@@ -270,6 +490,78 @@ def _open_flow_rows(card: Card) -> list[dict[str, str]]:
         }
         for entry in card.open_flows
     ]
+
+
+def _shift_event_rows(card: Card) -> list[dict[str, Any]]:
+    """The day's shift events, newest first: what was recorded, by whom, and what it says now."""
+    return [_shift_event_row(entry) for entry in card.shift_events]
+
+
+def _open_event_rows(card: Card) -> list[dict[str, Any]]:
+    """What is still waiting, oldest first, with how long the clinic has waited for it."""
+    return [{**_shift_event_row(entry.row), "age_hours": f"{entry.age_hours:,}"} for entry in card.open_events]
+
+
+def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
+    """One shift-event row: the kind's label and code, its actor, its instant and its own fields."""
+    photo = entry.summary.get("photo_sha256")
+    row: dict[str, Any] = {
+        "code": entry.code,
+        "label": entry.label_fa,
+        "actor": _person(entry.actor),
+        "at": _stamp_fa(entry.at_tehran),
+        "status": SHIFT_EVENT_STATUS_LABELS.get(entry.status, entry.status),
+        "fields": _event_fields(kind_for(entry.event_type), entry.summary),
+    }
+    # SHF-7: the receipt's hash becomes a link, never a figure. The route that serves the bytes is
+    # guarded to the manager and the approvers, exactly the people who read this card.
+    if isinstance(photo, str) and photo:
+        row["photo"] = f"/api/v1/photos/{photo}"
+    return row
+
+
+def _event_fields(kind: KindSpec | None, summary: dict[str, Any]) -> list[dict[str, str]]:
+    """The row's values, labelled by the kind's own `KindSpec` so the page matches the phone."""
+    specs = {field.key: field for field in kind.fields} if kind is not None else {}
+    order = [key for key in (kind.card_fields if kind is not None else ()) if key in summary]
+    order += [key for key in summary if key not in order]
+    fields: list[dict[str, str]] = []
+    for key in order:
+        value = summary[key]
+        # The receipt photo is a link (`photo` on the row), never a 64-character figure on the card.
+        if key.endswith("_sha256"):
+            continue
+        if value is None:
+            continue
+        spec = specs.get(key)
+        fields.append(
+            {
+                "label": key if spec is None else spec.label_fa,
+                "value": _field_fa(None if spec is None else spec.kind, value),
+            }
+        )
+    return fields
+
+
+def _field_fa(field_kind: FieldKind | None, value: Any) -> str:
+    """One value in the clinic's words: an amount in Toman, a quantity as counted, a multi joined."""
+    if field_kind is FieldKind.AMOUNT:
+        return f"{int(value):,} {TOMAN}"
+    if field_kind is FieldKind.BOOLEAN:
+        return BOOLEAN_LABELS[bool(value)]
+    if field_kind is FieldKind.MULTI:
+        return MULTI_SEPARATOR.join(str(item) for item in value)
+    if field_kind is FieldKind.DATE:
+        return _date_fa(str(value))
+    return str(value)
+
+
+def _date_fa(text: str) -> str:
+    """A stored ISO date as Jalali; text that is not a date is kept as the card holds it."""
+    try:
+        return format_jalali(date.fromisoformat(text))
+    except ValueError:
+        return text
 
 
 def _history_row(card: Card) -> dict[str, str]:
@@ -332,3 +624,75 @@ def _hint(kind: SettingKind, minimum: int | None, maximum: int | None) -> str:
     if kind is SettingKind.WEEKDAY or minimum is None or maximum is None:
         return ""
     return f"عددی بین {minimum:,} و {maximum:,}."
+
+
+def _withdrawal_rows(card: Card) -> list[dict[str, str]]:
+    """Every above-cap withdrawal of the window, prominently, next to the emergency starts."""
+    return [
+        {
+            "event_id": entry.event_id,
+            "amount": f"{entry.amount:,}",
+            "reason": entry.reason,
+            "recipient": _person(entry.recipient),
+            "manager": _person(entry.manager),
+            "at": _stamp_fa(entry.at_tehran),
+        }
+        for entry in card.over_cap_withdrawals
+    ]
+
+
+def _late_cash_rows(card: Card) -> list[dict[str, str]]:
+    """A cash record that arrived late: when it happened, when it arrived, and the gap it explains."""
+    return [
+        {
+            "event_id": entry.event_id,
+            "handover_id": entry.handover_id or "",
+            "amount": f"{entry.amount:,}",
+            "occurred_at": _stamp_fa(entry.occurred_at_tehran),
+            "received_at": _stamp_fa(entry.received_at_tehran),
+            "actor": _person(entry.actor),
+            "explains": "بله" if entry.explains_discrepancy else "خیر",
+        }
+        for entry in card.late_cash
+    ]
+
+
+def _held_rows(card: Card) -> list[dict[str, str]]:
+    """Records the server kept for the manager: released or rejected from this page (F5)."""
+    return [
+        {
+            "held_event_id": entry.held_event_id,
+            "event_id": entry.event_id,
+            "label": entry.label,
+            "message": entry.message,
+            "occurred_at": _stamp_fa(entry.occurred_at_tehran),
+            "received_at": _stamp_fa(entry.received_at_tehran),
+            "actor": _person(entry.actor),
+        }
+        for entry in card.held_events
+    ]
+
+
+def _item_order(item: Any) -> tuple[int, str, str]:
+    """Counted items with no code first, then counted, then the checklist; each by shelf and name."""
+    rank = 2
+    if item.kind is ItemKind.COUNTED:
+        rank = 0 if not item.acc_code else 1
+    return (rank, item.location_id, item.name)
+
+
+def _item_row(item: Any, places: dict[str, str]) -> dict[str, Any]:
+    """One editable row: the item as the shift sees it, and the Persian words for its kind and shelf."""
+    return {
+        "item_id": item.item_id,
+        "name": item.name,
+        "kind": item.kind.value,
+        "kind_label": ITEM_KIND_LABELS.get(item.kind, item.kind.value),
+        "location_id": item.location_id,
+        "location_name": places.get(item.location_id, item.location_id),
+        "unit": item.unit,
+        "minimum": item.minimum,
+        "acc_code": item.acc_code or "",
+        "stock_factor": item.stock_factor,
+        "needs_code": item.kind is ItemKind.COUNTED and not item.acc_code,
+    }

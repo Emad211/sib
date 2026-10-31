@@ -1,5 +1,6 @@
 """Web routes: serves the PWA shell, the handover screen, service worker, manifest and offline fallback."""
 
+import json
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -44,6 +45,13 @@ _SW_BODY = (_STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__SHIFT_
 
 # A page guard: no session means a redirect to the login screen, not a JSON 401.
 HandoverCounter = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_COUNT_SUBMIT))]
+EventsAppender = Annotated[Principal, Depends(deps.require_page(Permission.EVENTS_APPEND))]
+
+
+def _json_for_script(data: dict[str, Any]) -> str:
+    """JSON that stays inside its `<script>` block: a value can never close the tag."""
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
 def _shell_page(
@@ -88,11 +96,31 @@ def get_home(request: Request) -> HTMLResponse:
     principal = deps.principal_or_none(request)
     # The permission decides who sees the card link, never a role name (R-07, SHF-6.1).
     show_manager_link = principal is not None and Permission.DAILY_CARD_VIEW in principal.permissions
+    # Same rule for the shift-event screen: a visitor with no session keeps no link (SHF-3).
+    show_events_link = principal is not None and Permission.EVENTS_APPEND in principal.permissions
     return _shell_page(
         request,
         "home.html",
-        {"show_dev_events": settings.environment == "development", "show_manager_link": show_manager_link},
+        {
+            "show_dev_events": settings.environment == "development",
+            "show_manager_link": show_manager_link,
+            "show_events_link": show_events_link,
+        },
     )
+
+
+@router.get("/events", response_class=HTMLResponse, summary="Serve the staff shift-event screen")
+def get_events_page(request: Request, principal: EventsAppender) -> HTMLResponse:
+    """One job on the phone (R-10): a big button per shift event, one question at a time.
+
+    The catalog comes from the service, built from the same registry the API validates against and
+    the manager's card labels rows with, so the phone never draws a button the API would refuse
+    (R-07). Nothing personal is rendered: approvals and the outbox are filled by the page's own
+    script, which keeps the cached shell free of another person's work (ADR-016).
+    """
+    shift = deps.running_shift(request)
+    wizard = request.app.state.shift_events.page_context(principal, shift)
+    return _shell_page(request, "shift_events.html", {"wizard_json": _json_for_script(wizard)})
 
 
 @router.get("/handover", response_class=HTMLResponse, summary="Serve the phone handover screen")

@@ -8,14 +8,18 @@ from auth_fixtures import PIN, ROLES, create_device, create_staff, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.api.deps import running_shift
 from shift.api.errors import install_error_handlers
 from shift.api.routes_events import router as events_router
+from shift.common.clock import parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.policy import ShiftKey
+from shift.domain.shift_clock import covering
+from shift.services.outbox import business_date_for
 
 RUNNING = ShiftKey(date(2026, 10, 28), 2)
 MATRIX_STAFF = {"staff_id": "staff-no-roles", "mobile": "09120000010", "device_id": "device-no-roles"}
@@ -28,8 +32,17 @@ def _event_payload(**overrides: Any) -> dict[str, Any]:
         "client_event_id": event_id,
         "idempotency_key": event_id,
         "type": "stock.waste_reported",
-        "payload": {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5},
-        "client_at": datetime(2026, 10, 28, 10, 0, tzinfo=UTC).isoformat(),
+        "payload": {
+            "item_id": "para_500_amp",
+            "location_id": "shelf_reception",
+            "quantity": 5,
+            "waste_kind": "broken",
+            "culprit_id": "staff-reception",
+            "confirmer_id": "staff-spare",
+        },
+        # A fixed 2026-10-28 instant is held once it is more than three days old (F5), so the default
+        # instant is "now": these tests are about identity and idempotency, not about the hold rule.
+        "client_at": datetime.now(UTC).isoformat(),
     }
     payload.update(overrides)
     return payload
@@ -52,6 +65,7 @@ def _headers(session: dict[str, Any]) -> dict[str, str]:
 def seeded(client: TestClient) -> TestClient:
     """The real app with one staff member and one phone per role, on a fixed shift."""
     seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+    seed_catalog(client.app.state.database)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
     return client
 
@@ -93,8 +107,10 @@ def test_the_session_identity_is_what_gets_recorded(seeded: TestClient) -> None:
     assert event is not None
     assert event.actor_id == ROLES["nurse"].staff_id
     assert event.device_id == ROLES["nurse"].device_id
-    assert event.shift_id == RUNNING.text
-    assert event.work_date == RUNNING.work_date.isoformat()
+    # The shift is the one the record happened in, never the forged one in the body (F5).
+    occurred = covering(to_tehran(parse_iso(body["client_at"])))
+    assert event.shift_id == occurred.text
+    assert event.work_date == occurred.work_date.isoformat()
 
 
 def test_the_double_submit_cookie_is_accepted_for_offline_replays(seeded: TestClient, csrf_headers: Any) -> None:
@@ -146,14 +162,25 @@ def test_a_staff_member_without_the_events_permission_gets_403(seeded: TestClien
         assert events_repo.count_events(connection) == 0
 
 
-@pytest.mark.parametrize("role", sorted(ROLES))
-def test_every_shift_role_may_append_events(seeded: TestClient, role: str) -> None:
-    """Event ingestion is shift work: each closed role holds `events.append`."""
+@pytest.mark.parametrize("role", ["reception", "nurse", "storekeeper", "shift_doctor", "manager", "multi_role"])
+def test_a_role_with_the_kind_permission_may_append_its_event(seeded: TestClient, role: str) -> None:
+    """Event ingestion is shift work, but each kind also names the roles that may record it (R-07)."""
     session = _login(seeded, role)
 
     response = seeded.post("/api/v1/events", json=_event_payload(), headers=_headers(session))
 
     assert response.status_code == status.HTTP_200_OK, response.text
+
+
+@pytest.mark.parametrize("role", ["accountant", "purchaser"])
+def test_a_role_without_the_kind_permission_is_refused(seeded: TestClient, role: str) -> None:
+    """Holding `events.append` is not enough: the waste kind belongs to the shelf's roles."""
+    session = _login(seeded, role)
+
+    response = seeded.post("/api/v1/events", json=_event_payload(), headers=_headers(session))
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "اجازهٔ ثبت" in response.json()["error"]["message"]
 
 
 def test_idempotency_key_wins_over_a_new_client_event_id(seeded: TestClient) -> None:
@@ -206,14 +233,18 @@ def test_invalid_submissions_are_rejected(seeded: TestClient, overrides: dict[st
         assert events_repo.count_events(connection) == 0
 
 
-def test_backdated_work_date_is_rejected(seeded: TestClient) -> None:
-    """A client-supplied work_date must agree with the authenticated shift date."""
+def test_a_wrong_work_date_hint_never_loses_the_record(seeded: TestClient) -> None:
+    """F5: the phone's date is a hint; the instant it happened decides which shift the record joins."""
     session = _login(seeded)
+    body = _event_payload(work_date="2020-01-01")
 
-    response = seeded.post("/api/v1/events", json=_event_payload(work_date="2020-01-01"), headers=_headers(session))
+    response = seeded.post("/api/v1/events", json=body, headers=_headers(session))
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert "work_date" in response.json()["error"]["message"]
+    assert response.status_code == status.HTTP_200_OK
+    with seeded.app.state.database.read() as connection:
+        stored = events_repo.find_by_event_id(connection, response.json()["event_id"])
+    assert stored is not None
+    assert stored.work_date == business_date_for(parse_iso(body["client_at"])).isoformat()
 
 
 def test_the_authenticated_shift_date_is_accepted(seeded: TestClient) -> None:
@@ -232,7 +263,16 @@ def test_the_authenticated_shift_date_is_accepted(seeded: TestClient) -> None:
 def test_ingest_updates_projections_and_replay_does_not_double_apply(seeded: TestClient) -> None:
     """The only production write path keeps proj_stock in step with the event log."""
     session = _login(seeded)
-    body = _event_payload(payload={"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5})
+    body = _event_payload(
+        payload={
+            "item_id": "para_500_amp",
+            "location_id": "shelf_reception",
+            "quantity": 5,
+            "waste_kind": "broken",
+            "culprit_id": "staff-reception",
+            "confirmer_id": "staff-spare",
+        }
+    )
 
     first = seeded.post("/api/v1/events", json=body, headers=_headers(session))
     replay = seeded.post("/api/v1/events", json=body, headers=_headers(session))
@@ -243,7 +283,7 @@ def test_ingest_updates_projections_and_replay_does_not_double_apply(seeded: Tes
     database: Database = seeded.app.state.database
     with database.read() as connection:
         rows = projections_repo.stock_rows(connection)
-    assert rows == [{"item_id": "bandage_roll", "location_id": "emergency_cabinet", "qty": -5}]
+    assert rows == [{"item_id": "para_500_amp", "location_id": "shelf_reception", "qty": -5}]
 
 
 def test_oversized_body_is_rejected_before_parsing(seeded: TestClient) -> None:

@@ -28,8 +28,8 @@ from typing import Any
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, SPARE, Seeded, seed_roster
-from seed_reference_data import seed as seed_catalog
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, handover_repo
 from shift.adapters.db.core import Database

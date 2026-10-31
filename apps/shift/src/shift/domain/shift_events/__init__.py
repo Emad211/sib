@@ -1,0 +1,70 @@
+"""Shift event kinds (S01 §3, SHF-3).
+
+Each module owns one code of the owner's event table. Importing the package registers every kind,
+so `domain/events.py` sees one composed vocabulary and the phone/card read the same metadata. A
+module stays pure: payload model, questions, one effect builder and its cross-field rule.
+"""
+
+from shift.domain.shift_events import (  # noqa: F401 — importing registers the kinds
+    approvals,
+    campaign_discount,
+    card_transfer,
+    cash_withdrawal,
+    cleaning,
+    emergency_withdrawal,
+    equipment,
+    patient_items,
+    refund,
+    restock,
+    vitals,
+    waste,
+)
+from shift.domain.shift_events.base import (
+    APPROVED,
+    DECISION_TYPES,
+    REJECTED,
+    EventView,
+    FieldKind,
+    FieldSpec,
+    KindGroup,
+    KindSpec,
+    ShiftEventContext,
+    ShiftEventError,
+    approval_roles,
+    decision_status,
+    is_decision,
+    kind_for,
+    kinds,
+    kinds_for,
+    offline_types,
+    register,
+    registered_types,
+    shift_event_specs,
+    summary_for,
+    unknown_fields,
+)
+
+__all__ = [
+    "APPROVED",
+    "DECISION_TYPES",
+    "REJECTED",
+    "EventView",
+    "FieldKind",
+    "FieldSpec",
+    "KindGroup",
+    "KindSpec",
+    "ShiftEventContext",
+    "ShiftEventError",
+    "approval_roles",
+    "decision_status",
+    "is_decision",
+    "kind_for",
+    "kinds",
+    "kinds_for",
+    "offline_types",
+    "register",
+    "registered_types",
+    "shift_event_specs",
+    "summary_for",
+    "unknown_fields",
+]

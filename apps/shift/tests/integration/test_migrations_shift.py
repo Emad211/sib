@@ -1,9 +1,11 @@
 """Versioned migrations: fresh, idempotent, backed up and rollback-safe (step 2).
 
 The handover slice adds v9 (the persisted flows, `proj_cash` keyed by cash box, `events.handover_id`)
-and the baseline slice adds v10 (the `handover_custody` read model). These tests pin both directions —
-a fresh install and an existing v8 database whose cash rows and event hashes must survive untouched,
-and a v9 database that gains the custody table without losing a flow.
+and the baseline slice adds v10 (the `handover_custody` read model), and the campaign slice adds v12
+(the manager's campaign calendar). These tests pin both directions — a fresh install and an existing
+v8 database whose cash rows and event hashes must survive untouched, a v9 database that gains the
+custody table without losing a flow, and a v11 database that gains `campaigns` without touching a
+single event.
 """
 
 import sqlite3
@@ -231,10 +233,20 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 11
-        assert {"handover", "handover_custody", "daily_cards"} <= _tables(database)
+        assert _version(database) == migrations.LATEST == 12
+        assert {"handover", "handover_custody", "daily_cards", "campaigns"} <= _tables(database)
         assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
         assert _columns(database, "handover_custody") == ("flow", "custodian_id", "updated_at", "updated_by")
+        assert _columns(database, "campaigns") == (
+            "campaign_id",
+            "name",
+            "service",
+            "amount_toman",
+            "starts_on",
+            "ends_on",
+            "created_by",
+            "created_at",
+        )
         assert "handover_id" in _columns(database, "events")
         with database.read() as connection:
             indexes = {str(row[0]) for row in connection.exec_driver_sql("SELECT name FROM sqlite_master")}
@@ -307,5 +319,28 @@ def test_a_v9_database_gains_the_custody_table_and_keeps_its_flows(tmp_path: Pat
         assert events[0].hash == old_hash
         assert verify_chain(events).ok is True
         assert custodian is None, "a v9 install has no baseline yet; the manager records the first one"
+    finally:
+        database.close()
+
+
+def test_a_v11_database_gains_the_campaign_table_and_keeps_its_events(tmp_path: Path) -> None:
+    """v12 is one new table and nothing else: a v11 install keeps every event and every hash."""
+    path = tmp_path / "v11.db"
+    _migrate_to(path, 11)
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        old_hash = _write_v8_event(connection)
+    engine.dispose()
+
+    database = Database(path)
+    try:
+        report = database.migrate(backup_dir=tmp_path / "backups")
+        assert (report.from_version, report.to_version) == (11, migrations.LATEST)
+        with database.read() as connection:
+            events = list(events_repo.iter_events(connection))
+            campaigns = connection.exec_driver_sql("SELECT COUNT(*) FROM campaigns").scalar_one()
+        assert [event.hash for event in events] == [old_hash]
+        assert verify_chain(events).ok is True
+        assert campaigns == 0, "the migration creates the table and never invents a campaign"
     finally:
         database.close()

@@ -24,6 +24,10 @@ EXPECTED_EFFECTS = {
     EventType.HANDOVER_SIGNED: ((), None),
     EventType.HANDOVER_EARLY_LEAVE_REPORTED: ((), None),
     EventType.HANDOVER_EMERGENCY_START_CONFIRMED: ((), None),
+    # H-11's two internal records: the adjustment explains a moved cash reference, and the late-cash
+    # notice cancels the movement it explains (its sample is a withdrawal, so the effect is an ADD).
+    EventType.HANDOVER_CASH_REFERENCE_ADJUSTED: ((), None),
+    EventType.HANDOVER_LATE_CASH_RECORDED: ((), CashOperation.ADD),
     EventType.DISCREPANCY_RECORDED: ((), None),
     EventType.CASH_WITHDRAWN: ((), CashOperation.SUBTRACT),
     EventType.CASH_DEPOSITED: ((), CashOperation.SUBTRACT),
@@ -34,6 +38,23 @@ EXPECTED_EFFECTS = {
     EventType.ACC_CASH_RECEIPT: ((), CashOperation.ADD),
     EventType.ACC_CASH_REVERSAL: ((), CashOperation.SUBTRACT),
     EventType.ACC_CONSUMPTION: ((StockOperation.SUBTRACT,), None),
+    EventType.CARD_TRANSFER_REPORTED: ((), None),
+    EventType.REFUND_REQUESTED: ((), None),
+    EventType.CAMPAIGN_DISCOUNT_APPLIED: ((), None),
+    EventType.PATIENT_ITEM_HELD: ((), None),
+    EventType.PATIENT_ITEM_DELIVERED: ((), None),
+    EventType.EQUIPMENT_FAULT_REPORTED: ((), None),
+    EventType.EQUIPMENT_FAULT_ASSIGNED: ((), None),
+    EventType.EQUIPMENT_FAULT_FIXED: ((), None),
+    EventType.VITALS_RECORDED: ((), None),
+    EventType.VITALS_FOLLOWUP_OPENED: ((), None),
+    EventType.CLEANING_CONFIRMED: ((), None),
+    EventType.EVENT_APPROVED: ((), None),
+    # F5's held-record records: keeping, releasing and refusing a record change no projection.
+    EventType.EVENT_HELD: ((), None),
+    EventType.EVENT_RELEASED: ((), None),
+    EventType.EVENT_HOLD_REJECTED: ((), None),
+    EventType.EVENT_REJECTED: ((), None),
 }
 
 
@@ -165,8 +186,8 @@ def test_unknown_type_has_no_spec() -> None:
         {"amount": True},
         {"amount": 1, "extra": "x"},
         {},
-        {"amount": 1, "reason": "voided"},
-        {"amount": 1, "reason": "something-else"},
+        # `reason` is now a real field of a withdrawal (SHF-3 «د»), so only a non-text one is invalid.
+        {"amount": 1, "reason": 5},
         {"amount": -1, "reason": "voided"},
     ],
 )
@@ -226,11 +247,32 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.HANDOVER_SIGNED,
         EventType.HANDOVER_EARLY_LEAVE_REPORTED,
         EventType.HANDOVER_EMERGENCY_START_CONFIRMED,
+        EventType.HANDOVER_CASH_REFERENCE_ADJUSTED,
+        EventType.HANDOVER_LATE_CASH_RECORDED,
         EventType.DISCREPANCY_RECORDED,
         EventType.CASH_WITHDRAWN,
         EventType.CASH_DEPOSITED,
+        EventType.STOCK_SHELF_RESTOCKED,
+        EventType.STOCK_EMERGENCY_WITHDRAWAL,
+        EventType.STOCK_WASTE_REPORTED,
         EventType.ACC_CASH_RECEIPT,
         EventType.ACC_CASH_REVERSAL,
+        EventType.CARD_TRANSFER_REPORTED,
+        EventType.REFUND_REQUESTED,
+        EventType.CAMPAIGN_DISCOUNT_APPLIED,
+        EventType.PATIENT_ITEM_HELD,
+        EventType.PATIENT_ITEM_DELIVERED,
+        EventType.EQUIPMENT_FAULT_REPORTED,
+        EventType.EQUIPMENT_FAULT_ASSIGNED,
+        EventType.EQUIPMENT_FAULT_FIXED,
+        EventType.VITALS_RECORDED,
+        EventType.VITALS_FOLLOWUP_OPENED,
+        EventType.CLEANING_CONFIRMED,
+        EventType.EVENT_APPROVED,
+        EventType.EVENT_REJECTED,
+        EventType.EVENT_HELD,
+        EventType.EVENT_RELEASED,
+        EventType.EVENT_HOLD_REJECTED,
     }
 
 

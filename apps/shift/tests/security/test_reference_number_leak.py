@@ -32,8 +32,8 @@ from typing import Any
 import pytest
 from auth_fixtures import PIN, ROLES, seed_roster
 from fastapi.testclient import TestClient
-from seed_reference_data import seed as seed_catalog
 from synthetic_accounting import empty_accounting
+from synthetic_catalog import seed as seed_catalog
 
 import shift as shift_package
 from shift.adapters.db import projections_repo
@@ -792,7 +792,14 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
         json={
             "client_event_id": "01J00000000000000000000000",
             "type": "stock.waste_reported",
-            "payload": {"item_id": "gauze_roll", "location_id": "doctor_room", "quantity": 2},
+            "payload": {
+                "item_id": "para_500_amp",
+                "location_id": "shelf_reception",
+                "quantity": 2,
+                "waste_kind": "broken",
+                "culprit_id": "staff-doctor",
+                "confirmer_id": "staff-spare",
+            },
             "client_at": "2026-10-28T10:00:00Z",
         },
         headers=_act(app_client, incoming),

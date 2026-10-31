@@ -1,3 +1,3 @@
 """Single source of the application version (kept in step with pyproject.toml)."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

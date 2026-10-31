@@ -20,12 +20,15 @@ const {
   isValidIngestResponse,
   expectedEventIdFor,
   classifyHttpStatus,
+  refusalReason,
   nextRetryDelayMs,
+  photoHashesIn,
   MAX_TRIES,
   MAX_BACKOFF_SECONDS,
 } = require(outboxPath);
 
 const EVENT_ID = "01JABCDEFGHJKMNPQRSTVWXYZ1";
+const PHOTO_SHA = "a".repeat(64);
 
 describe("Outbox Exponential Backoff Logic", () => {
   it("caps exponential backoff at min(2^tries, 300) seconds", () => {
@@ -103,8 +106,9 @@ describe("Outbox Record Creation & Invariants", () => {
       /online-only event type/
     );
     assert.strictEqual(isOfflineEventTypeAllowed("stock.waste_reported"), true);
+    assert.strictEqual(isOfflineEventTypeAllowed("cash.withdrawn"), true);
+    assert.strictEqual(isOfflineEventTypeAllowed("event.approved"), true);
     assert.strictEqual(isOfflineEventTypeAllowed("handover.cash_counted"), false);
-    assert.strictEqual(isOfflineEventTypeAllowed("cash.withdrawn"), false);
   });
 });
 
@@ -200,5 +204,53 @@ describe("Client-side ULID and Tehran business date", () => {
     assert.strictEqual(tehranBusinessDate(Date.UTC(2026, 9, 28, 3, 59)), "2026-10-27");
     // 2026-10-28T12:00+03:30 is the day shift.
     assert.strictEqual(tehranBusinessDate(Date.UTC(2026, 9, 28, 8, 30)), "2026-10-28");
+  });
+});
+
+describe("A refused record keeps the server's own reason (F6)", () => {
+  it("reads the Persian message out of the API's error envelope", async () => {
+    const resp = {
+      status: 422,
+      json: async () => ({ error: { code: "unprocessable", message: "نقش شما اجازهٔ ثبت این رویداد را ندارد." } }),
+    };
+    assert.strictEqual(await refusalReason(resp), "نقش شما اجازهٔ ثبت این رویداد را ندارد.");
+  });
+
+  it("falls back to the status when the envelope carries no message", async () => {
+    assert.strictEqual(await refusalReason({ status: 400, json: async () => ({}) }), "پاسخ سرور 400");
+    const broken = { status: 410, json: async () => { throw new Error("not json"); } };
+    assert.strictEqual(await refusalReason(broken), "پاسخ سرور 410");
+  });
+});
+
+describe("A held record is kept, not failed (F5)", () => {
+  it("accepts the held status from the ingest response", () => {
+    const held = { seq: 7, event_id: EVENT_ID, created: true, status: "held", held: true };
+    assert.strictEqual(isValidIngestResponse(held, EVENT_ID), true);
+    assert.strictEqual(isValidIngestResponse({ ...held, event_id: "other" }, EVENT_ID), false);
+  });
+});
+
+describe("The receipt photo travels with its event (SHF-7)", () => {
+  it("collects the content hash of a receipt and of a fault photo", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { amount: 1000, photo_sha256: PHOTO_SHA } }), [PHOTO_SHA]);
+    assert.deepStrictEqual(photoHashesIn({ payload: { device: "مونیتور", photo_sha256: PHOTO_SHA } }), [PHOTO_SHA]);
+  });
+
+  it("never treats a path or a short value as a photo reference", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { photo_sha256: "../../app.db" } }), []);
+    assert.deepStrictEqual(photoHashesIn({ payload: { photo_sha256: "abc" } }), []);
+    assert.deepStrictEqual(photoHashesIn({ payload: { note: PHOTO_SHA } }), []);
+  });
+
+  it("is empty for an event with no photo and for a body without a payload", () => {
+    assert.deepStrictEqual(photoHashesIn({ payload: { amount: 1000 } }), []);
+    assert.deepStrictEqual(photoHashesIn(null), []);
+    assert.deepStrictEqual(photoHashesIn({}), []);
+  });
+
+  it("keeps one copy of a hash two fields happen to share", () => {
+    const body = { payload: { photo_sha256: PHOTO_SHA, backup_sha256: PHOTO_SHA } };
+    assert.deepStrictEqual(photoHashesIn(body), [PHOTO_SHA]);
   });
 });

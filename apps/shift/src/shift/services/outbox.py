@@ -2,17 +2,27 @@
 
 ADR-016 keeps the handover out of this path: a blind count is compared against a reference that must
 never reach the phone, so a handover runs on the live server and its events are refused here.
+
+A phone may sit offline across midnight, so an event is attributed by the instant it **occurred**, not
+by the shift that happens to be running when it finally arrives (F5). The server's own received time
+is stored beside it (`server_at`), which is what lets the manager see how late a record was. An instant
+in the future or older than three days is not refused and not applied: it is held for the manager.
 """
 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from shift.common.clock import parse_iso, to_tehran
+from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.domain.events import EventType, UnknownEventType, spec_for, validate_payload
+from shift.domain.occurred_time import OccurredVerdict, verdict
+from shift.domain.shift_clock import covering
 from shift.services.event_store import EventStore, EventValidationError, NewEvent
 from shift.services.projections import ProjectionEngine
+
+if TYPE_CHECKING:  # the held store imports this module's submission, so the cycle is type-only
+    from shift.services.held_events import HeldEvents
 
 # Day and evening shifts belong to their calendar date; the night shift that
 # starts at 19:30 belongs to the date on which it opened, even after midnight.
@@ -77,7 +87,14 @@ class EventSubmission:
     shift_work_date: date | None = None
 
     def to_new_event(self) -> NewEvent:
-        """Convert into a validated NewEvent instance."""
+        """Convert into a validated NewEvent instance.
+
+        The shift and the business date come from the instant the record happened, never from the
+        shift that is running when it arrives: a queue that crossed midnight, or a phone that crossed
+        it offline, still belongs to the shift that was on duty when the money or the stock moved
+        (F5). `requested_work_date` stays a hint the phone sends; a disagreement is a clock or a
+        queue effect, not a reason to throw the record away.
+        """
         cid = self.client_event_id or self.event_id
         if not cid:
             raise OutboxValidationError("client_event_id or event_id is required")
@@ -91,13 +108,14 @@ class EventSubmission:
         else:
             parsed_client_at = self.client_at
 
-        requested = _parse_work_date(self.requested_work_date)
         try:
-            expected = self.shift_work_date or business_date_for(parsed_client_at)
+            expected = business_date_for(parsed_client_at)
         except ValueError as exc:
             raise OutboxValidationError("client_at must be an ISO-8601 aware datetime") from exc
-        if requested is not None and requested != expected:
-            raise OutboxValidationError("work_date does not match the authenticated shift business date")
+        # The un-validated hint is parsed anyway: a malformed one is the caller's error, not a reason
+        # to write a record against a date nobody can read.
+        _parse_work_date(self.requested_work_date)
+        occurred_shift = covering(to_tehran(parsed_client_at))
 
         return NewEvent(
             client_event_id=cid,
@@ -107,7 +125,7 @@ class EventSubmission:
             device_id=self.device_id,
             work_date=expected,
             client_at=parsed_client_at,
-            shift_id=self.shift_id,
+            shift_id=occurred_shift.text,
             ref_event_id=self.ref_event_id,
             idempotency_key=self.idempotency_key or cid,
         )
@@ -121,14 +139,24 @@ class SubmissionResult:
     event_id: str
     created: bool
     status: str
+    held: bool = False
 
 
 class OutboxService:
     """Server-side outbox receiver for append-only idempotent ingest."""
 
-    def __init__(self, event_store: EventStore, projections: ProjectionEngine | None = None) -> None:
+    def __init__(
+        self,
+        event_store: EventStore,
+        projections: ProjectionEngine | None = None,
+        *,
+        held: "HeldEvents | None" = None,
+        clock: Clock | None = None,
+    ) -> None:
         self._store = event_store
         self._projections = projections
+        self._held = held
+        self._clock = clock or SystemClock()
 
     def record_event(self, submission: EventSubmission) -> SubmissionResult:
         """Validate payload against domain schema, append idempotently and sync projections."""
@@ -144,6 +172,10 @@ class OutboxService:
             validate_payload(submission.type, submission.payload)
         except Exception as exc:
             raise OutboxValidationError(f"Invalid payload for {submission.type!r}: {exc}") from exc
+
+        held = self._hold_if_implausible(submission)
+        if held is not None:
+            return held
 
         try:
             new_event = submission.to_new_event()
@@ -162,3 +194,21 @@ class OutboxService:
             created=result.created,
             status="recorded" if result.created else "replayed",
         )
+
+    def _hold_if_implausible(self, submission: EventSubmission) -> SubmissionResult | None:
+        """Keep a future-dated or three-day-old record for the manager instead of applying it (F5).
+
+        A None answer means the record may be applied now. The course this takes changes no box and
+        no shelf: the held record is written, the phone is answered with 200 and the manager decides.
+        """
+        if self._held is None:
+            return None
+        occurred = submission.client_at
+        occurred = parse_iso(occurred) if isinstance(occurred, str) else occurred
+        try:
+            checked = verdict(occurred, self._clock.now_utc())
+        except ValueError as exc:
+            raise OutboxValidationError("client_at must be an ISO-8601 aware datetime") from exc
+        if checked is OccurredVerdict.OK:
+            return None
+        return self._held.hold(submission, reason=checked.value, shift=covering(to_tehran(occurred)))
