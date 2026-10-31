@@ -12,6 +12,7 @@ from shift.__version__ import __version__
 from shift.adapters.db.core import Database
 from shift.api import (
     deps,
+    routes_accountant,
     routes_auth,
     routes_campaigns,
     routes_catalog,
@@ -21,6 +22,7 @@ from shift.api import (
     routes_held,
     routes_manager,
     routes_photos,
+    routes_rewards,
     routes_settings,
     routes_web,
 )
@@ -31,10 +33,12 @@ from shift.config.settings import Settings
 from shift.domain.daily_card import FRIDAY
 from shift.domain.permissions import Permission
 from shift.runtime import BackgroundJobs
+from shift.services.accountant_queue import AccountantQueueService
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
 from shift.services.auth import AuthService
 from shift.services.backup import BackupService
+from shift.services.campaign_report import CampaignReportService
 from shift.services.campaigns import CampaignService
 from shift.services.catalog import CatalogService
 from shift.services.daily_card import DailyCardService
@@ -44,6 +48,7 @@ from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
 from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
+from shift.services.rewards import RewardsService
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
 from shift.services.shift_events import ShiftEventService
@@ -67,6 +72,26 @@ def _daily_card_service(request: Request) -> DailyCardService:
 def _campaign_service(request: Request) -> CampaignService:
     """The campaign calendar created in the lifespan (manager API and page)."""
     return request.app.state.campaigns
+
+
+def _accountant_queue_service(request: Request) -> AccountantQueueService:
+    """The accountant's queue created in the lifespan (SHF-5)."""
+    return request.app.state.accountant_queue
+
+
+def _rewards_service(request: Request) -> RewardsService:
+    """The reward ledger created in the lifespan (the manager's screen and one person's own)."""
+    return request.app.state.rewards
+
+
+def _shift_events_service(request: Request) -> ShiftEventService:
+    """The one validated shift-event writer, shared with the reward revocation form (SHF-5)."""
+    return request.app.state.shift_events
+
+
+def _campaign_report_service(request: Request) -> CampaignReportService:
+    """The campaign report created in the lifespan (SHF-5, finding F8)."""
+    return request.app.state.campaign_report
 
 
 def _daily_card_action(cards: DailyCardService) -> Callable[[datetime], str]:
@@ -177,6 +202,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The manager's daily card (SHF-6.1) reads the log, the flows and the audit trail and stores
         # one document per day; the scheduler's action below is the only thing that generates it.
         application.state.daily_card = DailyCardService(database, clock=clock, audit=audit)
+        # The reward ledger (SHF-5): rates, accrual from the accounting mirrors, the derived month
+        # ledger and the audit of every manager change. It reads the log, never rewrites it.
+        application.state.rewards = RewardsService(database, application.state.events, clock=clock, audit=audit)
+        # The accountant's queue and the campaign report (SHF-5): both read the log, never write it.
+        application.state.accountant_queue = AccountantQueueService(
+            database,
+            events=application.state.shift_events,
+            settings=application.state.settings_service,
+            rewards=application.state.rewards,
+            clock=clock,
+        )
+        application.state.campaign_report = CampaignReportService(
+            database, campaigns=application.state.campaigns, clock=clock
+        )
         # One bridge for the process: the handover start reads accounting through it, and the
         # background poll keeps the mirror live. Without an accounting copy the bridge stays None
         # and a handover start is refused (H-03), never silently allowed.
@@ -248,6 +287,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             page_guard=deps.require_page(Permission.SETTINGS_CHANGE),
             campaigns=_campaign_service,
         )
+    )
+    # The accountant's queue and the campaign report (SHF-5, finding F8): one page guard each.
+    app.include_router(
+        routes_accountant.build_accountant_router(queue=_accountant_queue_service, report=_campaign_report_service)
+    )
+    # The manager's reward screen and one person's own standing (SHF-5): the confirmation buttons
+    # post SHF-3's own decision endpoint, and the revocation goes through the same validated writer.
+    app.include_router(
+        routes_rewards.build_rewards_router(rewards=_rewards_service, shift_events=_shift_events_service)
     )
 
     static_dir = Path(__file__).resolve().parent / "static"

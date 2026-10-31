@@ -13,6 +13,118 @@
    "storekeeper": 200
   }
  },
+ "GET /accountant/campaigns [get_campaign_report]": {
+  "guard": "permission:campaign.report.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /accountant/queue [get_accountant_queue]": {
+  "guard": "permission:accountant.queue.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/rewards [get_manager_rewards]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /rewards [get_my_rewards]": {
+  "guard": "permission:reward.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "POST /manager/rewards/accrue [post_accrue]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/rates [post_rate]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/revoke [post_revoke]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/staff-map [post_staff_map]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /admin/devices [device_admin_page]": {
   "guard": "permission:device.enroll",
   "roles": {

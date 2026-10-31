@@ -20,6 +20,13 @@ The two shift-event sections (SHF-3) are laid over the same log: `shift_events` 
 shift event of the window, newest first, and `open_events` is whatever is still waiting — an open
 fault or an undecided approval — whatever day it was opened on, oldest first. A decision event is
 never a row of its own; it only decides the status of the event it references.
+
+The two money sections of SHF-5 read the same log one more time (S03 §6, schema 5): `rewards` is what
+the day's rewards became — confirmed, or taken back with the month its deduction lands in — plus every
+record the manager still has to decide, whatever shift recorded it, and `campaign_discounts` is the
+«گزارش کمپین» of the window, one row per campaign that gave a discount in it. Neither section accrues
+anything: a reward record exists only because the reward service already wrote it, so building a card
+stays read-only.
 """
 
 import json
@@ -30,7 +37,16 @@ from typing import Any
 
 from sqlalchemy import Connection
 
-from shift.adapters.db import audit_repo, card_repo, catalog_repo, events_repo, handover_repo, staff_repo
+from shift.adapters.db import (
+    audit_repo,
+    campaign_repo,
+    card_repo,
+    catalog_repo,
+    events_repo,
+    handover_repo,
+    reward_repo,
+    staff_repo,
+)
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_tehran, to_utc, utc_iso
@@ -38,6 +54,7 @@ from shift.common.hashing import canonical_json
 from shift.domain.daily_card import CARD_SCHEMA_VERSION, CardWindow, due_card_days, window_for
 from shift.domain.events import EventType
 from shift.domain.occurred_time import HELD_MESSAGES
+from shift.domain.rewards import WORK_TYPE_LABELS, deduction_month
 from shift.domain.shift_events import (
     APPROVED,
     DECISION_TYPES,
@@ -49,6 +66,7 @@ from shift.domain.shift_events import (
 )
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.handover import EXCEPTION_ACTION
+from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.shift_events import waits_for_decision
 
 # The background runtime produces the cards, exactly as it produces the snapshots; runtime.RUNTIME_ACTOR
@@ -70,6 +88,9 @@ _LATE_CASH = EventType.HANDOVER_LATE_CASH_RECORDED.value
 _HELD = EventType.EVENT_HELD.value
 _RELEASED = EventType.EVENT_RELEASED.value
 _HOLD_REJECTED = EventType.EVENT_HOLD_REJECTED.value
+# SHF-5: the reward records the day paid or took back, and the «ت» discounts of its campaigns.
+_EARNED_TYPES = (reward_repo.REWARD_EARNED, reward_repo.REWARD_CONFIRMED)
+_DISCOUNT = EventType.CAMPAIGN_DISCOUNT_APPLIED.value
 
 # The status a shift-event row carries on the card; `open_events` keeps the three that still wait.
 STATUS_PENDING = "pending"
@@ -81,8 +102,9 @@ STATUS_FIXED = "fixed"
 STATUS_RECORDED = "recorded"
 OPEN_STATUSES = frozenset({STATUS_PENDING, STATUS_REPORTED, STATUS_ASSIGNED})
 
-# Every section a card of this code writes, in the document's own order; a stored card that predates
-# a section simply does not carry it, and the page then does not render it (schema 2 has five).
+# Every section a card of this code writes, in the document's own order — which is the order the page
+# reads them in. A stored card that predates a section simply does not carry it, and the page then does
+# not render it (schema 2 has five, schema 3 has nine, schema 4 has ten).
 SECTION_NAMES = (
     "emergency_starts",
     "over_cap_withdrawals",
@@ -92,10 +114,12 @@ SECTION_NAMES = (
     "open_flows",
     "shift_events",
     "open_events",
+    "rewards",
+    "campaign_discounts",
     "late_cash",
     "held_events",
 )
-LEGACY_SCHEMA_VERSIONS = frozenset({2, 3})
+LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4})
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,13 +492,99 @@ class HeldLine:
 
 
 @dataclass(frozen=True, slots=True)
+class RewardLine:
+    """One reward the day paid, took back, or left waiting for the manager (S01 §5, SHF-5).
+
+    `status` is one of the reward service's own three (`pending`, `confirmed`, `revoked`); a revoked
+    row carries the deduction as a **negative** amount, exactly as the payroll line does, and the month
+    that deduction lands in — the month after the revocation, never the one already paid. A rejected
+    record is not a row: it pays nothing, and the refusal is its shift-event row's own status.
+    """
+
+    event_id: str
+    status: str
+    earner: Person
+    work_type: str
+    label_fa: str
+    amount: int
+    at_tehran: str
+    deduction_month: str | None = None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "status": self.status,
+            "earner": self.earner.to_payload(),
+            "work_type": self.work_type,
+            "label_fa": self.label_fa,
+            "amount": self.amount,
+            "at_tehran": self.at_tehran,
+            "deduction_month": self.deduction_month,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "RewardLine":
+        deduction = payload.get("deduction_month")
+        return cls(
+            event_id=str(payload["event_id"]),
+            status=str(payload["status"]),
+            earner=Person.from_payload(payload["earner"]),
+            work_type=str(payload["work_type"]),
+            label_fa=str(payload["label_fa"]),
+            amount=int(payload["amount"]),
+            at_tehran=str(payload["at_tehran"]),
+            deduction_month=None if deduction is None else str(deduction),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CampaignDiscountLine:
+    """One campaign that gave a discount in the window: its name, service, count, amount and total.
+
+    The figures are the campaign report's own — the count of «ت» events in the window times the
+    campaign's amount — so the card and the report page never disagree. A campaign the calendar no
+    longer holds still counts (it happened) and keeps its id as its name, with no amount and no total:
+    the card never invents a price for it.
+    """
+
+    campaign_id: str
+    name: str
+    service: str
+    count: int
+    amount: int | None
+    total: int | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "campaign_id": self.campaign_id,
+            "name": self.name,
+            "service": self.service,
+            "count": self.count,
+            "amount": self.amount,
+            "total": self.total,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "CampaignDiscountLine":
+        amount = payload.get("amount")
+        total = payload.get("total")
+        return cls(
+            campaign_id=str(payload["campaign_id"]),
+            name=str(payload["name"]),
+            service=str(payload["service"]),
+            count=int(payload["count"]),
+            amount=None if amount is None else int(amount),
+            total=None if total is None else int(total),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Card:
-    """One day's manager card: the window it covers, when it was built, and its seven sections.
+    """One day's manager card: the window it covers, when it was built, and its twelve sections.
 
     `present_sections` is not part of the document: it remembers which sections the stored card
     carried, so a schema-2 card — written before the shift-event sections existed — does not grow two
-    empty blocks when the page renders it. The purchases of SHF-4 and the rewards of SHF-5 still have
-    no section here.
+    empty blocks when the page renders it. The purchases of SHF-4 still have no section here.
     """
 
     card_date: date
@@ -491,6 +601,8 @@ class Card:
     over_cap_withdrawals: tuple[WithdrawalLine, ...] = ()
     late_cash: tuple[LateCashLine, ...] = ()
     held_events: tuple[HeldLine, ...] = ()
+    rewards: tuple[RewardLine, ...] = ()
+    campaign_discounts: tuple[CampaignDiscountLine, ...] = ()
     present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
@@ -517,12 +629,14 @@ class Card:
                 "over_cap_withdrawals": [entry.to_payload() for entry in self.over_cap_withdrawals],
                 "late_cash": [entry.to_payload() for entry in self.late_cash],
                 "held_events": [entry.to_payload() for entry in self.held_events],
+                "rewards": [entry.to_payload() for entry in self.rewards],
+                "campaign_discounts": [entry.to_payload() for entry in self.campaign_discounts],
             },
         }
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "Card":
-        """Read a stored card back; schema 2 (before the shift-event sections) and 3 are accepted."""
+        """Read a stored card back; schema 2, 3 and 4 (before these sections) are accepted."""
         schema = int(payload["schema"])
         if schema != CARD_SCHEMA_VERSION and schema not in LEGACY_SCHEMA_VERSIONS:
             raise ValueError(f"unknown daily card schema: {schema}")
@@ -546,6 +660,10 @@ class Card:
             ),
             late_cash=tuple(LateCashLine.from_payload(entry) for entry in sections.get("late_cash", ())),
             held_events=tuple(HeldLine.from_payload(entry) for entry in sections.get("held_events", ())),
+            rewards=tuple(RewardLine.from_payload(entry) for entry in sections.get("rewards", ())),
+            campaign_discounts=tuple(
+                CampaignDiscountLine.from_payload(entry) for entry in sections.get("campaign_discounts", ())
+            ),
             present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
@@ -583,6 +701,8 @@ class DailyCardService:
                 over_cap_withdrawals=_over_cap_withdrawals(connection, window, names),
                 late_cash=_late_cash(connection, window, names),
                 held_events=_held_events(connection, window, names),
+                rewards=_rewards(connection, window, names),
+                campaign_discounts=_campaign_discounts(connection, window),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -1001,3 +1121,108 @@ def _held_events(connection: Connection, window: CardWindow, names: _Names) -> t
             )
         )
     return tuple(rows)
+
+
+def _rewards(connection: Connection, window: CardWindow, names: _Names) -> tuple[RewardLine, ...]:
+    """What the day's rewards became, then every record still waiting for the manager (S01 §5).
+
+    A record belongs to the day it became what it is: the confirmation or the revocation that moved
+    it, and its own instant while nobody has decided yet. Those are two days, so a reward confirmed
+    and revoked later keeps its confirmation row on the day it was paid and puts the deduction on the
+    day it was taken back — the card counts the same facts the ledger pays and deducts, and a revoked
+    reward never removes a row from a card that already reported it. A pending record is on every card
+    until the manager decides it — whatever shift recorded it, the `open_events` rule — and a rejected
+    one is not a row at all: it pays nothing, and the refusal is already the status of its own
+    shift-event row.
+
+    This reads the log and nothing else: `build` never accrues, so a reward only reaches a card because
+    the reward service already wrote it, at the rate of the month the work happened in.
+    """
+    timeline = reward_repo.timeline(connection)
+    decisions = {row.ref_event_id: row for row in timeline if row.type in DECISION_TYPES}
+    revocations = {row.ref_event_id: row for row in timeline if row.type == reward_repo.REWARD_REVOKED}
+    rows: list[RewardLine] = []
+    for row in timeline:
+        if row.type not in _EARNED_TYPES:
+            continue
+        decision = decisions.get(row.event_id)
+        if row.type == reward_repo.REWARD_CONFIRMED or (decision is not None and decision.type == APPROVED):
+            # The manager's own credit for an assigned task carries its confirmation; an earned record
+            # is paid in the month its approval landed in, so the row is that day's decision.
+            at = row.at_tehran if decision is None else decision.at_tehran
+            rows.append(_reward_row(row, CONFIRMED, at, names))
+        elif decision is None:
+            rows.append(_reward_row(row, PENDING, row.at_tehran, names))
+        # The revocation is a fact of its own day, so it is read beside the confirmation, never instead.
+        revocation = revocations.get(row.event_id)
+        if revocation is not None:
+            rows.append(_reward_row(row, REVOKED, revocation.at_tehran, names, revoked=True))
+    kept = [row for row in rows if row.status == PENDING or _inside(window, row.at_tehran)]
+    return tuple(sorted(kept, key=lambda row: (row.at_tehran, row.event_id)))
+
+
+def _reward_row(
+    row: reward_repo.RewardEventRow,
+    status: str,
+    at_tehran: str,
+    names: _Names,
+    *,
+    revoked: bool = False,
+) -> RewardLine:
+    """One stored reward record as a card row: its earner, its work in Persian and its amount."""
+    payload = row.payload
+    work_type = str(payload.get("work_type") or "")
+    amount = int(payload.get("amount_toman") or 0)
+    return RewardLine(
+        event_id=row.event_id,
+        status=status,
+        earner=names.person(str(payload.get("staff_id") or "")),
+        work_type=work_type,
+        label_fa=WORK_TYPE_LABELS.get(work_type, work_type),
+        # A revocation gives money back, so it reads negative, exactly like the payroll's own line.
+        amount=-amount if revoked else amount,
+        at_tehran=at_tehran,
+        deduction_month=deduction_month(parse_iso(at_tehran)) if revoked else None,
+    )
+
+
+def _campaign_discounts(connection: Connection, window: CardWindow) -> tuple[CampaignDiscountLine, ...]:
+    """The «گزارش کمپین» of the window: one row per campaign that gave a discount inside it (F8).
+
+    The figures are the report page's own — the count of «ت» events of the window times the campaign's
+    amount — and a campaign with none in the window is not a row at all: the section's empty case is
+    the muted line every section already gets.
+    """
+    counts: dict[str, int] = {}
+    for event in _window_events(connection, window, _DISCOUNT):
+        campaign_id = str(event.payload.get("campaign_id") or "")
+        counts[campaign_id] = counts.get(campaign_id, 0) + 1
+    if not counts:
+        return ()
+    rows: list[CampaignDiscountLine] = []
+    for campaign in campaign_repo.newest_first(connection):
+        count = counts.pop(campaign.campaign_id, None)
+        if count is None:
+            continue
+        rows.append(
+            CampaignDiscountLine(
+                campaign_id=campaign.campaign_id,
+                name=campaign.name,
+                service=campaign.service,
+                count=count,
+                amount=campaign.amount_toman,
+                total=count * campaign.amount_toman,
+            )
+        )
+    # A discount whose campaign has left the calendar still happened, and the report page keeps it
+    # too: it takes a row of its own, by its id, and neither page invents an amount for it.
+    rows.extend(
+        CampaignDiscountLine(campaign_id, campaign_id, "", count, None, None)
+        for campaign_id, count in sorted(counts.items())
+    )
+    return tuple(rows)
+
+
+def _inside(window: CardWindow, at_tehran: str) -> bool:
+    """Whether a stored Tehran instant falls in the card's half-open window."""
+    return window.start <= parse_iso(at_tehran) < window.end

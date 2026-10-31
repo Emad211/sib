@@ -33,6 +33,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.EQUIPMENT_FAULT_REPORT,
                 _P.FAULT_FIX,
                 _P.CLEANING_CONFIRM,
+                _P.REWARD_VIEW,
             }
         ),
         Role.NURSE: frozenset(
@@ -53,6 +54,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.FAULT_FIX,
                 _P.VITALS_RECORD,
                 _P.CLEANING_CONFIRM,
+                _P.REWARD_VIEW,
             }
         ),
         Role.STOREKEEPER: frozenset(
@@ -71,6 +73,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.EQUIPMENT_FAULT_REPORT,
                 _P.FAULT_FIX,
                 _P.SHIFT_EVENT_APPROVE,
+                _P.REWARD_VIEW,
             }
         ),
         Role.PURCHASER: frozenset(
@@ -81,6 +84,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.PURCHASE_PAYMENT_RECORD,
                 _P.EQUIPMENT_FAULT_REPORT,
                 _P.FAULT_FIX,
+                _P.REWARD_VIEW,
             }
         ),
         Role.ACCOUNTANT: frozenset(
@@ -94,6 +98,9 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.EQUIPMENT_FAULT_REPORT,
                 _P.FAULT_FIX,
                 _P.SHIFT_EVENT_APPROVE,
+                _P.REWARD_VIEW,
+                _P.ACCOUNTANT_QUEUE_VIEW,
+                _P.CAMPAIGN_REPORT_VIEW,
             }
         ),
         Role.SHIFT_DOCTOR: frozenset(
@@ -108,6 +115,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.FAULT_FIX,
                 _P.VITALS_RECORD,
                 _P.SHIFT_EVENT_APPROVE,
+                _P.REWARD_VIEW,
             }
         ),
         Role.MANAGER: frozenset(Permission),

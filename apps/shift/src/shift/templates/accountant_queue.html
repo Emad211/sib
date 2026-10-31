@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — صف حسابدار{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های حسابدار">
+    <a class="mg-nav-link" href="/accountant/queue">صف حسابدار</a>
+    <a class="mg-nav-link" href="/accountant/campaigns">گزارش کمپین</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">صف حسابدار</h1>
+    <p class="mg-meta">کارهای باز پول، از قدیمی‌ترین. دکمهٔ تأیید و رد فقط روی کاری می‌آید که خودتان می‌توانید دربارهٔ آن تصمیم بگیرید؛ بقیه برای تصمیم‌گیرندهٔ خودشان می‌مانند.</p>
+  </header>
+
+  <section class="mg-section" aria-labelledby="ac-transfer-title">
+    <h2 id="ac-transfer-title" class="mg-section-title">کارت‌به‌کارت — تطبیق با حساب بانکی</h2>
+    {% for row in card_transfers %}
+    <article class="mg-row" data-event-id="{{ row.event_id }}">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">شماره پذیرش: {{ row.admission_no }}</p>
+      <p class="mg-line mg-muted">گزارش‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-pending">{{ row.state }}</p>
+      {% if row.decidable %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decision="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decision="reject" data-event-id="{{ row.event_id }}">رد</button>
+      </p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">موردی در انتظار تصمیم نیست.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="ac-withdrawal-title">
+    <h2 id="ac-withdrawal-title" class="mg-section-title">برداشت از صندوق</h2>
+    {% for row in withdrawals %}
+    <article class="mg-row" data-event-id="{{ row.event_id }}">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">گیرنده: {{ row.recipient }}</p>
+      <p class="mg-line">دلیل: {{ row.reason }}</p>
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-pending">{{ row.side }} · {{ row.state }}</p>
+      <p class="mg-line mg-muted">سقف همان شیفت: {{ row.cap }} تومان</p>
+      {% if row.decidable %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decision="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decision="reject" data-event-id="{{ row.event_id }}">رد</button>
+      </p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">موردی در انتظار تصمیم نیست.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="ac-refund-title">
+    <h2 id="ac-refund-title" class="mg-section-title">برگشت پول / ابطال</h2>
+    {% for row in refunds %}
+    <article class="mg-row" data-event-id="{{ row.event_id }}">
+      <p class="mg-line mg-strong">شماره پذیرش: {{ row.admission_no }}</p>
+      <p class="mg-line">دلیل: {{ row.reason }}</p>
+      <p class="mg-line mg-muted">درخواست‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-pending">{{ row.state }}</p>
+      {% if row.decidable %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-decision="approve" data-event-id="{{ row.event_id }}">تأیید</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-decision="reject" data-event-id="{{ row.event_id }}">رد</button>
+      </p>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">موردی در انتظار تصمیم نیست.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="ac-payroll-title">
+    <h2 id="ac-payroll-title" class="mg-section-title">پاداش ماهانه</h2>
+    {% if payroll %}
+    <p class="mg-meta">ماه {{ payroll.month }}</p>
+    {% for row in payroll.lines %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.staff }} — {{ row.label }}</p>
+      <p class="mg-line">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line mg-muted">{{ row.at }}{% if row.note %} · {{ row.note }}{% endif %}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این ماه پاداشی ثبت نشده است.</p>
+    {% endfor %}
+    <p class="mg-line">جمع پاداش: {{ payroll.earned }} تومان · جمع کسر: {{ payroll.deducted }} تومان · خالص: {{ payroll.net }} تومان</p>
+    {% for pay in payroll.staff %}
+    <p class="mg-line">خالص {{ pay.staff }}: {{ pay.net }} تومان</p>
+    {% endfor %}
+    {% else %}
+    <p class="mg-empty">در این ماه پاداشی ثبت نشده است.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/accountant.js"></script>
+{% endblock %}

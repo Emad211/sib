@@ -598,6 +598,9 @@ def _may_decide(kind: KindSpec, event: EventRecord, principal: Principal) -> boo
     by itself. When the person a withdrawal named is its own recorder, any other staff member answers
     for it instead — the session proves the caller is an active staff member (`AuthService` refuses a
     deactivated one) — and the manager may always decide an open record, whatever its kind.
+
+    The person a record pays is never its decider either, whatever their role: a manager who also
+    works a shift cannot confirm the reward his own work earned (SHF-5, P-05).
     """
     if event.actor_id == principal.staff_id:
         return False
@@ -605,6 +608,9 @@ def _may_decide(kind: KindSpec, event: EventRecord, principal: Principal) -> boo
     # caused the loss never confirms it, manager or not (E-05).
     culprit = event.payload.get("culprit_id")
     if culprit is not None and str(culprit) == principal.staff_id:
+        return False
+    beneficiary = None if kind.beneficiary_field is None else event.payload.get(kind.beneficiary_field)
+    if beneficiary is not None and str(beneficiary) == principal.staff_id:
         return False
     roles = set(principal.roles)
     if kind.manager_only_when is not None and kind.manager_only_when(event.payload):

@@ -47,6 +47,7 @@ from shift.services.daily_card import (
     ShiftEventLine,
 )
 from shift.services.handover import HandoverError, HandoverService
+from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
@@ -125,6 +126,10 @@ SHIFT_EVENT_STATUS_LABELS = {
 BOOLEAN_LABELS = {True: "بله", False: "خیر"}
 MULTI_SEPARATOR = "، "
 TOMAN = "تومان"
+# The three states a reward row can carry on the card, in the manager's words (S01 §5).
+REWARD_STATUS_LABELS = {PENDING: "در انتظار تأیید", CONFIRMED: "تأییدشده", REVOKED: "ابطال‌شده"}
+# A campaign the calendar no longer holds keeps its count and has no price; the card never invents one.
+UNKNOWN_FIGURE = "نامعلوم"
 SHIFT_LABELS = {1: "شیفت صبح", 2: "شیفت عصر", 3: "شیفت شب"}
 WEEKDAY_LABELS = {
     0: "دوشنبه",
@@ -404,7 +409,7 @@ def _card_view(card: Card) -> dict[str, Any]:
 
 
 def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
-    """The card's seven sections as rows of text; a section the stored card lacks is left out."""
+    """The card's twelve sections as rows of text; a section the stored card lacks is left out."""
     builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
         "over_cap_withdrawals": _withdrawal_rows,
@@ -416,6 +421,8 @@ def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
         "open_flows": _open_flow_rows,
         "shift_events": _shift_event_rows,
         "open_events": _open_event_rows,
+        "rewards": _reward_rows,
+        "campaign_discounts": _campaign_rows,
     }
     return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
@@ -696,3 +703,32 @@ def _item_row(item: Any, places: dict[str, str]) -> dict[str, Any]:
         "stock_factor": item.stock_factor,
         "needs_code": item.kind is ItemKind.COUNTED and not item.acc_code,
     }
+
+
+def _reward_rows(card: Card) -> list[dict[str, str]]:
+    """The day's rewards and the ones still waiting: earner, work, amount, and a deduction's month."""
+    return [
+        {
+            "earner": _person(entry.earner),
+            "work": entry.label_fa,
+            "status": REWARD_STATUS_LABELS.get(entry.status, entry.status),
+            "amount": f"{entry.amount:,}",
+            "at": _stamp_fa(entry.at_tehran),
+            "deduction_month": "" if entry.deduction_month is None else entry.deduction_month.replace("-", "/"),
+        }
+        for entry in card.rewards
+    ]
+
+
+def _campaign_rows(card: Card) -> list[dict[str, str]]:
+    """One campaign that discounted in the window: how many, what it costs and what it gave away."""
+    return [
+        {
+            "name": entry.name,
+            "service": entry.service,
+            "count": f"{entry.count:,}",
+            "amount": UNKNOWN_FIGURE if entry.amount is None else f"{entry.amount:,}",
+            "total": UNKNOWN_FIGURE if entry.total is None else f"{entry.total:,}",
+        }
+        for entry in card.campaign_discounts
+    ]

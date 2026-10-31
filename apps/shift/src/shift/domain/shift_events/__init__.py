@@ -16,6 +16,7 @@ from shift.domain.shift_events import (  # noqa: F401 — importing registers th
     patient_items,
     refund,
     restock,
+    rewards,
     vitals,
     waste,
 )
