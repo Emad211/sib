@@ -125,6 +125,48 @@
    "storekeeper": 403
   }
  },
+ "POST /manager/rewards/credit [post_credit]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/goal [post_goal]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /accountant/prices [get_price_history]": {
+  "guard": "permission:accountant.queue.view",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /admin/devices [device_admin_page]": {
   "guard": "permission:device.enroll",
   "roles": {

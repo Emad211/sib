@@ -124,8 +124,7 @@ def build_rewards_router(*, rewards: RewardsSource, shift_events: ShiftEventsSou
                 "goal": _goal_view(service.team_goal(key)),
                 "max_goal": MAX_GOAL_WORKS,
                 "credit_work_types": [
-                    {"value": work_type.value, "label": WORK_TYPE_LABELS[work_type]}
-                    for work_type in CREDIT_WORK_TYPES
+                    {"value": work_type.value, "label": WORK_TYPE_LABELS[work_type]} for work_type in CREDIT_WORK_TYPES
                 ],
             },
             cache_control=NO_STORE,
@@ -210,9 +209,7 @@ def build_rewards_router(*, rewards: RewardsSource, shift_events: ShiftEventsSou
         moment = request.app.state.clock.now_utc()
         event_key = new_ulid(moment)
         # A manager task is credited per task; the follow-up path is confirmed by hand once a month.
-        idempotency_key = (
-            f"reward:follow_up:{month.strip()}:{staff_id.strip()}" if kind == "follow_up" else event_key
-        )
+        idempotency_key = f"reward:follow_up:{month.strip()}:{staff_id.strip()}" if kind == "follow_up" else event_key
         payload: dict[str, object] = {"staff_id": staff_id.strip(), "work_type": kind, "amount_toman": amount}
         if note.strip():
             payload["note"] = note.strip()

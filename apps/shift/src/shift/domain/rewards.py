@@ -20,6 +20,8 @@ from enum import StrEnum
 
 from shift.common.clock import to_tehran
 from shift.common.jalali import gregorian_to_jalali
+from shift.domain.payroll import Payroll as Payroll
+from shift.domain.payroll import PayrollLine as PayrollLine
 
 MONTHS_IN_YEAR = 12
 
@@ -129,38 +131,6 @@ def net_by_staff(month: str, confirmed: Iterable[RewardLine], revoked: Iterable[
         if deduction_month(line.at) == month:
             totals[line.staff_id] = totals.get(line.staff_id, 0) - line.amount_toman
     return totals
-
-
-@dataclass(frozen=True, slots=True)
-class PayrollLine:
-    """One row of the accountant's list; a deduction line carries a negative amount."""
-
-    staff_id: str
-    staff_name: str
-    work_type: str
-    source: str
-    amount_toman: int
-    at_tehran: str
-    note: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class Payroll:
-    """One month of the payroll: its lines, what it earned, what it takes back and the net."""
-
-    month: str
-    lines: tuple[PayrollLine, ...]
-    earned_toman: int
-    deducted_toman: int
-    net_toman: int
-
-    def per_staff(self) -> tuple[tuple[str, str, int], ...]:
-        """`(staff_id, name, net)` per person, by name: what the accountant adds to a payslip, zero too."""
-        names = {line.staff_id: line.staff_name for line in self.lines}
-        nets: dict[str, int] = {}
-        for line in self.lines:
-            nets[line.staff_id] = nets.get(line.staff_id, 0) + line.amount_toman
-        return tuple(sorted((staff_id, names[staff_id], net) for staff_id, net in nets.items()))
 
 
 @dataclass(frozen=True, slots=True)
