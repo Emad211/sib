@@ -27,6 +27,7 @@ MATRIX_PATH = Path(__file__).resolve().parents[1] / "data" / "route_matrix.json"
 PUBLIC = "public"
 AUTHENTICATED = "authenticated"
 PERMISSION = "permission:"
+PERMISSION_ANY = "permission_any:"
 ROLE_NAMES = (
     "anon",
     "reception",
@@ -285,7 +286,11 @@ def test_the_matrix_covers_every_role_and_names_them_once() -> None:
     assert len(ROLE_NAMES) == len(set(ROLE_NAMES))
     for key, row in rows.items():
         assert set(row["roles"]) == set(ROLE_NAMES), key
-        assert row["guard"] == PUBLIC or row["guard"] == AUTHENTICATED or row["guard"].startswith(PERMISSION)
+        assert (
+            row["guard"] == PUBLIC
+            or row["guard"] == AUTHENTICATED
+            or row["guard"].startswith((PERMISSION, PERMISSION_ANY))
+        )
 
 
 def test_unknown_paths_use_the_same_error_envelope(matrix_client: TestClient) -> None:

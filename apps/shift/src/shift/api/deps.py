@@ -25,6 +25,7 @@ CSRF_HEADER = CSRF_HEADER_NAME
 PREAUTH_CSRF_COOKIE = CSRF_COOKIE_NAME
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 GUARD_ATTRIBUTE = "shift_guard"
+PERMISSION_ANY = "permission_any"
 AUTHENTICATED = "authenticated"
 LOGIN_REQUIRED = "ورود لازم است."
 NO_PERMISSION = "نقش شما اجازهٔ این کار را ندارد."
@@ -122,6 +123,25 @@ def require_page(permission: Permission) -> Callable[[Request], Principal]:
         return principal
 
     setattr(guard, GUARD_ATTRIBUTE, f"permission:{permission.value}")
+    return guard
+
+
+def require_any(*permissions: Permission) -> Callable[[Request], Principal]:
+    """Dependency: a session that holds at least one of `permissions`.
+
+    The phone's one ingest endpoint is the only caller: an on-shift person holds `events.append`, and
+    an off-shift one holds `shift.record.hold` so their queued record is kept for the manager (R-15)
+    instead of vanishing at the door. Which kinds a record may carry is still the service's answer.
+    """
+
+    def guard(request: Request) -> Principal:
+        principal = current_principal(request)
+        enforce_csrf(request, principal)
+        if not (principal.permissions & set(permissions)):
+            raise Forbidden(NO_PERMISSION)
+        return principal
+
+    setattr(guard, GUARD_ATTRIBUTE, f"{PERMISSION_ANY}:{'|'.join(sorted(p.value for p in permissions))}")
     return guard
 
 

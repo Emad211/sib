@@ -88,3 +88,50 @@ def _emergency_incoming(connection: Connection, flow: HandoverFlow, staff_id: st
         (flow.value, staff_id),
     ).first()
     return row is not None
+
+
+def custodian_at(connection: Connection, flow: HandoverFlow, instant: datetime) -> str | None:
+    """Who held this flow at `instant`, read out of the handover rows (R-15, ADR-021).
+
+    A record is judged by the moment it happened, so "who holds the box" cannot be the row that says
+    who holds it now: while the newest flow of its kind was still open its outgoing person held it, and
+    from the close the incoming person did. Before the clinic's first flow of that kind the manager's
+    baseline names the custodian.
+    """
+    row = handover_repo.latest_flow_at_or_before(connection, instant, flow)
+    if row is None:
+        baseline = connection.exec_driver_sql(
+            "SELECT json_extract(payload, '$.custodian_id') FROM events WHERE type = ? "
+            "AND json_extract(payload, '$.flow') = ? AND julianday(client_at) <= julianday(?) "
+            "ORDER BY julianday(client_at) DESC, seq DESC LIMIT 1",
+            (EventType.HANDOVER_BASELINE_RECORDED.value, flow.value, instant.isoformat()),
+        ).first()
+        return None if baseline is None or baseline[0] is None else str(baseline[0])
+    if row.signed_at is not None and row.signed_at <= instant:
+        return row.incoming_id
+    return row.outgoing_id
+
+
+def on_shift_roles_at(
+    connection: Connection, *, staff_id: str, roles: Iterable[str], instant: datetime
+) -> tuple[str, ...]:
+    """The bound roles this person was on shift for at `instant`, whichever shift was running then.
+
+    R-15's half of ADR-021: a phone that was offline all evening replays a record made while its owner
+    still held the box, so the answer must come from that moment's custody and presence, not today's.
+    """
+    held = {parse_role(role) for role in roles} & BOUND_ROLES
+    if not held:
+        return ()
+    shift = covering(to_tehran(instant))
+    working: set[Role] = set()
+    for role in held:
+        flow = FLOW_FOR_ROLE.get(role)
+        if flow is not None and custodian_at(connection, flow, instant) == staff_id:
+            working.add(role)
+            continue
+        if role in PRESENCE_ROLES and _presence_holds(
+            connection, staff_id=staff_id, role=role, instant=instant, shift=shift
+        ):
+            working.add(role)
+    return tuple(sorted(role.value for role in working))

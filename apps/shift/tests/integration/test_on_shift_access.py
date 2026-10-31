@@ -70,9 +70,8 @@ def test_an_off_shift_nurse_keeps_the_handover_and_loses_the_shift(
 def test_the_refusal_is_shared_and_names_nobody_on_shift(off_shift_client: TestClient) -> None:
     headers, _me = _session(off_shift_client, "nurse")
 
-    refusal = off_shift_client.post(
-        "/api/v1/events",
-        json={"type": "stock.waste_reported", "payload": {}, "client_at": "2026-10-28T10:00:00Z"},
+    refusal = off_shift_client.get(
+        "/api/v1/shift-events/pending",
         headers=headers,
     )
 

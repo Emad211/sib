@@ -36,6 +36,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.REWARD_VIEW,
                 # ADR-021: the second receptionist of a shift says «حضور در شیفت» to come on shift.
                 _P.SHIFT_PRESENCE_DECLARE,
+                # R-15: a queued record made while off shift is held for the manager, never refused.
+                _P.SHIFT_RECORD_HOLD,
                 # The owner's document: the parcel arrives in whatever shift it arrives in, so the
                 # counter takes it in and flags a problem instead of waiting for the storekeeper.
                 _P.PURCHASE_DELIVERY_RECEIVE,
@@ -60,6 +62,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.VITALS_RECORD,
                 _P.CLEANING_CONFIRM,
                 _P.REWARD_VIEW,
+                # R-15: the nurse's queued record made while off shift is held, not refused.
+                _P.SHIFT_RECORD_HOLD,
             }
         ),
         Role.STOREKEEPER: frozenset(
@@ -125,6 +129,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.REWARD_VIEW,
                 # ADR-021: the shift doctor declares «حضور در شیفت» and is on shift from then.
                 _P.SHIFT_PRESENCE_DECLARE,
+                # R-15: a queued record made while off shift is held for the manager, never refused.
+                _P.SHIFT_RECORD_HOLD,
             }
         ),
         Role.MANAGER: frozenset(Permission),

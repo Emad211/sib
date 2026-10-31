@@ -26,6 +26,8 @@ ALWAYS_ALLOWED: frozenset[Permission] = frozenset(
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
         Permission.SHIFT_PRESENCE_DECLARE,
+        # R-15: a queued record made off shift is kept for the manager, not refused at the door.
+        Permission.SHIFT_RECORD_HOLD,
         Permission.REWARD_VIEW,
     }
 )
@@ -58,6 +60,11 @@ def effective_permissions(roles: Iterable[Role | str], on_shift: Iterable[Role |
         bound_grants = set().union(*(ROLE_PERMISSIONS[role] for role in kept))
         granted |= bound_grants & ALWAYS_ALLOWED
     return frozenset(granted)
+
+
+def has_bound_role(roles: Iterable[Role | str]) -> bool:
+    """Whether any of the person's roles is shift-bound, so being off shift is a thing that can happen."""
+    return bool(held_roles(roles) & BOUND_ROLES)
 
 
 def is_on_shift(roles: Iterable[Role | str], on_shift: Iterable[Role | str]) -> bool:

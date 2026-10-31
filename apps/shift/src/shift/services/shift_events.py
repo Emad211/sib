@@ -34,8 +34,9 @@ from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.domain.event_types import EventType
 from shift.domain.events import validate_payload
-from shift.domain.occurred_time import OccurredVerdict
+from shift.domain.occurred_time import OFF_SHIFT_REASON, OccurredVerdict
 from shift.domain.occurred_time import verdict as occurred_verdict
+from shift.domain.on_shift import effective_permissions, has_bound_role
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import SettingKey, ShiftKey
 from shift.domain.shift_clock import covering
@@ -57,6 +58,7 @@ from shift.services.catalog import CatalogService, ItemKind
 from shift.services.event_store import EventStore, EventValidationError
 from shift.services.held_events import HeldEvents
 from shift.services.late_cash import notice_late_cash
+from shift.services.on_shift import on_shift_roles_at
 from shift.services.outbox import EventSubmission, OutboxService, OutboxValidationError, SubmissionResult
 from shift.services.projections import ProjectionEngine
 from shift.services.settings import SettingsService
@@ -169,13 +171,21 @@ class ShiftEventService:
         offline record is refused with a 422 the phone treats as final, and the clinic loses it (F5).
         """
         kind = kind_for(submission.type)
+        needed = Permission.EVENTS_APPEND if kind is None else kind.permission
+        if needed not in principal.permissions and not held_checked:
+            # R-15: the record is judged at the moment it happened, not when it arrived. Someone who was
+            # on shift then gets their record applied normally even if they have since signed over; one
+            # who was off shift then is kept for the manager, never dropped with a refusal.
+            worked_then = has_bound_role(principal.roles) and needed in self._permissions_at(principal, submission)
+            if not worked_then:
+                kept = self._hold_off_shift(submission, principal, shift)
+                if kept is None:
+                    raise ShiftEventRuleError("نقش شما اجازهٔ ثبت این رویداد را ندارد.")
+                return kept
         if kind is None:
             # Handover, accounting mirror and legacy stock types keep the outbox path and its
             # ADR-016 refusal for anything live-only.
             return self._outbox.record_event(submission)
-
-        if kind.permission not in principal.permissions:
-            raise ShiftEventRuleError("نقش شما اجازهٔ ثبت این رویداد را ندارد.")
 
         try:
             payload = validate_payload(submission.type, submission.payload)
@@ -221,6 +231,35 @@ class ShiftEventService:
         return SubmissionResult(
             result.event.seq, result.event.event_id, result.created, "recorded" if result.created else "replayed"
         )
+
+    def _permissions_at(self, principal: Principal, submission: EventSubmission) -> frozenset[Permission]:
+        """The effective permissions this person had at the record's own instant (R-15, ADR-021)."""
+        occurred = submission.client_at
+        if isinstance(occurred, str):
+            try:
+                occurred = parse_iso(occurred)
+            except ValueError:
+                return frozenset()
+        with self._database.read() as connection:
+            working = on_shift_roles_at(
+                connection, staff_id=principal.staff_id, roles=principal.roles, instant=occurred
+            )
+        return effective_permissions(principal.roles, working)
+
+    def _hold_off_shift(
+        self, submission: EventSubmission, principal: Principal, shift: ShiftKey
+    ) -> SubmissionResult | None:
+        """Keep a record made while its owner was off shift for the manager (R-15, ADR-021).
+
+        200 with `held`, never a 403: a nurse who signed over at 22:00 and whose phone then syncs a
+        record from last evening must not lose it at the door. Nothing moves on the box or the shelves;
+        the manager releases or rejects it on the daily card. Only a shift-bound role has an off shift,
+        so a free role's missing permission stays the refusal it always was.
+        """
+        if self._held is None or not has_bound_role(principal.roles):
+            return None
+        happened = _occurred_shift(submission) or shift
+        return self._held.hold(submission, reason=OFF_SHIFT_REASON, shift=happened)
 
     def _hold_if_implausible(
         self, submission: EventSubmission, principal: Principal, shift: ShiftKey

@@ -671,7 +671,7 @@
   }
  },
  "POST /api/v1/events [post_event]": {
-  "guard": "permission:events.append",
+  "guard": "permission_any:events.append|shift.record.hold",
   "roles": {
    "accountant": 422,
    "anon": 401,

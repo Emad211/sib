@@ -52,8 +52,9 @@ def test_the_always_set_is_handover_rewards_and_the_presence_button() -> None:
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
         Permission.SHIFT_PRESENCE_DECLARE,
+        Permission.SHIFT_RECORD_HOLD,
         Permission.REWARD_VIEW,
-    }, "off shift a person may take over, hand over, say they are here and read their own rewards"
+    }, "off shift: take over, hand over, say they are here, hand a queued record in, read own rewards"
 
 
 def test_a_multi_role_person_keeps_the_free_half_off_shift() -> None:
