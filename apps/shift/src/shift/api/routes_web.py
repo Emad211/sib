@@ -8,12 +8,18 @@ from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from shift.__version__ import __version__
+from shift.adapters.db import handover_repo
 from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
 from shift.api.templating import templates
-from shift.domain.on_shift import off_shift_notice
+from shift.domain.checklist_rules import Frequency
+from shift.domain.handover_fsm import HandoverFlow
+from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, FLOW_OWNER_ROLES
+from shift.domain.item_icons import icon_for
+from shift.domain.on_shift import held_roles, off_shift_notice
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
+from shift.services.catalog import CatalogService, ItemKind
 from shift.services.purchase import PURCHASE_PERMISSIONS
 
 router = APIRouter(tags=["web"])
@@ -45,6 +51,7 @@ _SW_BODY = (_STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__SHIFT_
 # A page guard: no session means a redirect to the login screen, not a JSON 401.
 HandoverCounter = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_COUNT_SUBMIT))]
 EventsAppender = Annotated[Principal, Depends(deps.require_page(Permission.EVENTS_APPEND))]
+BaselineOwner = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE_OWN))]
 
 
 def _json_for_script(data: dict[str, Any]) -> str:
@@ -199,6 +206,56 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
 )
 
 
+# Owner decision 9 (ADR-022 item 5): the flow's own person records its initial count, so the home
+# screen offers that one job while the flow still has none. The manager keeps /manager/baseline.
+_FLOW_LABELS = {HandoverFlow.RECEPTION: "پذیرش", HandoverFlow.NURSING: "پرستاری"}
+
+
+def _own_baseline_flows(request: Request, principal: Principal | None) -> list[dict[str, Any]]:
+    """The flows this person may start from scratch: their own role's flows with no first count yet.
+
+    Only the counted items each flow actually asks for in a handover come back (`every_shift`), so the
+    initial count covers exactly the shelves whose later blind count compares against it. Nothing here
+    carries an expected figure: the person counts and types their own numbers (owner decision 9).
+    """
+    if principal is None or not principal.roles:
+        return []
+    held = held_roles(principal.roles)
+    owned = [flow for flow, role in FLOW_OWNER_ROLES.items() if role in held]
+    if not owned:
+        return []
+    shift = deps.running_shift(request)
+    catalog: CatalogService = request.app.state.catalog
+    with request.app.state.database.read() as connection:
+        pending = [flow for flow in owned if not handover_repo.has_baseline(connection, flow)]
+    if not pending:
+        return []
+    places = {place.location_id: place.name for place in catalog.locations(shift)}
+    flows: list[dict[str, Any]] = []
+    for flow in pending:
+        locations = [
+            {
+                "location_id": location_id,
+                "name": places.get(location_id, location_id),
+                "items": [
+                    {"item_id": item.item_id, "name": item.name, "unit": item.unit, "icon": icon_for(item)}
+                    for item in catalog.items(shift, location_id=location_id)
+                    if item.kind is ItemKind.COUNTED and item.frequency is Frequency.EVERY_SHIFT
+                ],
+            }
+            for location_id in FLOW_COUNT_LOCATIONS[flow]
+        ]
+        flows.append(
+            {
+                "id": flow.value,
+                "label": _FLOW_LABELS[flow],
+                "cash": flow is HandoverFlow.RECEPTION,
+                "locations": [location for location in locations if location["items"]],
+            }
+        )
+    return flows
+
+
 @router.get("/", response_class=HTMLResponse, summary="Serve PWA home shell")
 def get_home(request: Request) -> HTMLResponse:
     """Render the main PWA shell and issue the double-submit CSRF cookie."""
@@ -208,6 +265,20 @@ def get_home(request: Request) -> HTMLResponse:
     tiles = [tile for tile in HOME_TILES if granted & tile["needs"]]
     # ADR-021: an off-shift person reads that their shift is not open and keeps the handover tile.
     notice = None if principal is None else off_shift_notice(principal.roles, principal.on_shift_roles)
+    # Owner decision 9: the first count sits right under the handover tile, and only while it is missing.
+    pending = _own_baseline_flows(request, principal)
+    if pending:
+        labels = " و ".join(flow["label"] for flow in pending)
+        tiles.insert(
+            next((index + 1 for index, tile in enumerate(tiles) if tile["href"] == "/handover"), len(tiles)),
+            {
+                "needs": frozenset({Permission.HANDOVER_BASELINE_OWN}),
+                "href": "/handover/baseline",
+                "icon": "🧮",
+                "title": "شمارش اولیه",
+                "hint": f"اولین بار: صندوق و اقلام {labels} را خودتان بشمارید",
+            },
+        )
     return _shell_page(
         request,
         "home.html",
@@ -260,6 +331,23 @@ def get_handover_page(request: Request, _principal: HandoverCounter) -> HTMLResp
     flow they may complete is decided by the API (H-10: a nurse never counts the cash box).
     """
     return _shell_page(request, "handover.html")
+
+
+@router.get("/handover/baseline", response_class=HTMLResponse, summary="The flow's own initial count")
+def get_own_baseline_page(request: Request, principal: BaselineOwner) -> HTMLResponse:
+    """Owner decision 9 (ADR-022 item 5): one task per screen, on the person's own phone.
+
+    The page carries only the counted items of the flows this person's role owns and that still have no
+    first count; a flow that has one is refused by the API even if the page is open. It asks for what
+    the person counted, never for an expected figure, and the flow's own blind count compares against
+    it afterwards. `no-store`: the list is the clinic's shelf content, not a shell.
+    """
+    return _shell_page(
+        request,
+        "handover_baseline.html",
+        {"baseline_json": _json_for_script({"flows": _own_baseline_flows(request, principal)})},
+        cache_control="no-store",
+    )
 
 
 @router.get("/purchase", response_class=HTMLResponse, summary="Serve the purchasing and warehouse screen")

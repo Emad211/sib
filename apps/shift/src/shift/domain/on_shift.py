@@ -25,6 +25,9 @@ ALWAYS_ALLOWED: frozenset[Permission] = frozenset(
         Permission.HANDOVER_COUNT_OUTGOING,
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
+        # Owner decision 9: the first count of a flow happens before its custodian has any custody, so
+        # the person whose role owns the flow can record it on their own phone while off shift.
+        Permission.HANDOVER_BASELINE_OWN,
         Permission.SHIFT_PRESENCE_DECLARE,
         # R-15: a queued record made off shift is kept for the manager, not refused at the door.
         Permission.SHIFT_RECORD_HOLD,

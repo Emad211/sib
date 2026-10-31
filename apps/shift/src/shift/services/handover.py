@@ -21,10 +21,11 @@ after the cutoff stays on top of the agreed figure instead of inside it. A recei
 the flow's window breaks that rule, and it goes to the manager through the audit trail alone — no
 response, header, public log line or client-visible event carries the number (R-02, ADR-011).
 
-The app starts from the manager's initial baseline (`record_baseline`, SHF-7.1), not from a staff
-handover: one event seeds the box, every shelf it names and who holds them. Nobody types the outgoing
-person either — a flow derives it from the newest flow of its kind's incoming person, or from the
-custody the baseline set, and refuses with a Persian message when neither exists.
+The app starts from an initial baseline (`record_baseline`, SHF-7.1), not from a staff
+handover: one event seeds the box, every shelf it names and who holds them. Owner decision 9 has each
+person record their own flow's first count (ADR-022 item 5); the manager keeps the tool as a fallback.
+Nobody types the outgoing person either — a flow derives it from the newest flow of its kind's incoming
+person, or from the custody the baseline set, and refuses with a Persian message when neither exists.
 """
 
 import logging
@@ -51,7 +52,8 @@ from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, Handover, HandoverFlow, HandoverStep, Signer
 from shift.domain.handover_payloads import CountTarget
-from shift.domain.handover_steps import STEP_LOCATIONS
+from shift.domain.handover_steps import FLOW_OWNER_ROLES, STEP_LOCATIONS
+from shift.domain.on_shift import held_roles
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
@@ -73,6 +75,8 @@ NO_ACCOUNTING = (
     "نسخهٔ حسابداری در دسترس نیست؛ بدون آن صورت‌حساب‌های باز و عدد مرجع قابل محاسبه نیستند و تحویل شیفت آغاز نمی‌شود."
 )
 NO_BASELINE = "مدیر باید ابتدا شمارش اولیه را ثبت کند."
+# Owner decision 9: a flow's first count belongs to the person whose role owns that flow.
+OWN_FLOW_ONLY = "شمارش اولیهٔ هر جریان را فقط نفر همان جریان ثبت می‌کند."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -209,6 +213,7 @@ class HandoverService:
         manager_id: str,
         opening_cash: int | None,
         items: Sequence[Mapping[str, Any]],
+        device_id: str = BASELINE_DEVICE_ID,
     ) -> BaselineRecord:
         """Record the manager's opening count: the box, every shelf it names and who holds them.
 
@@ -241,7 +246,7 @@ class HandoverService:
                 type=EventType.HANDOVER_BASELINE_RECORDED.value,
                 payload=baseline.model_dump(mode="json"),
                 actor_id=baseline.manager_id,
-                device_id=BASELINE_DEVICE_ID,
+                device_id=device_id,
                 work_date=shift.work_date,
                 client_at=now,
                 shift_id=shift.text,
@@ -265,6 +270,36 @@ class HandoverService:
             recorded_at=now,
             opening_cash=baseline.opening_cash,
             shelves=len(baseline.items),
+        )
+
+    def record_own_baseline(
+        self,
+        *,
+        flow: HandoverFlow,
+        person_id: str,
+        roles: Sequence[str],
+        device_id: str,
+        opening_cash: int | None,
+        items: Sequence[Mapping[str, Any]],
+    ) -> BaselineRecord:
+        """Owner decision 9 (ADR-022 item 5): the person whose role owns the flow counts it themselves.
+
+        The receptionist records the reception flow on their own phone and the nurse the nursing flow;
+        whoever counts becomes that flow's custodian, under their own name (`manager_id` in the payload
+        is the person who recorded it, which is the same person here). The manager's `/manager/baseline`
+        tool stays the fallback and goes through the same event, so a flow can still only have one
+        first count. Off shift is no bar: this person holds no custody yet (ADR-021). A role that does
+        not own the flow is refused in Persian before anything is written.
+        """
+        if FLOW_OWNER_ROLES[flow] not in held_roles(roles):
+            raise HandoverError(OWN_FLOW_ONLY)
+        return self.record_baseline(
+            flow=flow,
+            custodian_id=person_id,
+            manager_id=person_id,
+            opening_cash=opening_cash,
+            items=items,
+            device_id=device_id,
         )
 
     def custodian(self, flow: HandoverFlow) -> str | None:

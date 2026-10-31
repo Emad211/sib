@@ -38,6 +38,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.SHIFT_PRESENCE_DECLARE,
                 # R-15: a queued record made while off shift is held for the manager, never refused.
                 _P.SHIFT_RECORD_HOLD,
+                # Owner decision 9 (ADR-022 item 5): reception records the reception flow's first count.
+                _P.HANDOVER_BASELINE_OWN,
                 # The owner's document: the parcel arrives in whatever shift it arrives in, so the
                 # counter takes it in and flags a problem instead of waiting for the storekeeper.
                 _P.PURCHASE_DELIVERY_RECEIVE,
@@ -64,6 +66,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.REWARD_VIEW,
                 # R-15: the nurse's queued record made while off shift is held, not refused.
                 _P.SHIFT_RECORD_HOLD,
+                # Owner decision 9 (ADR-022 item 5): the nurse records the nursing flow's first count.
+                _P.HANDOVER_BASELINE_OWN,
             }
         ),
         Role.STOREKEEPER: frozenset(

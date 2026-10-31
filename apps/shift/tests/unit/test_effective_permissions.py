@@ -51,10 +51,12 @@ def test_the_always_set_is_handover_rewards_and_the_presence_button() -> None:
         Permission.HANDOVER_COUNT_OUTGOING,
         Permission.HANDOVER_CASH_SUBMIT,
         Permission.HANDOVER_SIGN,
+        # Owner decision 9: the first count happens before this person holds any custody.
+        Permission.HANDOVER_BASELINE_OWN,
         Permission.SHIFT_PRESENCE_DECLARE,
         Permission.SHIFT_RECORD_HOLD,
         Permission.REWARD_VIEW,
-    }, "off shift: take over, hand over, say they are here, hand a queued record in, read own rewards"
+    }, "off shift: take over, count first and hand over, say they are here, hand a record in, read rewards"
 
 
 def test_a_multi_role_person_keeps_the_free_half_off_shift() -> None:
