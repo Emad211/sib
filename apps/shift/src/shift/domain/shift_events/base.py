@@ -147,16 +147,6 @@ class KindSpec:
         """
         return bool(self.approvable_by or self.confirmer_field)
 
-    @property
-    def requires_approval(self) -> bool:
-        """Whether the record waits for a second person's decision.
-
-        Derived from the two ways the clinic names a decider — a role or a person — so the manager's
-        card cannot show a pending row that nobody is allowed to close, and a kind cannot silently ask
-        for a confirmation it has no way to receive.
-        """
-        return bool(self.approvable_by or self.confirmer_field)
-
 
 class ShiftEventError(ValueError):
     """A shift event the clinic's rules refuse; the phone shows the message, nothing is written."""
