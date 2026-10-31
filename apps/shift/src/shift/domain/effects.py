@@ -47,7 +47,13 @@ class CashEffect:
 
 @dataclass(frozen=True, slots=True)
 class Effects:
-    stock: StockEffect | None = None
+    """What one event changes: a sequence of stock effects, applied in order, and one cash effect.
+
+    Most events touch one shelf, so the sequence holds one effect; the manager's baseline records
+    every shelf at once and needs as many as the clinic has (SHF-7.1).
+    """
+
+    stock: tuple[StockEffect, ...] = ()
     cash: CashEffect | None = None
 
 
@@ -56,14 +62,14 @@ EffectBuilder = Callable[[Any], Effects]
 
 def stock_set(payload: Any) -> Effects:
     """A blind count replaces the shelf quantity for that item and location."""
-    return Effects(stock=StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted))
+    return Effects(stock=(StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted),))
 
 
 def stock_delta(operation: StockOperation) -> EffectBuilder:
     """A restock or consumption changes the shelf quantity by `quantity`."""
 
     def build(payload: Any) -> Effects:
-        return Effects(stock=StockEffect(payload.item_id, payload.location_id, operation, payload.quantity))
+        return Effects(stock=(StockEffect(payload.item_id, payload.location_id, operation, payload.quantity),))
 
     return build
 
@@ -113,4 +119,23 @@ def joint_count(payload: Any) -> Effects:
     """
     if payload.scope == "cash":
         return Effects()
-    return Effects(stock=StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted))
+    return Effects(stock=(StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted),))
+
+
+def baseline_recorded(payload: Any) -> Effects:
+    """The manager's baseline sets every shelf it names and seeds the box it counts (SHF-7.1).
+
+    One event sets many shelves, so the effects stay in the order the manager recorded them. The box
+    is seeded with `OPEN`, which only writes a box that has no figure yet, so a baseline can never
+    overwrite money the app has already been tracking; the service refuses a second baseline before
+    it writes anything.
+    """
+    stock = tuple(
+        StockEffect(item.item_id, item.location_id, StockOperation.SET, item.quantity) for item in payload.items
+    )
+    if payload.opening_cash is None:
+        return Effects(stock=stock)
+    return Effects(
+        stock=stock,
+        cash=CashEffect(CashOperation.OPEN, payload.opening_cash, CashBox.RECEPTION.value),
+    )

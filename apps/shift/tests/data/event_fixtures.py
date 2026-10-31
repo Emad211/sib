@@ -13,6 +13,14 @@ CLIENT_AT = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
 
 def default_payload(event_type: str) -> dict[str, Any]:
     """A valid minimal payload for every registered event type."""
+    if event_type == "handover.baseline_recorded":
+        return {
+            "flow": "reception",
+            "custodian_id": "staff-1",
+            "manager_id": "manager-1",
+            "opening_cash": 1_000_000,
+            "items": [{"item_id": "item-1", "location_id": "location-1", "quantity": 10}],
+        }
     if event_type == "handover.started":
         return {"opening_cash": 1_000_000}
     if event_type == "handover.cash_counted":

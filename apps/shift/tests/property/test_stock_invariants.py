@@ -22,14 +22,15 @@ def _replay(events) -> tuple[dict[tuple[str, str], int], dict[str, dict[str, int
         spec = spec_for(event.type)
         payload = spec.payload_model.model_validate(event.payload)
         effects = effects_for(event.type, payload, event.shift_id)
-        if effects.stock is not None:
-            key = (effects.stock.item_id, effects.stock.location_id)
-            if effects.stock.operation is StockOperation.SET:
-                stock[key] = effects.stock.quantity
-            elif effects.stock.operation is StockOperation.ADD:
-                stock[key] = stock.get(key, 0) + effects.stock.quantity
-            else:
-                stock[key] = stock.get(key, 0) - effects.stock.quantity
+        if effects.stock:
+            for effect in effects.stock:
+                key = (effect.item_id, effect.location_id)
+                if effect.operation is StockOperation.SET:
+                    stock[key] = effect.quantity
+                elif effect.operation is StockOperation.ADD:
+                    stock[key] = stock.get(key, 0) + effect.quantity
+                else:
+                    stock[key] = stock.get(key, 0) - effect.quantity
         if effects.cash is not None:
             box = str(effects.cash.cash_box_id)
             seeded = box in cash

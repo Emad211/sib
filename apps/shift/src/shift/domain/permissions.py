@@ -22,6 +22,7 @@ class Permission(StrEnum):
     HANDOVER_COUNT_OUTGOING = "handover.count.outgoing"
     HANDOVER_CASH_SUBMIT = "handover.cash.submit"
     HANDOVER_SIGN = "handover.sign"
+    HANDOVER_BASELINE = "handover.baseline"
     CASH_WITHDRAW_REQUEST = "cash.withdraw.request"
     CASH_WITHDRAW_APPROVE = "cash.withdraw.approve"
     CASH_DEPOSIT_RECORD = "cash.deposit.record"

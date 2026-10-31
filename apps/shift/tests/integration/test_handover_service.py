@@ -1,8 +1,10 @@
-"""The handover service end to end: one persisted flow, blind counts and the events (H-01..H-13).
+"""The handover service end to end: one persisted flow, its blind counts and its events (H-01..H-13).
 
 Every test runs on a synthetic database with the reference catalog seeded from
 `tools/seed_reference_data.py` and with a synthetic accounting copy from
 `tools/make_synthetic_acc_db.py`, because a handover refuses to start without a readable one (H-03).
+Each flow is opened the way the clinic opens one: the manager's baseline first, so the box and the
+shelves have a reference and the outgoing person is derived rather than typed (SHF-7.1).
 Nothing here reads a production database.
 """
 
@@ -20,7 +22,7 @@ from synthetic_accounting import close_open_invoices, empty_accounting
 
 from event_fixtures import build_event
 from shift.adapters.accounting.views import parse_time
-from shift.adapters.db import events_repo, projections_repo
+from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
 from shift.domain.handover_counts import CountStatus
@@ -134,20 +136,44 @@ def _payloads(database: Database, handover_id: str, event_type: str) -> list[dic
         return [json.loads(row["payload"]) for row in rows]
 
 
-def _stock(store: EventStore, item_id: str, counted: int) -> None:
-    """A manager's weekly count, so the shelf has a real base figure to hand over."""
-    payload = {"item_id": item_id, "location_id": SHELF, "counted": counted}
-    store.append(build_event("stock.weekly_count", payload=payload, shift_id=None))
-
-
-def _start(service: HandoverService, flow: HandoverFlow = HandoverFlow.RECEPTION, *, opening_cash: int | None):
-    return service.start(
-        flow,
-        outgoing_id=OUTGOING,
-        incoming_id=INCOMING,
-        caller=CALLER,
+def _baseline(
+    service: HandoverService,
+    flow: HandoverFlow = HandoverFlow.RECEPTION,
+    *,
+    opening_cash: int | None,
+    stock: Mapping[str, int] | None = None,
+    custodian: str = OUTGOING,
+) -> None:
+    """The manager's opening count: the box figure and the shelf quantities this test cares about."""
+    location = "cpr_room" if flow is HandoverFlow.NURSING else SHELF
+    items = [
+        {"item_id": item_id, "location_id": location, "quantity": quantity}
+        for item_id, quantity in (stock or {}).items()
+    ]
+    if not items:
+        items = [{"item_id": SALINE if flow is HandoverFlow.NURSING else PARA, "location_id": location, "quantity": 0}]
+    service.record_baseline(
+        flow=flow,
+        custodian_id=custodian,
+        manager_id="manager-1",
         opening_cash=opening_cash,
+        items=items,
     )
+
+
+def _start(
+    service: HandoverService,
+    flow: HandoverFlow = HandoverFlow.RECEPTION,
+    *,
+    opening_cash: int | None,
+    stock: Mapping[str, int] | None = None,
+    baseline: bool = True,
+    incoming: str = INCOMING,
+):
+    """The manager's baseline (once per flow kind), then the flow that derives its outgoing person."""
+    if baseline:
+        _baseline(service, flow, opening_cash=opening_cash, stock=stock)
+    return service.start(flow, incoming_id=incoming, caller=CALLER)
 
 
 def _settle_cash(service: HandoverService, handover_id: str, counted: int) -> None:
@@ -182,11 +208,9 @@ def _exceptions(database: Database) -> list[dict[str, Any]]:
 
 
 def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatures(
-    service: HandoverService, database: Database, store: EventStore
+    service: HandoverService, database: Database
 ) -> None:
-    _stock(store, PARA, 10)
-    _stock(store, DICLO, 4)
-    state = _start(service, opening_cash=1_000_000)
+    state = _start(service, opening_cash=1_000_000, stock={PARA: 10, DICLO: 4})
     handover_id = state.handover_id
     assert (state.step, state.cash_status, state.item_statuses) == (HandoverStep.CASH, CountStatus.FIRST, {})
 
@@ -211,7 +235,7 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
     state = service.sign(handover_id, Signer.OUTGOING, caller=CALLER)
 
     assert (state.closed, state.step, state.signatures) == (True, None, frozenset(Signer))
-    assert _payloads(database, handover_id, "handover.started") == [{"opening_cash": 1_000_000}]
+    assert _payloads(database, handover_id, "handover.started") == [{"opening_cash": None}]
     assert _payloads(database, handover_id, "handover.count_settled") == [
         {
             "scope": "cash",
@@ -244,10 +268,9 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
 
 
 def test_a_mismatch_walks_to_the_joint_count_and_records_one_named_discrepancy(
-    service: HandoverService, database: Database, store: EventStore
+    service: HandoverService, database: Database
 ) -> None:
-    _stock(store, PARA, 10)
-    handover_id = _start(service, opening_cash=0).handover_id
+    handover_id = _start(service, opening_cash=0, stock={PARA: 10}).handover_id
     _settle_cash(service, handover_id, 0)
     service.advance(handover_id, caller=CALLER)
 
@@ -291,7 +314,7 @@ def test_the_nursing_flow_has_no_cash_step(service: HandoverService, database: D
 
 
 def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
-    service: HandoverService, database: Database, store: EventStore
+    service: HandoverService, database: Database, clock: FixedClock
 ) -> None:
     handover_id = _start(service, opening_cash=1_000_000).handover_id
     assert service.report_early_leave(handover_id, caller=CALLER).early_left is True
@@ -299,7 +322,7 @@ def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
         service.advance(handover_id, caller=CALLER)
 
     state = service.confirm_emergency_start(handover_id, "manager-1", caller=CALLER)
-    assert state.emergency_by == "manager-1"
+    assert (state.emergency_by, state.emergency_at) == ("manager-1", clock.moment)
 
     assert service.count(handover_id, CASH, 900_000, caller=CALLER) is CountStatus.RECOUNT
     assert service.count(handover_id, CASH, 900_000, caller=CALLER) is CountStatus.SETTLED
@@ -344,7 +367,7 @@ def test_a_flow_does_not_start_without_an_accounting_copy(
     assert refusal.value.args[0] == NO_ACCOUNTING
     assert not any(character.isdigit() for character in str(refusal.value))
     with seeded.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert connection.exec_driver_sql("SELECT COUNT(*) FROM events WHERE handover_id IS NOT NULL").scalar_one() == 0
         assert connection.exec_driver_sql("SELECT COUNT(*) FROM handover").scalar_one() == 0
 
 
@@ -366,7 +389,7 @@ def test_a_flow_does_not_start_when_the_accounting_copy_is_unreachable(
 
     assert refusal.value.args[0] == NO_ACCOUNTING
     with seeded.read() as connection:
-        assert events_repo.count_events(connection) == 0
+        assert connection.exec_driver_sql("SELECT COUNT(*) FROM handover").scalar_one() == 0
 
 
 def test_both_flows_of_one_shift_run_side_by_side(service: HandoverService) -> None:
@@ -376,7 +399,7 @@ def test_both_flows_of_one_shift_run_side_by_side(service: HandoverService) -> N
     assert reception.handover_id != nursing.handover_id
     assert service.state(nursing.handover_id).step is HandoverStep.CPR_ROOM
     with pytest.raises(HandoverError, match="H-12"):
-        _start(service, opening_cash=None)
+        service.start(HandoverFlow.RECEPTION, incoming_id=INCOMING, caller=CALLER)
 
     service.count(nursing.handover_id, _item(SALINE, "cpr_room"), 0, caller=CALLER)
     assert service.state(reception.handover_id).step is HandoverStep.CASH
@@ -403,7 +426,7 @@ def test_a_cash_receipt_stamped_inside_a_flow_is_reported_to_the_manager_and_car
     clock.moment = parse_time("2026-09-24 14:05:00")  # before the 14:20 invoice is closed
     bridge = AccountingBridge(seeded, store, clock=clock)
     service = _service(seeded, store, catalog, clock, projections, bridge=bridge, accounting_path=scenario.path)
-    handover_id = _start(service, opening_cash=None).handover_id
+    handover_id = _start(service, opening_cash=0).handover_id  # the box held nothing at install
 
     clock.moment = parse_time("2026-09-24 15:00:00")  # the 999 000 receipt lands after the cutoff
     assert bridge.poll(scenario.path).events == 1
@@ -450,14 +473,14 @@ def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
     _movement(store, projections, "acc.cash_receipt", 50_000, at=clock.moment)
 
     clock.moment = datetime(2026, 10, 28, 14, 0, tzinfo=TEHRAN)  # the evening shift's own handover
-    second = _start(service, opening_cash=None).handover_id
+    second = _start(service, opening_cash=None, baseline=False, incoming="staff-in-2").handover_id
     _settle_cash(service, second, 1_050_000)
     _close_reception(service, second)
     clock.moment = datetime(2026, 10, 28, 14, 20, tzinfo=TEHRAN)
     _movement(store, projections, "acc.cash_receipt", 30_000, at=clock.moment)
 
     clock.moment = datetime(2026, 10, 28, 20, 0, tzinfo=TEHRAN)  # the night shift
-    third = _start(service, opening_cash=None).handover_id
+    third = _start(service, opening_cash=None, baseline=False, incoming=INCOMING).handover_id
     _settle_cash(service, third, 1_080_000)
     _close_reception(service, third)
 
@@ -511,10 +534,8 @@ def test_the_flow_log_refuses_a_skipped_step(service: HandoverService, database:
         service.state(state.handover_id)
 
 
-def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverService, store: EventStore) -> None:
-    _stock(store, PARA, 10)
-    _stock(store, DICLO, 4)
-    handover_id = _start(service, opening_cash=0).handover_id
+def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverService) -> None:
+    handover_id = _start(service, opening_cash=0, stock={PARA: 10, DICLO: 4}).handover_id
     with pytest.raises(HandoverError, match="counted and settled"):
         service.advance(handover_id, caller=CALLER)
 

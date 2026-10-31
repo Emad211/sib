@@ -4,6 +4,10 @@ One row per flow of one shift. `opened_at` is the flow's own frozen cutoff: an a
 stamped at or after it belongs to the shift that follows the flow's own shift (D1, D3), which is H-11
 read literally. The unique `(shift_id, flow)` key allows exactly one reception flow and one nursing
 flow per shift, and neither waits for the other (H-12).
+
+`handover_custody` holds who holds each flow's cash box and shelves now: the manager's baseline sets it
+and a flow's close hands it to the incoming person, which is what lets a flow derive its outgoing
+person without staff typing one (H-10, SHF-7.1).
 """
 
 from collections.abc import Callable, Mapping
@@ -23,6 +27,7 @@ from shift.domain.shift_clock import covering
 ClockCovering = Callable[[datetime], ShiftKey]
 
 _RECEIPT_EVENT = EventType.ACC_CASH_RECEIPT.value
+_BASELINE_EVENT = EventType.HANDOVER_BASELINE_RECORDED.value
 
 _COLUMNS = (
     "handover_id",
@@ -157,6 +162,45 @@ def latest_flow_at_or_before(
         parameters = (utc_iso(instant), flow.value)
     row = connection.exec_driver_sql(sql, parameters).mappings().first()
     return None if row is None else _row(row)
+
+
+def newest_flow(connection: Connection, flow: HandoverFlow) -> FlowRow | None:
+    """The newest flow of one kind, signed or not: its incoming person holds the flow now (SHF-7.1)."""
+    row = (
+        connection.exec_driver_sql(
+            f"{_SELECT} WHERE flow = ? ORDER BY opened_at DESC, handover_id DESC LIMIT 1", (flow.value,)
+        )
+        .mappings()
+        .first()
+    )
+    return None if row is None else _row(row)
+
+
+def custodian(connection: Connection, flow: HandoverFlow) -> str | None:
+    """Who holds this flow's cash box and shelves now, or None before the manager's baseline."""
+    row = connection.exec_driver_sql("SELECT custodian_id FROM handover_custody WHERE flow = ?", (flow.value,)).first()
+    return None if row is None else str(row[0])
+
+
+def set_custodian(
+    connection: Connection, *, flow: HandoverFlow, custodian_id: str, updated_at: datetime, updated_by: str
+) -> None:
+    """Record who holds the flow now: the baseline's custodian, then each close's incoming person."""
+    connection.exec_driver_sql(
+        "INSERT INTO handover_custody (flow, custodian_id, updated_at, updated_by) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(flow) DO UPDATE SET custodian_id = excluded.custodian_id, "
+        "updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+        (flow.value, custodian_id, utc_iso(updated_at), updated_by),
+    )
+
+
+def has_baseline(connection: Connection, flow: HandoverFlow) -> bool:
+    """Whether the manager already recorded this flow's opening count; a second one is refused."""
+    row = connection.exec_driver_sql(
+        "SELECT 1 FROM events WHERE type = ? AND json_extract(payload, '$.flow') = ? LIMIT 1",
+        (_BASELINE_EVENT, flow.value),
+    ).first()
+    return row is not None
 
 
 def shift_id_at(

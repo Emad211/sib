@@ -20,23 +20,31 @@ carry real: the incoming person admits on paper and takes no money, so every cas
 after the cutoff stays on top of the agreed figure instead of inside it. A receipt stamped *inside*
 the flow's window breaks that rule, and it goes to the manager through the audit trail alone — no
 response, header, public log line or client-visible event carries the number (R-02, ADR-011).
+
+The app starts from the manager's initial baseline (`record_baseline`, SHF-7.1), not from a staff
+handover: one event seeds the box, every shelf it names and who holds them. Nobody types the outgoing
+person either — a flow derives it from the newest flow of its kind's incoming person, or from the
+custody the baseline set, and refuses with a Persian message when neither exists.
 """
 
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import Connection
 
 from shift.adapters.db import events_repo, handover_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.adapters.db.handover_repo import FlowRow
-from shift.common.clock import Clock, SystemClock, to_tehran
+from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.cash_box import CashBox
 from shift.domain.events import EventType
+from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, Handover, HandoverFlow, HandoverStep, Signer
@@ -55,10 +63,13 @@ log = logging.getLogger(__name__)
 REFERENCE_ACTION = "handover.reference"
 # A receipt stamped inside a flow's window breaks the owner's rule; only the manager is told (R-02).
 EXCEPTION_ACTION = "handover.cash_exception"
-# R-02: a refusal never carries a number, and this one only says why the flow cannot start at all.
+# The baseline is recorded by an operator command, not by a paired handset (SHF-7.1).
+BASELINE_DEVICE_ID = "manager-cli"
+# R-02: these refusals carry no number, and each only says what to do before a flow can start.
 NO_ACCOUNTING = (
     "نسخهٔ حسابداری در دسترس نیست؛ بدون آن صورت‌حساب‌های باز و عدد مرجع قابل محاسبه نیستند و تحویل شیفت آغاز نمی‌شود."
 )
+NO_BASELINE = "مدیر باید ابتدا شمارش اولیه را ثبت کند."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -93,6 +104,8 @@ class HandoverState:
     signatures: frozenset[Signer]
     early_left: bool
     emergency_by: str | None
+    # H-08 records the manager's phone confirmation with who and when; this is the when.
+    emergency_at: datetime | None
     closed: bool
 
 
@@ -105,11 +118,15 @@ class _References:
 
 
 @dataclass(frozen=True, slots=True)
-class _Opening:
-    """One flow's box reference and the opening figure its start event records (H-02, H-12)."""
+class BaselineRecord:
+    """What one baseline fixed: the flow, who holds it, when, and how many shelves it set."""
 
-    cash: int | None
-    opening: int | None
+    flow: HandoverFlow
+    custodian_id: str
+    manager_id: str
+    recorded_at: datetime
+    opening_cash: int | None
+    shelves: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +146,7 @@ class _Flow:
     references: _References
     cash: CashCount | None
     items: Mapping[tuple[str, str], ItemCount]
+    emergency_at: datetime | None
 
 
 class HandoverService:
@@ -155,23 +173,108 @@ class HandoverService:
         self._bridge = bridge
         self._accounting_path = accounting_path
 
+    def record_baseline(
+        self,
+        *,
+        flow: HandoverFlow,
+        custodian_id: str,
+        manager_id: str,
+        opening_cash: int | None,
+        items: Sequence[Mapping[str, Any]],
+    ) -> BaselineRecord:
+        """Record the manager's opening count: the box, every shelf it names and who holds them.
+
+        A baseline is not a staff handover, and nothing is recorded against anyone by it: no reference
+        is compared, no culprit is named, no discrepancy is written (SHF-7.1). It is refused before
+        anything is written when this flow already has one, because the first baseline is what the
+        app's blind counts compare against.
+
+        The box, the shelves and the custody row are written from one act: the event is the truth, the
+        projection is caught up from it and the custody row records who holds the flow now.
+        """
+        now = self._clock.now_utc()
+        shift = covering(to_tehran(now))
+        try:
+            baseline = BaselineRecorded(
+                flow=flow,
+                custodian_id=custodian_id,
+                manager_id=manager_id,
+                opening_cash=opening_cash,
+                items=tuple(items),
+            )
+        except ValidationError as exc:
+            raise HandoverError(f"the baseline is not a valid opening count: {exc.errors()[0]['msg']}") from exc
+        with self._database.read() as connection:
+            if handover_repo.has_baseline(connection, flow):
+                raise HandoverError(f"the {flow.value} flow already recorded its baseline")
+        self._store.append(
+            NewEvent(
+                client_event_id=new_ulid(now),
+                type=EventType.HANDOVER_BASELINE_RECORDED.value,
+                payload=baseline.model_dump(mode="json"),
+                actor_id=baseline.manager_id,
+                device_id=BASELINE_DEVICE_ID,
+                work_date=shift.work_date,
+                client_at=now,
+                shift_id=shift.text,
+            )
+        )
+        # The first flow reads its reference from the projection, so the baseline must be applied
+        # before custody is written and before any flow starts (ADR-010).
+        self._projections.sync()
+        with self._database.write() as connection:
+            handover_repo.set_custodian(
+                connection,
+                flow=flow,
+                custodian_id=baseline.custodian_id,
+                updated_at=now,
+                updated_by=baseline.manager_id,
+            )
+        return BaselineRecord(
+            flow=baseline.flow,
+            custodian_id=baseline.custodian_id,
+            manager_id=baseline.manager_id,
+            recorded_at=now,
+            opening_cash=baseline.opening_cash,
+            shelves=len(baseline.items),
+        )
+
+    def custodian(self, flow: HandoverFlow) -> str | None:
+        """Who hands this flow over: the newest flow's incoming person, else the baseline's custodian.
+
+        A first flow has no predecessor, so the manager's baseline names who holds the box and the
+        shelves now. None means neither exists: the app has no opening count yet, so nothing may start.
+        """
+        with self._database.read() as connection:
+            previous = handover_repo.newest_flow(connection, flow)
+            if previous is not None:
+                return previous.incoming_id
+            return handover_repo.custodian(connection, flow)
+
     def start(
         self,
         flow: HandoverFlow,
         *,
-        outgoing_id: str,
         incoming_id: str,
         caller: Caller,
-        opening_cash: int | None = None,
+        outgoing_id: str | None = None,
     ) -> HandoverState:
         """Open one flow of the shift the clinic clock says is running (D1), with its own cutoff.
 
         The accounting copy must be readable first: H-03's open-invoice guard and every reference are
         computed from it, so a missing or unreachable copy refuses the start.
+
+        Who hands over is derived, never typed: `outgoing_id` only carries what `custodian` already
+        answered, so a caller that had to read it does not read it twice. Without either a previous
+        flow or a baseline custodian there is nothing to count against, and the refusal tells staff to
+        ask the manager, with no number in it (R-02).
         """
         self._read_accounting_now()
         started_at = self._clock.now_utc()
         shift = covering(to_tehran(started_at))
+        outgoing = outgoing_id if outgoing_id is not None else self.custodian(flow)
+        if outgoing is None:
+            raise HandoverError(NO_BASELINE)
         with self._database.read() as connection:
             open_invoices = handover_repo.open_invoice_count(connection)
             taken = handover_repo.find_shift_flow(connection, shift.text, flow)
@@ -183,10 +286,10 @@ class HandoverService:
             work_date=shift.work_date,
             started_at=started_at,
             open_invoices=open_invoices,
-            outgoing_id=outgoing_id,
+            outgoing_id=outgoing,
             incoming_id=incoming_id,
         )
-        references, opening = self._freeze(flow, shift, opening_cash)
+        references = self._freeze(flow, shift)
         handover_id = new_ulid(started_at)
         self._audit_references(handover_id, caller, references)
         with self._database.write() as connection:
@@ -197,12 +300,13 @@ class HandoverService:
                 flow=flow,
                 opened_at=started_at,
                 work_date=shift.work_date,
-                outgoing_id=outgoing_id,
+                outgoing_id=outgoing,
                 incoming_id=incoming_id,
                 created_at=started_at,
             )
         row = self._row(handover_id)
-        self._append(row, caller, [(EventType.HANDOVER_STARTED.value, {"opening_cash": opening})])
+        # The box was seeded by the manager's baseline, so a start event names no opening figure.
+        self._append(row, caller, [(EventType.HANDOVER_STARTED.value, {"opening_cash": None})])
         return self.state(handover_id)
 
     def state(self, handover_id: str) -> HandoverState:
@@ -231,6 +335,7 @@ class HandoverService:
             signatures=handover.signatures,
             early_left=handover.early_left,
             emergency_by=handover.emergency_by,
+            emergency_at=flow.emergency_at,
             closed=handover.closed,
         )
 
@@ -311,7 +416,7 @@ class HandoverService:
         signed = flow.handover.sign(signer)
         self._append(flow.row, caller, [(EventType.HANDOVER_SIGNED.value, {"signer": signer.value})])
         if signed.closed:
-            self._mark_signed(handover_id)
+            self._mark_signed(flow.row, caller)
         return self.state(handover_id)
 
     def report_early_leave(self, handover_id: str, *, caller: Caller) -> HandoverState:
@@ -332,8 +437,8 @@ class HandoverService:
         self._append(flow.row, caller, [(EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value, payload)])
         with self._database.write() as connection:
             handover_repo.mark_emergency(connection, handover_id, manager_id)
-            if confirmed.closed:
-                handover_repo.mark_signed(connection, handover_id, self._clock.now_utc())
+        if confirmed.closed:
+            self._mark_signed(flow.row, caller)
         return self.state(handover_id)
 
     def _read_accounting_now(self) -> None:
@@ -351,7 +456,7 @@ class HandoverService:
             raise HandoverError(NO_ACCOUNTING)
         self._projections.sync()
 
-    def _freeze(self, flow: HandoverFlow, shift: ShiftKey, opening_cash: int | None) -> tuple[_References, int | None]:
+    def _freeze(self, flow: HandoverFlow, shift: ShiftKey) -> _References:
         """Freeze every chain's reference at the flow's start; H-11 forbids reading it later."""
         with self._database.read() as connection:
             stock = {
@@ -366,24 +471,20 @@ class HandoverService:
                 ),
                 None,
             )
-        money = self._cash_reference(flow, box, opening_cash)
-        references = _References(cash=money.cash, items=self._item_references(flow, shift, stock))
-        return references, money.opening
+        return _References(cash=self._cash_reference(flow, box), items=self._item_references(flow, shift, stock))
 
     @staticmethod
-    def _cash_reference(flow: HandoverFlow, box: Mapping[str, Any] | None, opening_cash: int | None) -> "_Opening":
-        """The box reference and the opening figure to record; the first shift opens the box (H-02)."""
+    def _cash_reference(flow: HandoverFlow, box: Mapping[str, Any] | None) -> int | None:
+        """The box reference a flow freezes, or None for the nursing flow that holds no cash (H-12).
+
+        The manager's baseline seeds the box, so a reception flow that finds none has nothing to
+        compare against: guessing here would become a false discrepancy later.
+        """
         if flow is not HandoverFlow.RECEPTION:
-            if opening_cash is not None:
-                raise HandoverError("the nursing handover opens no cash box (H-12)")
-            return _Opening(cash=None, opening=None)
+            return None
         if box is None:
-            if opening_cash is None:
-                raise HandoverError("the first reception handover opens the cash box and needs its opening cash")
-            return _Opening(cash=opening_cash, opening=opening_cash)
-        if opening_cash is not None:
-            raise HandoverError("the cash box already has a figure; the incoming count settles it (H-13)")
-        return _Opening(cash=int(box["expected"]), opening=None)
+            raise HandoverError("the cash box has no figure; the manager's baseline has to seed it")
+        return int(box["expected"])
 
     def _settlement_carry(self, flow: _Flow, target: CountTarget, chain: ItemCount | CashCount) -> _Carry | None:
         """The cash a settling chain must keep on top of its figure, or None when nothing settles.
@@ -524,9 +625,13 @@ class HandoverService:
         )
         items: dict[tuple[str, str], ItemCount] = {}
         cash: CashCount | None = None
+        emergency_at: datetime | None = None
         for event in events_repo.iter_handover_events(connection, row.handover_id):
             handover, cash, items = _replay(event, handover, cash, items, references)
-        return _Flow(row, handover, references, cash, items)
+            if event.type == EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value:
+                # H-08 records who confirmed the emergency start and when; the when is its stamp.
+                emergency_at = parse_iso(event.client_at)
+        return _Flow(row, handover, references, cash, items, emergency_at)
 
     def _references_of(self, handover_id: str) -> _References:
         """Read the references frozen at `start` back from the audit trail (R-02 allows them nowhere else)."""
@@ -557,9 +662,18 @@ class HandoverService:
             )
         )
 
-    def _mark_signed(self, handover_id: str) -> None:
+    def _mark_signed(self, row: FlowRow, caller: Caller) -> None:
+        """Close the flow and hand its custody to the incoming person (H-04, SHF-7.1)."""
+        now = self._clock.now_utc()
         with self._database.write() as connection:
-            handover_repo.mark_signed(connection, handover_id, self._clock.now_utc())
+            handover_repo.mark_signed(connection, row.handover_id, now)
+            handover_repo.set_custodian(
+                connection,
+                flow=row.flow,
+                custodian_id=row.incoming_id,
+                updated_at=now,
+                updated_by=caller.actor_id,
+            )
 
     def _append(self, row: FlowRow, caller: Caller, events: Sequence[tuple[str, Mapping[str, Any]]]) -> None:
         """Append one handover batch; every event names its flow and the shift that flow closes (R-04)."""

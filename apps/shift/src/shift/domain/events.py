@@ -12,6 +12,7 @@ from shift.domain.effects import (
     EffectBuilder,
     Effects,
     StockOperation,
+    baseline_recorded,
     cash_count,
     cash_delta,
     cash_open,
@@ -21,6 +22,7 @@ from shift.domain.effects import (
     stock_delta,
     stock_set,
 )
+from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_payloads import (
     ChecklistAnswered,
     CountSettled,
@@ -51,6 +53,7 @@ from shift.domain.payloads import (
 
 
 class EventType(StrEnum):
+    HANDOVER_BASELINE_RECORDED = "handover.baseline_recorded"
     HANDOVER_STARTED = "handover.started"
     HANDOVER_CASH_COUNTED = "handover.cash_counted"
     HANDOVER_ITEM_COUNTED = "handover.item_counted"
@@ -89,6 +92,9 @@ class EventSpec:
 
 
 EVENT_SPECS: Mapping[EventType, EventSpec] = {
+    # The manager's first count: one event sets every shelf and seeds the reception box, so the
+    # first blind handover has a reference without anyone typing a declared figure (SHF-7.1).
+    EventType.HANDOVER_BASELINE_RECORDED: EventSpec(BaselineRecorded, baseline_recorded, requires_shift=True),
     EventType.HANDOVER_STARTED: EventSpec(ShiftOpened, cash_open, requires_shift=True),
     EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
     EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),

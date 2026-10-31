@@ -100,12 +100,17 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
     cash = CountTarget(scope="cash")
     shelf = CountTarget(scope="item", item_id="para_500_amp", location_id="shelf_reception")
     diclo = CountTarget(scope="item", item_id="diclofenac_75_amp", location_id="shelf_reception")
+    service.record_baseline(
+        flow=HandoverFlow.RECEPTION,
+        custodian_id="staff-out",
+        manager_id="manager-1",
+        opening_cash=1_000_000,
+        items=[{"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 10}],
+    )
     handover_id = service.start(
         HandoverFlow.RECEPTION,
-        outgoing_id="staff-out",
         incoming_id="staff-in",
         caller=caller,
-        opening_cash=1_000_000,
     ).handover_id
 
     service.count(handover_id, cash, 990_000, caller=caller)
@@ -160,12 +165,17 @@ def test_a_settlement_carry_rebuilds_to_the_live_cash_projection(database: Datab
         accounting_path=str(empty_accounting(tmp_path / "accounting.db")),
     )
     caller = Caller(actor_id="staff-in", device_id="device-1")
+    service.record_baseline(
+        flow=HandoverFlow.RECEPTION,
+        custodian_id="staff-out",
+        manager_id="manager-1",
+        opening_cash=1_000_000,
+        items=[{"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 10}],
+    )
     handover_id = service.start(
         HandoverFlow.RECEPTION,
-        outgoing_id="staff-out",
         incoming_id="staff-in",
         caller=caller,
-        opening_cash=1_000_000,
     ).handover_id
     store.append(
         build_event(
@@ -187,3 +197,55 @@ def test_a_settlement_carry_rebuilds_to_the_live_cash_projection(database: Datab
     assert projections.rebuild().drift == ()
     with database.read() as connection:
         assert projections_repo.cash_rows(connection) == live
+
+
+def test_the_managers_baseline_rebuilds_to_the_live_projections(database: Database, tmp_path: Path) -> None:
+    """SHF-7.1: one event sets many shelves and seeds the box, and a replay lands on the same two tables."""
+    seed(database)
+    clock = FixedClock(MOMENT)
+    store = EventStore(database, clock=clock)
+    projections = ProjectionEngine(database, clock=clock)
+    service = HandoverService(
+        database,
+        store,
+        projections=projections,
+        catalog=CatalogService(database, clock=clock),
+        audit=AuditService(database, clock=clock),
+        clock=clock,
+        bridge=AccountingBridge(database, store, clock=clock),
+        accounting_path=str(empty_accounting(tmp_path / "accounting.db")),
+    )
+    service.record_baseline(
+        flow=HandoverFlow.RECEPTION,
+        custodian_id="staff-out",
+        manager_id="manager-1",
+        opening_cash=1_000_000,
+        items=[
+            {"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 10},
+            {"item_id": "diclofenac_75_amp", "location_id": "shelf_reception", "quantity": 4},
+        ],
+    )
+    service.record_baseline(
+        flow=HandoverFlow.NURSING,
+        custodian_id="nurse-1",
+        manager_id="manager-1",
+        opening_cash=None,
+        items=[{"item_id": "saline_500_bag", "location_id": "cpr_room", "quantity": 6}],
+    )
+
+    with database.read() as connection:
+        live = (
+            projections_repo.stock_rows(connection),
+            projections_repo.cash_rows(connection),
+            {name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS},
+        )
+
+    assert live[1] == [{"cash_box_id": "reception", "expected": 1_000_000, "counted": 1_000_000, "variance": 0}]
+    assert projections.rebuild(dry_run=True).drift == ()
+    assert projections.rebuild().drift == ()
+    with database.read() as connection:
+        assert (
+            projections_repo.stock_rows(connection),
+            projections_repo.cash_rows(connection),
+            {name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS},
+        ) == live

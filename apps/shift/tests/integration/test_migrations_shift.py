@@ -1,8 +1,9 @@
 """Versioned migrations: fresh, idempotent, backed up and rollback-safe (step 2).
 
-The handover slice adds v9: the persisted flows, `proj_cash` keyed by cash box and `events.handover_id`.
-These tests pin both directions — a fresh install and an existing v8 database whose cash rows and
-event hashes must survive untouched.
+The handover slice adds v9 (the persisted flows, `proj_cash` keyed by cash box, `events.handover_id`)
+and the baseline slice adds v10 (the `handover_custody` read model). These tests pin both directions —
+a fresh install and an existing v8 database whose cash rows and event hashes must survive untouched,
+and a v9 database that gains the custody table without losing a flow.
 """
 
 import sqlite3
@@ -13,13 +14,14 @@ import pytest
 from sqlalchemy import Connection, create_engine
 from sqlalchemy.engine import URL
 
-from shift.adapters.db import events_repo, migrations, mirror_repo, projections_repo
+from shift.adapters.db import events_repo, handover_repo, migrations, mirror_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.migrations import MigrationError, run_migrations
 from shift.common.clock import tehran_iso, utc_iso
 from shift.common.hashing import GENESIS_HASH, canonical_json
 from shift.common.ids import new_ulid
 from shift.domain.event_hash import event_hash
+from shift.domain.handover_fsm import HandoverFlow
 from shift.services.event_chain import verify_chain
 
 CLIENT_AT = datetime(2026, 9, 24, 10, 0, tzinfo=UTC)  # 13:30 Tehran
@@ -229,9 +231,10 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 9
-        assert "handover" in _tables(database)
+        assert _version(database) == migrations.LATEST == 10
+        assert {"handover", "handover_custody"} <= _tables(database)
         assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
+        assert _columns(database, "handover_custody") == ("flow", "custodian_id", "updated_at", "updated_by")
         assert "handover_id" in _columns(database, "events")
         with database.read() as connection:
             indexes = {str(row[0]) for row in connection.exec_driver_sql("SELECT name FROM sqlite_master")}
@@ -261,7 +264,7 @@ def test_a_v8_database_upgrades_in_place_keeping_its_cash_figure_and_its_hashes(
     database = Database(path)
     try:
         report = database.migrate(backup_dir=tmp_path / "backups")
-        assert (report.from_version, report.to_version) == (8, 9)
+        assert (report.from_version, report.to_version) == (8, migrations.LATEST)
         assert report.backup is not None
         with database.read() as connection:
             cash = projections_repo.cash_rows(connection)
@@ -274,5 +277,35 @@ def test_a_v8_database_upgrades_in_place_keeping_its_cash_figure_and_its_hashes(
         assert events[0].hash == old_hash
         assert chain.ok is True and chain.checked == 1
         assert mirrored == 0
+    finally:
+        database.close()
+
+
+def test_a_v9_database_gains_the_custody_table_and_keeps_its_flows(tmp_path: Path) -> None:
+    """v10 is additive: the upgrade leaves every stored flow, its cutoff and its hashes as they were."""
+    path = tmp_path / "v9.db"
+    _migrate_to(path, 9)
+    engine = create_engine(URL.create("sqlite+pysqlite", database=str(path)))
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+        old_hash = _write_v8_event(connection)
+        connection.exec_driver_sql(
+            "INSERT INTO handover (handover_id, shift_id, flow, opened_at, work_date, outgoing_id, incoming_id, "
+            "created_at) VALUES ('flow-1', '2026-09-24#1', 'reception', ?, '2026-09-24', 'staff-out', 'staff-in', ?)",
+            (utc_iso(CLIENT_AT), utc_iso(CLIENT_AT)),
+        )
+    engine.dispose()
+
+    database = Database(path)
+    try:
+        report = database.migrate(backup_dir=tmp_path / "backups")
+        assert (report.from_version, report.to_version) == (9, 10)
+        with database.read() as connection:
+            flows = handover_repo.open_flows(connection)
+            events = list(events_repo.iter_events(connection))
+            custodian = handover_repo.custodian(connection, HandoverFlow.RECEPTION)
+        assert [flow.handover_id for flow in flows] == ["flow-1"]
+        assert events[0].hash == old_hash
+        assert verify_chain(events).ok is True
+        assert custodian is None, "a v9 install has no baseline yet; the manager records the first one"
     finally:
         database.close()

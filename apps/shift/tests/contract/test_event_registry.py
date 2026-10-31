@@ -7,30 +7,32 @@ from event_fixtures import default_payload
 from shift.domain.effects import CashOperation, StockOperation
 from shift.domain.events import EVENT_SPECS, EventType, UnknownEventType, effects_for, spec_for, validate_payload
 
+# What each event changes: the stock operations it applies, in order, and its cash operation (if any).
 EXPECTED_EFFECTS = {
-    EventType.HANDOVER_STARTED: ("cash", CashOperation.OPEN),
-    EventType.HANDOVER_CASH_COUNTED: ("cash", CashOperation.COUNT),
-    EventType.HANDOVER_ITEM_COUNTED: ("stock", StockOperation.SET),
-    EventType.HANDOVER_RECOUNT_REQUESTED: None,
-    EventType.HANDOVER_STEP_ADVANCED: None,
-    EventType.HANDOVER_OUTGOING_COUNTED: ("stock", StockOperation.SET),
-    EventType.HANDOVER_JOINT_COUNTED: ("stock", StockOperation.SET),
-    EventType.HANDOVER_COUNT_SETTLED: ("cash", CashOperation.SETTLE),
-    EventType.HANDOVER_CHECKLIST_ANSWERED: None,
-    EventType.HANDOVER_PARCEL_HANDED: None,
-    EventType.HANDOVER_SIGNED: None,
-    EventType.HANDOVER_EARLY_LEAVE_REPORTED: None,
-    EventType.HANDOVER_EMERGENCY_START_CONFIRMED: None,
-    EventType.DISCREPANCY_RECORDED: None,
-    EventType.CASH_WITHDRAWN: ("cash", CashOperation.SUBTRACT),
-    EventType.CASH_DEPOSITED: ("cash", CashOperation.SUBTRACT),
-    EventType.STOCK_WEEKLY_COUNT: ("stock", StockOperation.SET),
-    EventType.STOCK_SHELF_RESTOCKED: ("stock", StockOperation.ADD),
-    EventType.STOCK_EMERGENCY_WITHDRAWAL: ("stock", StockOperation.SUBTRACT),
-    EventType.STOCK_WASTE_REPORTED: ("stock", StockOperation.SUBTRACT),
-    EventType.ACC_CASH_RECEIPT: ("cash", CashOperation.ADD),
-    EventType.ACC_CASH_REVERSAL: ("cash", CashOperation.SUBTRACT),
-    EventType.ACC_CONSUMPTION: ("stock", StockOperation.SUBTRACT),
+    EventType.HANDOVER_BASELINE_RECORDED: ((StockOperation.SET,), CashOperation.OPEN),
+    EventType.HANDOVER_STARTED: ((), CashOperation.OPEN),
+    EventType.HANDOVER_CASH_COUNTED: ((), CashOperation.COUNT),
+    EventType.HANDOVER_ITEM_COUNTED: ((StockOperation.SET,), None),
+    EventType.HANDOVER_RECOUNT_REQUESTED: ((), None),
+    EventType.HANDOVER_STEP_ADVANCED: ((), None),
+    EventType.HANDOVER_OUTGOING_COUNTED: ((StockOperation.SET,), None),
+    EventType.HANDOVER_JOINT_COUNTED: ((StockOperation.SET,), None),
+    EventType.HANDOVER_COUNT_SETTLED: ((), CashOperation.SETTLE),
+    EventType.HANDOVER_CHECKLIST_ANSWERED: ((), None),
+    EventType.HANDOVER_PARCEL_HANDED: ((), None),
+    EventType.HANDOVER_SIGNED: ((), None),
+    EventType.HANDOVER_EARLY_LEAVE_REPORTED: ((), None),
+    EventType.HANDOVER_EMERGENCY_START_CONFIRMED: ((), None),
+    EventType.DISCREPANCY_RECORDED: ((), None),
+    EventType.CASH_WITHDRAWN: ((), CashOperation.SUBTRACT),
+    EventType.CASH_DEPOSITED: ((), CashOperation.SUBTRACT),
+    EventType.STOCK_WEEKLY_COUNT: ((StockOperation.SET,), None),
+    EventType.STOCK_SHELF_RESTOCKED: ((StockOperation.ADD,), None),
+    EventType.STOCK_EMERGENCY_WITHDRAWAL: ((StockOperation.SUBTRACT,), None),
+    EventType.STOCK_WASTE_REPORTED: ((StockOperation.SUBTRACT,), None),
+    EventType.ACC_CASH_RECEIPT: ((), CashOperation.ADD),
+    EventType.ACC_CASH_REVERSAL: ((), CashOperation.SUBTRACT),
+    EventType.ACC_CONSUMPTION: ((StockOperation.SUBTRACT,), None),
 }
 
 
@@ -46,15 +48,9 @@ def test_payload_and_effect_contract(event_type: EventType) -> None:
     effects = effects_for(event_type.value, payload, "shift-1" if spec.requires_shift else None)
 
     assert spec.schema_v == 1
-    expected = EXPECTED_EFFECTS[event_type]
-    if expected is None:
-        assert effects.stock is None
-        assert effects.cash is None
-        return
-    kind, operation = expected
-    effect = effects.cash if kind == "cash" else effects.stock
-    assert effect is not None
-    assert effect.operation == operation
+    stock_operations, cash_operation = EXPECTED_EFFECTS[event_type]
+    assert tuple(effect.operation for effect in effects.stock) == stock_operations
+    assert (None if effects.cash is None else effects.cash.operation) == cash_operation
 
 
 def test_a_settled_cash_chain_rebases_the_box_and_a_joint_count_moves_it_not() -> None:
@@ -173,6 +169,7 @@ def test_cash_effects_require_a_shift() -> None:
 def test_shift_scoped_events_match_the_table() -> None:
     shift_types = {event_type for event_type in EventType if EVENT_SPECS[event_type].requires_shift}
     assert shift_types == {
+        EventType.HANDOVER_BASELINE_RECORDED,
         EventType.HANDOVER_STARTED,
         EventType.HANDOVER_CASH_COUNTED,
         EventType.HANDOVER_ITEM_COUNTED,
@@ -220,3 +217,104 @@ def test_a_joint_count_names_its_target(payload: dict) -> None:
 def test_a_discrepancy_names_a_real_gap(payload: dict) -> None:
     with pytest.raises(ValidationError):
         validate_payload("discrepancy.recorded", payload)
+
+
+def test_a_baseline_sets_every_shelf_it_names_and_seeds_the_box() -> None:
+    """SHF-7.1: one event sets many shelves, in the order the manager recorded them."""
+    payload = validate_payload(
+        "handover.baseline_recorded",
+        {
+            "flow": "reception",
+            "custodian_id": "staff-1",
+            "manager_id": "manager-1",
+            "opening_cash": 1_000_000,
+            "items": [
+                {"item_id": "item-1", "location_id": "shelf", "quantity": 10},
+                {"item_id": "item-2", "location_id": "shelf", "quantity": 0},
+            ],
+        },
+    )
+
+    effects = effects_for("handover.baseline_recorded", payload, "shift-1")
+
+    assert [(effect.item_id, effect.quantity) for effect in effects.stock] == [("item-1", 10), ("item-2", 0)]
+    assert effects.cash is not None
+    assert (effects.cash.operation, effects.cash.amount) == (CashOperation.OPEN, 1_000_000)
+
+
+def test_a_nursing_baseline_holds_no_cash() -> None:
+    payload = validate_payload(
+        "handover.baseline_recorded",
+        {
+            "flow": "nursing",
+            "custodian_id": "nurse-1",
+            "manager_id": "manager-1",
+            "opening_cash": None,
+            "items": [{"item_id": "item-1", "location_id": "cpr_room", "quantity": 4}],
+        },
+    )
+
+    assert effects_for("handover.baseline_recorded", payload, "shift-1").cash is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # the reception flow owns the box, so its baseline names the opening cash
+        {
+            "flow": "reception",
+            "custodian_id": "s",
+            "manager_id": "m",
+            "opening_cash": None,
+            "items": [{"item_id": "i", "location_id": "l", "quantity": 0}],
+        },
+        # the nursing flow holds no cash (H-12)
+        {
+            "flow": "nursing",
+            "custodian_id": "s",
+            "manager_id": "m",
+            "opening_cash": 1,
+            "items": [{"item_id": "i", "location_id": "l", "quantity": 0}],
+        },
+        # an opening count with no shelf says nothing
+        {"flow": "reception", "custodian_id": "s", "manager_id": "m", "opening_cash": 1, "items": []},
+        # a repeated target would leave the baseline's meaning open
+        {
+            "flow": "reception",
+            "custodian_id": "s",
+            "manager_id": "m",
+            "opening_cash": 1,
+            "items": [
+                {"item_id": "i", "location_id": "l", "quantity": 0},
+                {"item_id": "i", "location_id": "l", "quantity": 2},
+            ],
+        },
+        # a shelf never holds a negative quantity
+        {
+            "flow": "reception",
+            "custodian_id": "s",
+            "manager_id": "m",
+            "opening_cash": 1,
+            "items": [{"item_id": "i", "location_id": "l", "quantity": -1}],
+        },
+        # unknown fields never slip into a frozen payload
+        {
+            "flow": "reception",
+            "custodian_id": "s",
+            "manager_id": "m",
+            "opening_cash": 1,
+            "items": [{"item_id": "i", "location_id": "l", "quantity": 0}],
+            "extra": 1,
+        },
+        {
+            "flow": "reception",
+            "custodian_id": "",
+            "manager_id": "m",
+            "opening_cash": 1,
+            "items": [{"item_id": "i", "location_id": "l", "quantity": 0}],
+        },
+    ],
+)
+def test_a_baseline_is_one_complete_opening_count(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("handover.baseline_recorded", payload)
