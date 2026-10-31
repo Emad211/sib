@@ -42,6 +42,8 @@
     {% block content %}{% endblock %}
   </main>
 
+  <script id="outbox-labels" type="application/json">{{ outbox_labels_json() | safe }}</script>
+
   <!-- Scripts -->
   <script src="/static/csrf.js"></script>
   <script src="/static/outbox-idb.js"></script>

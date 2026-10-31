@@ -6,11 +6,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from fastapi.templating import Jinja2Templates
 
 from shift.__version__ import __version__
 from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
+from shift.api.templating import templates
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
 from shift.services.purchase import PURCHASE_PERMISSIONS
@@ -18,10 +18,7 @@ from shift.services.purchase import PURCHASE_PERMISSIONS
 router = APIRouter(tags=["web"])
 
 _SRC_DIR = Path(__file__).resolve().parent.parent
-_TEMPLATES_DIR = _SRC_DIR / "templates"
 _STATIC_DIR = _SRC_DIR / "static"
-
-templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 _CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "

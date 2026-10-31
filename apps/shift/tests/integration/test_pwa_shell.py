@@ -173,12 +173,23 @@ def test_the_home_page_never_carries_a_dev_form_or_dev_text(settings: Settings) 
             "ابزار توسعه",
             "SHIFT_ENV",
             "development",
-            "stock.waste_reported",
+            'id="event-type"',
             "event-item",
             "/static/home.js",
         ):
             assert forbidden not in text, (environment, forbidden)
         assert "/static/home.js" not in script_names
+
+
+def test_pages_name_held_records_in_persian_and_never_in_english(client: TestClient) -> None:
+    """The phone's waiting-records card gets Persian names for event types, and no "Outbox" text."""
+    text = client.get("/").text
+    labels = json.loads(re.search(r'<script id="outbox-labels"[^>]*>(.*?)</script>', text, re.S).group(1))
+
+    assert labels["stock.waste_reported"]
+    assert all(not name.isascii() for name in labels.values())
+    assert "(Outbox)" not in text
+    assert "<code>" not in client.get("/no-such-page", headers={"accept": "text/html"}).text
 
 
 def test_the_install_defaults_to_production() -> None:

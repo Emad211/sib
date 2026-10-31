@@ -130,6 +130,15 @@
     staleBadge.classList.remove("hidden");
   }
 
+  // Persian names of the event types the server accepts offline; a raw type id is never shown to staff.
+  const outboxLabels = (() => {
+    try {
+      return JSON.parse(document.getElementById("outbox-labels").textContent) || {};
+    } catch (error) {
+      return {};
+    }
+  })();
+
   // Outbox UI Binding
   async function refreshOutboxUi() {
     if (!window.ShiftOutbox || !window.ShiftOutbox.getQueuedItems) return;
@@ -171,7 +180,7 @@
 
         const title = document.createElement("span");
         title.className = "outbox-item-type";
-        title.textContent = item.body && item.body.type ? item.body.type : "رویداد ثبت‌شده";
+        title.textContent = (item.body && outboxLabels[item.body.type]) || "رویداد ثبت‌شده";
 
         const time = document.createElement("span");
         time.className = "outbox-item-time";
