@@ -429,6 +429,10 @@ def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
         "parcels_in_transit": _parcel_rows,
         "weekly_count": _weekly_count_rows,
         "below_minimum": _below_minimum_rows,
+        # C1: counts per code with their details, overdue repairs and the control-call sample.
+        "event_counts": _event_count_rows,
+        "overdue_faults": _overdue_fault_rows,
+        "call_sample": _call_sample_rows,
     }
     return {name: build(card) for name, build in builders.items() if name in card.present_sections}
 
@@ -515,10 +519,50 @@ def _open_event_rows(card: Card) -> list[dict[str, Any]]:
     return [{**_shift_event_row(entry.row), "age_hours": f"{entry.age_hours:,}"} for entry in card.open_events]
 
 
+def _event_count_rows(card: Card) -> list[dict[str, Any]]:
+    """«رویدادهای ۲۴ ساعت»: the count of each code, with the day's rows of that code to open (C1)."""
+    return [
+        {
+            "code": entry.code,
+            "label": entry.label_fa,
+            "count": str(entry.count),
+            "rows": [_shift_event_row(row) for row in card.shift_events if row.code == entry.code],
+        }
+        for entry in card.event_counts
+    ]
+
+
+def _overdue_fault_rows(card: Card) -> list[dict[str, str]]:
+    """An assigned repair past its deadline, highlighted: who owes it and how many days late (C1)."""
+    return [
+        {
+            "device": entry.device,
+            "assignee": entry.assignee,
+            "due": format_jalali(date.fromisoformat(entry.due_on)),
+            "days_late": f"{entry.days_late:,}",
+        }
+        for entry in card.overdue_faults
+    ]
+
+
+def _call_sample_rows(card: Card) -> list[dict[str, str]]:
+    """The registrations drawn for a control call: the file number, the day and who registered (C1)."""
+    return [
+        {
+            "patient_number": entry.patient_number,
+            "day": format_jalali(date.fromisoformat(entry.registered_on)),
+            "registrar": entry.registrar,
+        }
+        for entry in card.call_sample
+    ]
+
+
 def _shift_event_row(entry: ShiftEventLine) -> dict[str, Any]:
     """One shift-event row: the kind's label and code, its actor, its instant and its own fields."""
     photo = entry.summary.get("photo_sha256")
     row: dict[str, Any] = {
+        "event_id": entry.event_id or "",
+        "decidable": entry.status == "pending" and entry.event_id is not None,
         "code": entry.code,
         "label": entry.label_fa,
         "actor": _person(entry.actor),
@@ -644,6 +688,7 @@ def _withdrawal_rows(card: Card) -> list[dict[str, str]]:
     return [
         {
             "event_id": entry.event_id,
+            "pending": entry.status == "pending",
             "amount": f"{entry.amount:,}",
             "reason": entry.reason,
             "recipient": _person(entry.recipient),
@@ -765,6 +810,7 @@ def _flagged_delivery_rows(card: Card) -> list[dict[str, str]]:
     """M-19: a problem parcel whose payment waits for the manager."""
     return [
         {
+            "flag_event_id": entry.flag_event_id or "",
             "delivery_id": entry.delivery_id,
             "invoice_reference": entry.invoice_reference,
             "reason": entry.reason_fa,
