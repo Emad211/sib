@@ -166,7 +166,7 @@ def test_a_nurse_has_no_presence_button(off_shift_client: TestClient) -> None:
     """A nurse comes on shift by taking over, so the home screen offers her no shortcut."""
     _session(off_shift_client, "nurse")
 
-    assert 'data-presence-role=' not in off_shift_client.get("/").text
+    assert "data-presence-role=" not in off_shift_client.get("/").text
 
 
 def test_the_shift_doctor_declares_presence_and_nobody_else_does(off_shift_client: TestClient) -> None:
