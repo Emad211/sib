@@ -519,7 +519,26 @@ def test_the_warehouse_shelf_charge_and_the_blind_weekly_count(live_shift: LiveS
         page.click("#purchase-count [data-do='weekly.count']")
         _wait_status(page, COUNTED_STATUS)
 
-        # 4. The card now reports the count as done, in the week's own words (M-20).
+        # 4. One counted item does not close the week: the catalog's other items wait for their own count.
+        still_open = _write_the_card(live_shift)
+        assert [row.state for row in still_open.weekly_count] != ["done"], "one item does not close the week"
+
+        page.wait_for_selector("#purchase-count .pu-count-row", timeout=15000)
+        rows = page.locator("#purchase-count .pu-count-row")
+        for index in range(rows.count()):
+            row = rows.nth(index)
+            row.locator("[data-count]").fill(str(COUNTED) if ITEM_NAME in row.inner_text() else "0")
+        page.click("#purchase-count [data-do='weekly.count']")
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            state = _state_from_page(page)
+            if state.get("warehouse") and state["warehouse"]["weekly"]["state"] == "done":
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError("the store's own weekly count never closed")
+
+        # 5. Every item counted, the card now reports the count as done, in the week's own words (M-20).
         closed = _write_the_card(live_shift)
         assert [row.state for row in closed.weekly_count] == ["done"], "the count closed this window"
         manager_page.goto(f"{live_shift.base_url}/manager/card", wait_until="domcontentloaded")

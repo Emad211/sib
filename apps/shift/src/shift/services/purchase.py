@@ -66,9 +66,9 @@ from shift.services.photos import PhotoStore, is_photo_hash
 from shift.services.projections import ProjectionEngine
 from shift.services.purchase_rules import (
     BAD_DATA,
-    MAIN_STORE,
     NO_PHOTO,
     PHOTO_NOT_STORED,
+    TO_SELF,
     PurchaseRuleError,
 )
 from shift.services.settings import SettingsService
@@ -413,6 +413,10 @@ class PurchaseService:
         parcel = self._require_delivery(transferred.delivery_id)
         if parcel.status not in {RECEIVED, FLAGGED, IN_TRANSIT}:
             raise PurchaseRuleError(CANNOT_TRANSFER)
+        # Both sides confirm (owner document §4, line «هر دو طرف»): the giver cannot name themselves as
+        # the receiver, whatever roles they hold, or one person would be both sides of the hand-over.
+        if transferred.to_staff_id == principal.staff_id:
+            raise PurchaseRuleError(TO_SELF)
         if transferred.to_kind == "storekeeper" and not self._is_storekeeper(transferred.to_staff_id):
             raise PurchaseRuleError(NOT_A_STOREKEEPER)
         event_id = self._append(EventType.DELIVERY_TRANSFERRED, transferred, principal, shift)
@@ -577,11 +581,14 @@ class PurchaseService:
         )
 
     def _warehouse(self, items: list[Item], shift: ShiftKey, log: list[EventRecord]) -> Warehouse:
-        """The store's own view: what lives in the main store or has stock there, and the week's count.
+        """The store's own view: every counted item of the clinic, and the week's count over them all.
 
-        A counted item whose catalog home is the store is always listed; an item that a shelf charge
-        left a store row behind for is listed too, because that is where the storekeeper has to count
-        it and charge it from again. No quantity is published (`_warehouse_payload`): the count is blind.
+        The list is the catalog's, not the projected stock's: the main store holds every counted item and
+        a shelf is charged from it, so an item with no store row yet is still one the storekeeper counts
+        (decision 2) — the fresh install's opening count is what writes the first rows. Each row carries
+        the item's catalog place, which is the shelf a charge fills; the count itself always lands on the
+        main store (`purchase.js` pins `main_store`, as `MAIN_STORE` pins it here). No quantity is
+        published (`_warehouse_payload`): the count is blind.
         """
         restock = [
             RestockRecord(
@@ -597,27 +604,14 @@ class PurchaseService:
         ]
         weekly, counted_ids = self._store.weekly(shift, log)
         return Warehouse(
-            items=self._store_items(items),
+            items=tuple(
+                WarehouseItem(item.item_id, item.name, item.location_id, item.unit, item.minimum) for item in items
+            ),
             locations=tuple((place.location_id, place.name) for place in self._catalog.locations(shift)),
             weekly=weekly,
             restock=tuple(reversed(restock[-RESTOCK_HISTORY:])),
             counted_ids=counted_ids,
             baseline_done=self._store.baseline_done(log),
-        )
-
-    def _store_items(self, items: list[Item]) -> tuple[WarehouseItem, ...]:
-        """Every counted item the store holds: its catalog home is there, or a charge left stock there."""
-        catalog = {item.item_id: item for item in items}
-        ids = self._store.store_item_ids_of(items)
-        return tuple(
-            WarehouseItem(
-                catalog[item_id].item_id,
-                catalog[item_id].name,
-                MAIN_STORE,
-                catalog[item_id].unit,
-                catalog[item_id].minimum,
-            )
-            for item_id in ids
         )
 
     def _sample_view(self, principal: Principal, shift: ShiftKey, log: list[EventRecord]) -> dict[str, Any] | None:
