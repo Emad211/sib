@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The clinic's own root certificate ships inside the app, so a phone needs no certificate install. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/shift_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
