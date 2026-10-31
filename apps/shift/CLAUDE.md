@@ -35,13 +35,13 @@ $env:PATH = ($env:PATH.Split(';') | Where-Object { $_ -notmatch 'GTK' }) -join '
 ```
 start.py                       uvicorn entry point: create_app(Settings.from_env())
 src/shift/app.py               app factory and lifespan wiring (database, events, projections, auth, audit, devices, catalog, settings, scheduler)
-src/shift/api/                 routes_auth, routes_devices, routes_events, routes_catalog, routes_settings, routes_web; deps.py holds the session, CSRF and require(permission) guards
-src/shift/domain/              pure rules: policy, cutoff, money, permissions, pin_policy, shift_clock, event_hash, payloads
-src/shift/services/            event_store, event_chain, projections, auth, devices, audit, catalog, settings, scheduler, snapshot, backup, outbox, accounting_bridge
-src/shift/adapters/db/         SQLAlchemy Core connection and one repo per aggregate; migrations m0001..; schema.sql, sqlite/ddl.sql, sqlite/triggers.sql
+src/shift/api/                 routes_auth, routes_devices, routes_events, routes_catalog, routes_settings, routes_web, routes_manager; deps.py holds the session, CSRF and require(permission) guards
+src/shift/domain/              pure rules: policy, cutoff, money, permissions, pin_policy, shift_clock, event_hash, payloads, daily_card
+src/shift/services/            event_store, event_chain, projections, auth, devices, audit, catalog, settings, daily_card, scheduler, snapshot, backup, outbox, accounting_bridge
+src/shift/adapters/db/         SQLAlchemy Core connection and one repo per aggregate (card_repo for the daily card); migrations m0001.. (newest m0011_daily_cards); schema.sql, sqlite/ddl.sql, sqlite/triggers.sql
 src/shift/adapters/accounting/ read-only bridge (mode=ro + PRAGMA query_only) and the v_shift_* reads
 src/shift/common/              clock (Tehran), jalali, ids (ULID), hashing
-src/shift/templates|static/    Jinja pages, PWA shell, service worker, vendored Vazirmatn — no CDN
+src/shift/templates|static/    Jinja pages incl. manager_*.html, PWA shell, service worker, vendored Vazirmatn — no CDN
 tests/                         unit, integration, contract, property, security, e2e, data (synthetic fixtures), js/outbox.test.js
 tools/                         operator CLIs: backup_now, verify_event_chain, rebuild_projections, restore_check, seed_reference_data, make_synthetic_acc_db, print_enroll_qr
 ```
