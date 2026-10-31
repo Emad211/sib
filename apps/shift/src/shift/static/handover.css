@@ -1,0 +1,334 @@
+/**
+ * Sib Shift - phone handover screen (SHF-2 slice 5).
+ *
+ * One job per screen (R-10): held in one hand, big type, big tap targets, no dense tables,
+ * readable in a dark room. It uses the colour tokens and the dark theme of app.css, so a
+ * status is legible at 2 am without a second palette.
+ */
+
+.handover {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ho-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.ho-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.ho-text {
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.ho-hint {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.ho-kicker {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* Big, one-hand tap targets: 56px is a thumb, not a fingertip. */
+.ho-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0.875rem 1.25rem;
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--color-text);
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ho-action-primary {
+  color: var(--color-on-primary);
+  background-color: var(--color-primary-button);
+  border-color: transparent;
+}
+
+.ho-action-primary:hover,
+.ho-action-primary:focus-visible {
+  background-color: var(--color-primary-button-hover);
+}
+
+.ho-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.ho-link {
+  min-height: var(--touch-target);
+  padding: 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* H-08 costs a manager phone call, so the action asks once more before it is recorded. */
+.ho-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* The step walk: a readable "where am I" without a table or a number that could be a figure. */
+.ho-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ho-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ho-step-mark {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-surface-raised);
+  border-radius: 9999px;
+}
+
+.ho-step-mark.is-done {
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+}
+
+.ho-step-mark.is-now {
+  font-weight: 700;
+  color: var(--color-on-primary);
+  background-color: var(--color-primary-button);
+}
+
+.ho-message {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+}
+
+.ho-message.is-ok {
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+}
+
+.ho-message.is-info {
+  color: var(--color-info);
+  background-color: var(--color-info-bg);
+}
+
+.ho-message.is-error,
+.ho-error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+  border-radius: var(--radius-md);
+}
+
+.ho-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ho-job {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ho-job-title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* The counted number: large, centred and LTR so a Persian keyboard cannot mirror it. */
+.ho-number {
+  width: 100%;
+  min-height: 72px;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.08em;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ho-number:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.ho-label {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.ho-select {
+  width: 100%;
+  min-height: 56px;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ho-signed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ho-signed li {
+  padding: 0.625rem 0.875rem;
+  font-size: 1rem;
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+  border-radius: var(--radius-md);
+}
+
+.ho-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ho-checklist li {
+  padding: 0.875rem 1rem;
+  font-size: 1.0625rem;
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-md);
+}
+
+/* The open flows of this shift: one join button per flow, so a second phone can take part. */
+.ho-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ho-open-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ho-open-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ho-checklist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ho-checklist-name {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.ho-checklist-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ho-checklist-actions .ho-action {
+  flex: 1;
+}
+
+.ho-answered {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-success);
+}
+
+.ho-text-input,
+.ho-reading {
+  width: 100%;
+  min-height: 56px;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ho-reading {
+  flex: 1;
+  min-width: 0;
+}
+
+.ho-number-small {
+  min-height: 56px;
+  font-size: 1.25rem;
+}

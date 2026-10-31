@@ -75,6 +75,15 @@ def test_service_worker_never_fabricates_a_queued_offline_post(client: TestClien
     assert 'req.method !== "GET"' in sw_text
 
 
+def test_service_worker_serves_api_answers_network_only(client: TestClient) -> None:
+    """ADR-016/R-02: a handover answer never waits in a cache; only the shell may be cached."""
+    sw_text = _service_worker(client)
+
+    assert 'url.pathname.startsWith("/api/")' in sw_text
+    assert "/static/handover.js" in _precache_urls(sw_text)
+    assert "/static/handover.css" in _precache_urls(sw_text)
+
+
 def test_declared_font_weights_are_all_precached(client: TestClient) -> None:
     """Every @font-face URL in app.css must survive an offline reload."""
     css = (_STATIC_DIR / "app.css").read_text(encoding="utf-8")

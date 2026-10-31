@@ -33,6 +33,7 @@ class NewEvent:
     work_date: date
     client_at: datetime
     shift_id: str | None = None
+    handover_id: str | None = None
     ref_event_id: str | None = None
     idempotency_key: str | None = None
 
@@ -90,6 +91,7 @@ class EventStore:
             "actor_id": event.actor_id,
             "device_id": event.device_id,
             "shift_id": event.shift_id,
+            "handover_id": event.handover_id,
             "work_date": event.work_date.isoformat(),
             "client_at": event.client_at.isoformat(timespec="microseconds"),
             "server_at": utc_iso(server_at),
@@ -110,6 +112,7 @@ class EventStore:
             actor_id=event.actor_id,
             device_id=event.device_id,
             shift_id=event.shift_id,
+            handover_id=event.handover_id,
             work_date=event.work_date.isoformat(),
             client_at=values["client_at"],
             server_at=values["server_at"],
@@ -133,6 +136,8 @@ class EventStore:
         require_aware(event.client_at)
         if event.shift_id is not None and not event.shift_id.strip():
             raise EventValidationError("shift_id must be non-empty when supplied")
+        if event.handover_id is not None and not event.handover_id.strip():
+            raise EventValidationError("handover_id must be non-empty when supplied")
         if event.ref_event_id is not None and not is_ulid(event.ref_event_id):
             raise EventValidationError("ref_event_id must be a ULID")
         if event.idempotency_key is not None and not event.idempotency_key.strip():

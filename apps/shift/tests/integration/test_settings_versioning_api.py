@@ -53,11 +53,10 @@ def test_listing_returns_the_seeded_defaults(database: Database) -> None:
         "takeover_window_minutes",
         "withdrawal_cap_toman",
         "session_ttl_hours",
-        "daily_card_skip_weekday",
         "weekly_count_time",
         "weekly_count_weekday",
     ]
-    assert [item["value"] for item in body] == ["07:30", "30", "300000", "12", "4", "07:30", "0"]
+    assert [item["value"] for item in body] == ["07:30", "30", "300000", "12", "07:30", "0"]
     assert {item["effective_from_shift"] for item in body} == {"0001-01-01#1"}
     assert {item["changed_by"] for item in body} == {"migration:m0004", "migration:m0008"}
 

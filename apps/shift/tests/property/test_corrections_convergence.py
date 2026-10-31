@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import uuid4
 
+from clocks import FixedClock
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from make_synthetic_acc_db import build
@@ -17,7 +18,6 @@ from make_synthetic_acc_db import build
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database
-from shift.domain.cutoff import ShiftCutoff
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.event_store import EventStore
 from shift.services.projections import ProjectionEngine
@@ -118,15 +118,14 @@ def _accounting_net(path: Path, until: str) -> int:
 def _assert_poll_keeps_cash_equal(
     bridge: AccountingBridge,
     accounting: Path,
-    shift: ShiftCutoff,
     database: Database,
     projections: ProjectionEngine,
     until: str,
 ) -> None:
     """Poll once, check the invariant and the no-op re-poll, then leave the event log applied."""
-    bridge.poll(accounting, shift)
+    bridge.poll(accounting)
     assert _net_cash(database, projections) == _accounting_net(accounting, until)
-    again = bridge.poll(accounting, shift)
+    again = bridge.poll(accounting)
     assert again.events == 0
     assert set(again.rows.values()) == {0}
 
@@ -148,22 +147,19 @@ def test_random_recloses_and_voids_keep_cash_equal_to_accounting(
     try:
         store = EventStore(database)
         projections = ProjectionEngine(database)
-        bridge = AccountingBridge(database, store)
-        shift = ShiftCutoff(
-            shift_id="shift-morning", work_date=scenario.work_date, cutoff_at=parse_time(scenario.cutoff_at)
-        )
+        bridge = AccountingBridge(database, store, clock=FixedClock(parse_time(scenario.cutoff_at)))
         invoice = _close(scenario.path, FIRST_CLOSE, amounts[0])
-        _assert_poll_keeps_cash_equal(bridge, scenario.path, shift, database, projections, scenario.cutoff_at)
+        _assert_poll_keeps_cash_equal(bridge, scenario.path, database, projections, scenario.cutoff_at)
 
         for index, amount in enumerate(amounts[1:], start=1):
             _reopen(scenario.path, invoice)
             closed_at = "2026-09-24 13:20:00" if same_stamp else f"2026-09-24 13:{20 + index * 5:02d}:00"
             _reclose(scenario.path, invoice, closed_at=closed_at, cash=amount)
-            _assert_poll_keeps_cash_equal(bridge, scenario.path, shift, database, projections, scenario.cutoff_at)
+            _assert_poll_keeps_cash_equal(bridge, scenario.path, database, projections, scenario.cutoff_at)
 
         if void_after:
             _void(scenario.path, invoice, amount=amounts[-1])
-            _assert_poll_keeps_cash_equal(bridge, scenario.path, shift, database, projections, scenario.cutoff_at)
+            _assert_poll_keeps_cash_equal(bridge, scenario.path, database, projections, scenario.cutoff_at)
 
         assert projections.rebuild(dry_run=True).drift == ()
         assert projections.rebuild().drift == ()

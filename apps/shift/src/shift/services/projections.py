@@ -110,12 +110,14 @@ class ProjectionEngine:
             effects: Effects = effects_for(event.type, payload, event.shift_id)
         except (UnknownEventType, ValueError, TypeError) as exc:
             raise ProjectionError(f"event seq {event.seq} cannot be projected: {exc}") from exc
-        if include_stock and effects.stock is not None:
-            projections_repo.apply_stock(connection, stock_table, effects.stock)
+        if include_stock:
+            # A sequence, applied in the event's own order: one event may set many shelves (SHF-7.1).
+            for effect in effects.stock:
+                projections_repo.apply_stock(connection, stock_table, effect)
         if include_cash and effects.cash is not None:
-            if not event.shift_id:
-                raise ProjectionError(f"event seq {event.seq} has a cash effect without shift_id")
-            projections_repo.apply_cash(connection, cash_table, effects.cash, event.shift_id)
+            if not effects.cash.cash_box_id:
+                raise ProjectionError(f"event seq {event.seq} has a cash effect without a cash box")
+            projections_repo.apply_cash(connection, cash_table, effects.cash)
 
     @staticmethod
     def _shadow_for(name: str) -> str:

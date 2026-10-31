@@ -10,12 +10,12 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from clocks import FixedClock
 from make_synthetic_acc_db import SyntheticAccounting, build
 
 from shift.adapters.accounting.views import parse_time
 from shift.adapters.db import mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
-from shift.domain.cutoff import ShiftCutoff
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.event_store import EventStore
 
@@ -27,15 +27,15 @@ def scenario(tmp_path: Path) -> SyntheticAccounting:
 
 
 @pytest.fixture()
-def morning(scenario: SyntheticAccounting) -> ShiftCutoff:
-    """The 14:00 handover of the synthetic morning shift."""
-    return ShiftCutoff(shift_id="shift-morning", work_date=scenario.work_date, cutoff_at=parse_time(scenario.cutoff_at))
+def clock(scenario: SyntheticAccounting) -> FixedClock:
+    """The bridge reads up to this instant: the scenario's own 14:00 handover."""
+    return FixedClock(parse_time(scenario.cutoff_at))
 
 
 @pytest.fixture()
-def bridge(database: Database, store: EventStore) -> AccountingBridge:
+def bridge(database: Database, store: EventStore, clock: FixedClock) -> AccountingBridge:
     """The bridge under test, writing into the shift app's own database."""
-    return AccountingBridge(database, store)
+    return AccountingBridge(database, store, clock=clock)
 
 
 def _close_invoice(path: Path, *, closed_at: str, cash: float, patient: int = 1) -> int:
@@ -74,14 +74,14 @@ def test_the_seed_watermark_sorts_before_every_accounting_id(database: Database)
 
 
 def test_two_invoices_closed_in_the_same_second_are_paged_apart_by_their_ids(
-    scenario: SyntheticAccounting, store: EventStore, morning: ShiftCutoff, database: Database
+    scenario: SyntheticAccounting, store: EventStore, database: Database, clock: FixedClock
 ) -> None:
     """Keyset disambiguation: `(closed_at = :after_at AND invoice_id > :after_id)` (S04 §2)."""
     first = _close_invoice(scenario.path, closed_at="2026-09-24 13:57:00", cash=1_000)
     second = _close_invoice(scenario.path, closed_at="2026-09-24 13:57:00", cash=2_000, patient=2)
-    small_pages = AccountingBridge(database, store, page_size=1)
+    small_pages = AccountingBridge(database, store, page_size=1, clock=clock)
 
-    report = small_pages.poll(scenario.path, morning)
+    report = small_pages.poll(scenario.path)
 
     assert report.rows["v_shift_cash_receipts_v1"] == 5
     assert report.events == 5

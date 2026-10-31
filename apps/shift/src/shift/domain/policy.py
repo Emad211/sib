@@ -25,7 +25,6 @@ class SettingKey(StrEnum):
     TAKEOVER_WINDOW_MINUTES = "takeover_window_minutes"
     WITHDRAWAL_CAP_TOMAN = "withdrawal_cap_toman"
     SESSION_TTL_HOURS = "session_ttl_hours"
-    DAILY_CARD_SKIP_WEEKDAY = "daily_card_skip_weekday"
     WEEKLY_COUNT_TIME = "weekly_count_time"
     WEEKLY_COUNT_WEEKDAY = "weekly_count_weekday"
 
@@ -52,7 +51,6 @@ SETTING_SPECS: Mapping[SettingKey, SettingSpec] = {
     SettingKey.TAKEOVER_WINDOW_MINUTES: SettingSpec(SettingKind.INTEGER, 0, 180),
     SettingKey.WITHDRAWAL_CAP_TOMAN: SettingSpec(SettingKind.INTEGER, 0, 100_000_000),
     SettingKey.SESSION_TTL_HOURS: SettingSpec(SettingKind.INTEGER, 1, 24),
-    SettingKey.DAILY_CARD_SKIP_WEEKDAY: SettingSpec(SettingKind.WEEKDAY, 0, 6),
     SettingKey.WEEKLY_COUNT_TIME: SettingSpec(SettingKind.CLOCK_TIME),
     SettingKey.WEEKLY_COUNT_WEEKDAY: SettingSpec(SettingKind.WEEKDAY, 0, 6),
 }

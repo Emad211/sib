@@ -1,9 +1,16 @@
 """Accounting read bridge: keyset polling of `v_shift_*` into mirrors and events (SHF-1.3).
 
-One `poll` copies every accounting fact stamped at or before the shift's cutoff, page by page, in
-`(timestamp, id)` order and never with OFFSET. Each page is committed together with its watermark,
-and the cash page also appends `acc.cash_receipt` events keyed by `(invoice_id, closed_at, amount)`,
-so a crash, a re-poll or a lost watermark cannot count the same close twice.
+One `poll` copies every accounting fact stamped up to now, page by page, in `(timestamp, id)` order
+and never with OFFSET. Each page is committed together with its watermark, and the cash page also
+appends `acc.cash_receipt` events keyed by `(invoice_id, closed_at, amount)`, so a crash, a re-poll or
+a lost watermark cannot count the same close twice.
+
+Which shift a fact belongs to is decided per fact and per flow: a cash fact follows the reception
+flows, and an item follows the flow whose step counts its location (reception's shelf, nursing's CPR
+room and trolley). The newest flow of that kind started at or before the fact's stamp hands it to the
+shift following that flow's shift, and before any flow of that kind the clinic clock decides (H-11,
+D3). The poll itself never attributes by its own wall clock, so a poll that runs late or early cannot
+move a fact into another shift. `shift_resolver` is the single seam tests pin.
 
 Accounting can take a cash fact back. An invoice that is reopened and closed again arrives with a
 new `closed_at`: the bridge keeps the old version in `acc_cash` (`superseded_at`) and appends two
@@ -37,13 +44,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from shift.adapters.accounting import views
 from shift.adapters.accounting.readonly import AccountingDatabase, AccountingUnavailable, open_accounting
 from shift.adapters.accounting.views import PagedRead, ViewName
-from shift.adapters.db import events_repo, mirror_repo, watermark_repo
+from shift.adapters.db import events_repo, handover_repo, mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, utc_iso
 from shift.common.ids import new_ulid
-from shift.domain.cutoff import ShiftCutoff
 from shift.domain.events import EventType
+from shift.domain.handover_fsm import HandoverFlow
+from shift.domain.policy import ShiftKey
+from shift.domain.shift_clock import covering
 from shift.services.event_store import EventStore, NewEvent
 
 log = logging.getLogger(__name__)
@@ -59,6 +68,17 @@ _MAX_ERROR_LENGTH = 500
 MirrorRow = dict[str, Any]
 MirrorBuilder = Callable[[Mapping[str, Any], str], MirrorRow]
 MirrorInserter = Callable[[Connection, Sequence[Mapping[str, Any]]], int]
+ShiftResolver = Callable[[datetime, HandoverFlow], ShiftKey]
+
+
+def shift_resolver(database: Database, clock_covering: Callable[[datetime], ShiftKey] = covering) -> ShiftResolver:
+    """Bind the per-flow attribution rule (H-11, D3) to one database, so every fact resolves the same."""
+
+    def resolve(instant: datetime, flow: HandoverFlow) -> ShiftKey:
+        with database.read() as connection:
+            return ShiftKey.parse(handover_repo.shift_id_at(connection, instant, flow, clock_covering))
+
+    return resolve
 
 
 def _cash_key(view_name: str, invoice_id: int, closed_at: str, amount: int) -> str:
@@ -211,6 +231,7 @@ class AccountingBridge:
         *,
         clock: Clock | None = None,
         page_size: int = DEFAULT_PAGE_SIZE,
+        resolve_shift: ShiftResolver | None = None,
     ) -> None:
         if page_size < 1:
             raise ValueError("page_size must be positive")
@@ -218,20 +239,24 @@ class AccountingBridge:
         self._store = store
         self._clock = clock or SystemClock()
         self._page_size = page_size
+        # The one seam that decides a fact's shift (H-11, D3): it takes the fact's instant and the flow
+        # that owns it, so tests pin it and production binds the recorded flows.
+        self._resolve_shift = resolve_shift if resolve_shift is not None else shift_resolver(database)
 
-    def poll(self, accounting_path: str | Path, shift: ShiftCutoff) -> PollReport:
-        """Ingest every accounting fact up to `shift.cutoff_at`; never raises for accounting problems."""
+    def poll(self, accounting_path: str | Path) -> PollReport:
+        """Ingest every accounting fact stamped up to now; never raises for accounting problems."""
         try:
             accounting = open_accounting(accounting_path)
         except AccountingUnavailable as exc:
             log.warning("accounting bridge degraded: %s", exc)
             return self._degraded(str(exc), voids_available=False)
         try:
-            return self._poll(accounting, shift)
+            return self._poll(accounting)
         finally:
             accounting.close()
 
-    def _poll(self, accounting: AccountingDatabase, shift: ShiftCutoff) -> PollReport:
+    def _poll(self, accounting: AccountingDatabase) -> PollReport:
+        until_at = self._clock.now_utc()
         with accounting.connect() as connection:
             contract = views.introspect(connection)
         try:
@@ -249,7 +274,7 @@ class AccountingBridge:
             if view not in contract.present:
                 continue
             try:
-                result = self._ingest_feed(accounting, feed, shift)
+                result = self._ingest_feed(accounting, feed, until_at)
             except SQLAlchemyError as exc:
                 self._record_failure(view, exc)
                 error = error or f"{view.value}: {exc}"
@@ -261,7 +286,7 @@ class AccountingBridge:
 
         if contract.voids_available:
             try:
-                events += self._compensate_voids(shift)
+                events += self._compensate_voids()
             except SQLAlchemyError as exc:
                 error = error or f"{ViewName.VOIDS.value}: {exc}"
                 log.warning("accounting bridge could not compensate voids: %s", exc)
@@ -282,24 +307,24 @@ class AccountingBridge:
             error=error,
         )
 
-    def _ingest_feed(self, accounting: AccountingDatabase, feed: Feed, shift: ShiftCutoff) -> _FeedResult:
+    def _ingest_feed(self, accounting: AccountingDatabase, feed: Feed, until_at: datetime) -> _FeedResult:
         """Copy one view page by page; the watermark never moves past rows that were not committed."""
         with self._database.read() as connection:
             watermark = watermark_repo.get(connection, feed.read.view.value)
         after_at, after_id = watermark.last_key_at, watermark.last_key_id
         if feed.corrections:
             # A re-close may re-use a stamp the watermark already passed; re-read a bounded window.
-            floor = views.format_time(shift.cutoff_at - CASH_LOOKBACK)
+            floor = views.format_time(until_at - CASH_LOOKBACK)
             if floor < after_at:
                 after_at, after_id = floor, watermark_repo.EMPTY_WATERMARK_ID
-        until = views.format_time(shift.cutoff_at)
+        until = views.format_time(until_at)
         rows = events = pages = 0
         while True:
             page = self._read_page(accounting, feed.read, after_at, after_id, until)
             if not page:
                 return _FeedResult(rows, events, pages)
             ingested_at = utc_iso(self._clock.now_utc())
-            plan = self._plan_page(feed, page, shift, ingested_at)
+            plan = self._plan_page(feed, page, ingested_at)
             events += self._append_events(plan.events)
             last = page[-1]
             last_at, last_id = str(last[feed.read.key_at]), int(last[feed.read.key_id])
@@ -321,12 +346,10 @@ class AccountingBridge:
             )
             return [dict(row) for row in result.mappings()]
 
-    def _plan_page(
-        self, feed: Feed, page: Sequence[Mapping[str, Any]], shift: ShiftCutoff, ingested_at: str
-    ) -> _PagePlan:
+    def _plan_page(self, feed: Feed, page: Sequence[Mapping[str, Any]], ingested_at: str) -> _PagePlan:
         """Turn a page into events and mirror work; the cash feed also subtracts what it supersedes."""
         if feed.corrections:
-            return self._plan_cash_page(feed, page, shift, ingested_at)
+            return self._plan_cash_page(feed, page, ingested_at)
         return _PagePlan(insert=tuple(feed.mirror(row, ingested_at) for row in page))
 
     @staticmethod
@@ -345,9 +368,7 @@ class AccountingBridge:
             mirror_repo.supersede_cash(connection, invoice_id, closed_at, superseded_at)
         return feed.insert(connection, plan.insert) + len(plan.update)
 
-    def _plan_cash_page(
-        self, feed: Feed, page: Sequence[Mapping[str, Any]], shift: ShiftCutoff, ingested_at: str
-    ) -> _PagePlan:
+    def _plan_cash_page(self, feed: Feed, page: Sequence[Mapping[str, Any]], ingested_at: str) -> _PagePlan:
         """Plan receipts and corrections: a re-close reverses the version it replaced (R-03, S04 §2.1)."""
         view_name = feed.read.view.value
         invoice_ids = sorted({int(row["invoice_id"]) for row in page})
@@ -379,7 +400,7 @@ class AccountingBridge:
                         continue
                     at = views.parse_time(closed_at)
                     events.append(self._cash_reversal_event(receipt, superseded, at=at, reason="reclosed"))
-                events.append(self._cash_receipt_event(mirrored, shift, receipt, view_name))
+                events.append(self._cash_receipt_event(mirrored, receipt, view_name))
                 if exact is not None:
                     update.append(mirrored)
                     exact.update(mirrored)
@@ -406,11 +427,12 @@ class AccountingBridge:
         return None
 
     def _cash_receipt_event(
-        self, mirrored: Mapping[str, Any], shift: ShiftCutoff, superseded: EventRecord | None, view_name: str
+        self, mirrored: Mapping[str, Any], superseded: EventRecord | None, view_name: str
     ) -> NewEvent:
         """A new close; when it replaces one, its `ref_event_id` names the receipt it supersedes."""
         closed_at_text = str(mirrored["closed_at"])
         closed_at = views.parse_time(closed_at_text)
+        shift = self._resolve_shift(closed_at, HandoverFlow.RECEPTION)
         return NewEvent(
             client_event_id=new_ulid(closed_at),
             type=EventType.ACC_CASH_RECEIPT.value,
@@ -419,7 +441,7 @@ class AccountingBridge:
             device_id=BRIDGE_DEVICE_ID,
             work_date=shift.work_date,
             client_at=closed_at,
-            shift_id=shift.shift_id,
+            shift_id=shift.text,
             ref_event_id=superseded.event_id if superseded is not None else None,
             idempotency_key=_cash_key(view_name, int(mirrored["invoice_id"]), closed_at_text, int(mirrored["amount"])),
         )
@@ -431,8 +453,7 @@ class AccountingBridge:
         *,
         at: datetime,
         reason: str,
-        shift_id: str | None = None,
-        work_date: date | None = None,
+        shift: ShiftKey | None = None,
     ) -> NewEvent:
         """The compensating half of a correction: same amount, subtract effect, reference to its receipt."""
         return NewEvent(
@@ -445,14 +466,14 @@ class AccountingBridge:
             },
             actor_id=BRIDGE_ACTOR_ID,
             device_id=BRIDGE_DEVICE_ID,
-            work_date=work_date or date.fromisoformat(receipt.work_date),
+            work_date=shift.work_date if shift is not None else date.fromisoformat(receipt.work_date),
             client_at=at,
-            shift_id=shift_id or receipt.shift_id,
+            shift_id=shift.text if shift is not None else receipt.shift_id,
             ref_event_id=receipt.event_id,
             idempotency_key=f"acc:cash-reversal:{receipt.event_id}",
         )
 
-    def _compensate_voids(self, shift: ShiftCutoff) -> int:
+    def _compensate_voids(self) -> int:
         """Reverse the cash still active for every voided invoice, once per void (S04 §2.1)."""
         events: list[NewEvent] = []
         compensated: list[int] = []
@@ -476,14 +497,14 @@ class AccountingBridge:
                         version["invoice_id"],
                     )
                     continue
+                at = views.parse_time(str(void["voided_at"]))
                 events.append(
                     self._cash_reversal_event(
                         receipt,
                         version,
-                        at=views.parse_time(str(void["voided_at"])),
+                        at=at,
                         reason="refunded" if str(void["kind"]) == "refund" else "voided",
-                        shift_id=shift.shift_id,
-                        work_date=shift.work_date,
+                        shift=self._resolve_shift(at, HandoverFlow.RECEPTION),
                     )
                 )
                 compensated.append(void_id)

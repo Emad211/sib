@@ -19,7 +19,6 @@ NUMBER_VALUES = {
     SettingKey.TAKEOVER_WINDOW_MINUTES: st.integers(0, 180),
     SettingKey.WITHDRAWAL_CAP_TOMAN: st.integers(0, 1_000_000),
     SettingKey.SESSION_TTL_HOURS: st.integers(1, 24),
-    SettingKey.DAILY_CARD_SKIP_WEEKDAY: st.integers(0, 6),
     SettingKey.WEEKLY_COUNT_WEEKDAY: st.integers(0, 6),
 }
 CLOCK_KEYS = frozenset({SettingKey.CARD_TIME, SettingKey.WEEKLY_COUNT_TIME})

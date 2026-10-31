@@ -22,6 +22,7 @@ class Permission(StrEnum):
     HANDOVER_COUNT_OUTGOING = "handover.count.outgoing"
     HANDOVER_CASH_SUBMIT = "handover.cash.submit"
     HANDOVER_SIGN = "handover.sign"
+    HANDOVER_BASELINE = "handover.baseline"
     CASH_WITHDRAW_REQUEST = "cash.withdraw.request"
     CASH_WITHDRAW_APPROVE = "cash.withdraw.approve"
     CASH_DEPOSIT_RECORD = "cash.deposit.record"
@@ -68,6 +69,9 @@ _ROLE_GRANTS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         Role.NURSE: frozenset(
             {
                 _P.EVENTS_APPEND,
+                # H-12: the nursing flow needs its own start and its own two signatures (H-10: no box).
+                _P.HANDOVER_START,
+                _P.HANDOVER_SIGN,
                 _P.HANDOVER_COUNT_SUBMIT,
                 _P.HANDOVER_COUNT_OUTGOING,
                 _P.CASH_WITHDRAW_REQUEST,

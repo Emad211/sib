@@ -25,7 +25,6 @@ class Schedule:
     """A test double for the versioned settings; production values arrive with SHF-1.4."""
 
     daily_card_time: time = time(7, 30)
-    daily_card_skip_weekday: int | None = 4
     weekly_count_time: time = time(8, 0)
     weekly_count_weekday: int = 0
 
@@ -73,12 +72,9 @@ def test_a_missed_daily_card_is_caught_up_on_the_next_poll() -> None:
     assert runs[0].ran_at == TUESDAY_LATE
 
 
-def test_no_daily_card_on_the_configured_skip_weekday() -> None:
+def test_no_daily_card_on_friday() -> None:
+    """S01 §6: Friday has no card, and Saturday's card covers Friday and Saturday (ADR-018)."""
     assert DAILY_CARD not in [task.name for task in Scheduler(Schedule()).due(FRIDAY_LATE)]
-
-    skipping_friday = Schedule(daily_card_skip_weekday=None)
-
-    assert DAILY_CARD in [task.name for task in Scheduler(skipping_friday).due(FRIDAY_LATE)]
 
 
 def test_the_weekly_count_warning_runs_once_in_its_week() -> None:

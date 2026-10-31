@@ -11,6 +11,7 @@ from typing import Any
 
 from auth_fixtures import PIN, create_device, create_staff
 from auth_fixtures import login as login_request
+from clocks import FixedClock
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
 
@@ -19,7 +20,6 @@ from shift.adapters.db import events_repo, migrations, projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import to_tehran
 from shift.common.ids import new_ulid
-from shift.domain.cutoff import ShiftCutoff
 from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
 
@@ -122,18 +122,15 @@ def test_the_whole_shift_path_from_qr_to_rebuilt_projections(client: TestClient,
     assert stock == [{"item_id": "bandage_roll", "location_id": "emergency_cabinet", "qty": -5}]
 
     scenario = build(tmp_path / "accounting.db")
-    cutoff = ShiftCutoff(
-        shift_id="shift-morning", work_date=scenario.work_date, cutoff_at=parse_time(scenario.cutoff_at)
-    )
-    bridge = AccountingBridge(database, client.app.state.events)
-    report = bridge.poll(scenario.path, cutoff)
+    bridge = AccountingBridge(database, client.app.state.events, clock=FixedClock(parse_time(scenario.cutoff_at)))
+    report = bridge.poll(scenario.path)
     assert report.degraded is False
     assert report.events == 3
     client.app.state.projections.sync()
 
     with database.read() as connection:
         live_cash = projections_repo.cash_rows(connection)
-    assert live_cash == [{"shift_id": "shift-morning", "expected": 215_000, "counted": 0, "variance": -215_000}]
+    assert live_cash == [{"cash_box_id": "reception", "expected": 215_000, "counted": 0, "variance": -215_000}]
 
     check = client.app.state.projections.rebuild(dry_run=True)
     assert check.events > 0

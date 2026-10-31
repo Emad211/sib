@@ -1,4 +1,8 @@
-"""Outbox orchestration service: validates and records offline-minted events."""
+"""Outbox orchestration service: validates and records offline-minted events.
+
+ADR-016 keeps the handover out of this path: a blind count is compared against a reference that must
+never reach the phone, so a handover runs on the live server and its events are refused here.
+"""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -6,13 +10,23 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from shift.common.clock import parse_iso, to_tehran
-from shift.domain.events import UnknownEventType, spec_for, validate_payload
+from shift.domain.events import EventType, UnknownEventType, spec_for, validate_payload
 from shift.services.event_store import EventStore, EventValidationError, NewEvent
 from shift.services.projections import ProjectionEngine
 
 # Day and evening shifts belong to their calendar date; the night shift that
 # starts at 19:30 belongs to the date on which it opened, even after midnight.
 NIGHT_SHIFT_END = time(7, 30)
+
+# ADR-016: a handover runs against the live server, where the blind comparison happens, so its
+# vocabulary never arrives from the offline queue. The handover service is its only writer, and the
+# refusal is written for the person holding the phone (Persian, no numbers) while keeping the ADR
+# token the operator scripts and the older tests look for.
+LIVE_ONLY = frozenset(
+    {event_type.value for event_type in EventType if event_type.value.startswith("handover.")}
+    | {EventType.DISCREPANCY_RECORDED.value}
+)
+LIVE_ONLY_REFUSAL = "رویدادهای تحویل شیفت فقط روی سرور درمانگاه ثبت می‌شوند و از صف آفلاین پذیرفته نمی‌شوند (ADR-016)."
 
 
 class OutboxValidationError(ValueError):
@@ -122,6 +136,9 @@ class OutboxService:
             spec_for(submission.type)
         except UnknownEventType as exc:
             raise OutboxValidationError(str(exc)) from exc
+
+        if submission.type in LIVE_ONLY:
+            raise OutboxValidationError(LIVE_ONLY_REFUSAL)
 
         try:
             validate_payload(submission.type, submission.payload)

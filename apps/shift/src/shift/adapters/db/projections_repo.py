@@ -16,7 +16,7 @@ PROJECTIONS = (STOCK, CASH)
 _TABLES = frozenset({STOCK, CASH, STOCK_SHADOW, CASH_SHADOW})
 
 _STOCK_DDL = "CREATE TABLE {table} (item_id TEXT NOT NULL, location_id TEXT NOT NULL, qty INTEGER NOT NULL, PRIMARY KEY (item_id, location_id))"
-_CASH_DDL = "CREATE TABLE {table} (shift_id TEXT PRIMARY KEY, expected INTEGER NOT NULL, counted INTEGER NOT NULL, variance INTEGER NOT NULL)"
+_CASH_DDL = "CREATE TABLE {table} (cash_box_id TEXT PRIMARY KEY, expected INTEGER NOT NULL, counted INTEGER NOT NULL, variance INTEGER NOT NULL)"
 
 
 def _table(name: str) -> str:
@@ -70,32 +70,51 @@ def apply_stock(connection: Connection, table: str, effect: StockEffect) -> None
     connection.exec_driver_sql(sql, (effect.item_id, effect.location_id, effect.quantity))
 
 
-def apply_cash(connection: Connection, table: str, effect: CashEffect, shift_id: str) -> None:
-    """Apply one cash effect, always keeping variance = counted − expected."""
+def apply_cash(connection: Connection, table: str, effect: CashEffect) -> None:
+    """Apply one cash effect to its box, always keeping variance = counted − expected.
+
+    The table is keyed per cash box, not per shift (ADR-017 item 8), so a correction or a receipt
+    lands on the same row whatever shift it was stamped in.
+    """
     table = _table(table)
+    box = effect.cash_box_id
+    if not box:
+        raise ValueError("a cash effect needs its cash box")
     if effect.operation is CashOperation.OPEN:
+        # The opening only seeds a box that has no figure yet; after the first shift the box's figure
+        # comes from the counts and from the settlement that follows them (ADR-017 item 8, H-13).
         sql = (
-            f"INSERT INTO {table} (shift_id, expected, counted, variance) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT(shift_id) DO UPDATE SET expected = excluded.expected, counted = excluded.counted, "
-            "variance = excluded.counted - excluded.expected"
+            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, ?, ?, 0) ON CONFLICT DO NOTHING"
         )
-        parameters = (shift_id, effect.amount, effect.amount, 0)
+        parameters = (box, effect.amount, effect.amount)
     elif effect.operation is CashOperation.COUNT:
         sql = (
-            f"INSERT INTO {table} (shift_id, expected, counted, variance) VALUES (?, 0, ?, ?) "
-            "ON CONFLICT(shift_id) DO UPDATE SET counted = excluded.counted, "
+            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, 0, ?, ?) "
+            "ON CONFLICT(cash_box_id) DO UPDATE SET counted = excluded.counted, "
             f"variance = excluded.counted - {table}.expected"
         )
-        parameters = (shift_id, effect.amount, effect.amount)
+        parameters = (box, effect.amount, effect.amount)
+    elif effect.operation is CashOperation.SETTLE:
+        # The agreed figure is the box's base, so the next shift's N0 is that figure and a gap from
+        # the shift before cannot reappear in every later reference (H-02, H-13). Whatever the box
+        # recorded during the flow stays on top of it (H-11): the next shift's money, not this
+        # count's. `variance` always reads `counted - expected`, so it is `-carry` here.
+        expected = effect.amount + effect.carry
+        sql = (
+            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(cash_box_id) DO UPDATE SET expected = excluded.expected, "
+            "counted = excluded.counted, variance = excluded.variance"
+        )
+        parameters = (box, expected, effect.amount, effect.amount - expected)
     else:
         delta = effect.amount if effect.operation is CashOperation.ADD else -effect.amount
         sql = (
-            f"INSERT INTO {table} (shift_id, expected, counted, variance) VALUES (?, ?, 0, ?) "
-            "ON CONFLICT(shift_id) DO UPDATE SET expected = "
+            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, ?, 0, ?) "
+            "ON CONFLICT(cash_box_id) DO UPDATE SET expected = "
             f"{table}.expected + excluded.expected, variance = {table}.counted - "
             f"({table}.expected + excluded.expected)"
         )
-        parameters = (shift_id, delta, -delta)
+        parameters = (box, delta, -delta)
     connection.exec_driver_sql(sql, parameters)
 
 
@@ -125,11 +144,11 @@ def checksum(connection: Connection, name: str, table: str) -> str:
         values = [{"item_id": row["item_id"], "location_id": row["location_id"], "qty": row["qty"]} for row in rows]
     elif name == CASH:
         rows = connection.exec_driver_sql(
-            f"SELECT shift_id, expected, counted, variance FROM {table} ORDER BY shift_id"
+            f"SELECT cash_box_id, expected, counted, variance FROM {table} ORDER BY cash_box_id"
         ).mappings()
         values = [
             {
-                "shift_id": row["shift_id"],
+                "cash_box_id": row["cash_box_id"],
                 "expected": row["expected"],
                 "counted": row["counted"],
                 "variance": row["variance"],
@@ -151,10 +170,10 @@ def stock_rows(connection: Connection, table: str = STOCK) -> list[dict[str, Any
 
 
 def cash_rows(connection: Connection, table: str = CASH) -> list[dict[str, Any]]:
-    """Read the cash projection for tests and diagnostics."""
+    """Read the cash projection, one row per cash box, for tests and diagnostics."""
     table = _table(table)
     rows = connection.exec_driver_sql(
-        f"SELECT shift_id, expected, counted, variance FROM {table} ORDER BY shift_id"
+        f"SELECT cash_box_id, expected, counted, variance FROM {table} ORDER BY cash_box_id"
     ).mappings()
     return [dict(row) for row in rows]
 

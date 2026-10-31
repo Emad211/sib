@@ -7,6 +7,11 @@ backups or the app (R-06). A second backup location that cannot be reached is th
 failure: logged, retried on a later pass, and never a reason to take another primary snapshot
 (review F1). A test drives one pass with `tick()` instead of waiting for a timer, and the app only
 starts the loops when `Settings.background_jobs` asks for them.
+
+The accounting mirror stays live: the poll keeps reading every fact up to *now*, so a card payment or
+a consumption lands within a tick (S02 §2). It attributes each fact to its shift through the handover
+flows already recorded (H-11) — never through the moment the poll happened to run — and a handover
+start additionally takes its own immediate read of that flow's cutoff in `services.handover`.
 """
 
 import asyncio
@@ -17,8 +22,6 @@ from pathlib import Path
 from typing import Any
 
 from shift.common.clock import Clock, to_tehran
-from shift.domain.cutoff import ShiftCutoff
-from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge, PollReport
 from shift.services.audit import AuditEntry, AuditOutcome, AuditService
 from shift.services.backup import BackupRejected, BackupReport, BackupService
@@ -77,7 +80,7 @@ class BackgroundJobs:
         """Ingest accounting up to now, or nothing when this install has no accounting copy."""
         if self._bridge is None or self._accounting_path is None:
             return None
-        report = self._bridge.poll(self._accounting_path, self._cutoff())
+        report = self._bridge.poll(self._accounting_path)
         if report.degraded:
             log.warning("accounting poll left the bridge degraded: %s", report.error)
         return report
@@ -150,16 +153,6 @@ class BackgroundJobs:
             job()
         except Exception:  # noqa: BLE001 — a background job must not stop the service (R-06)
             log.exception("background job failed; it is retried on the next pass")
-
-    def _cutoff(self) -> ShiftCutoff:
-        """Everything accounting recorded up to now, in the shift the clinic clock is in.
-
-        A periodic poll runs without a handover, so the cutoff is the moment it reads and the
-        shift is the covering one. SHF-2 replaces both with the frozen handover instant (H-11).
-        """
-        now = self._clock.now_utc()
-        shift = covering(to_tehran(now))
-        return ShiftCutoff(shift_id=shift.text, work_date=shift.work_date, cutoff_at=now)
 
     def _record(self, action: str, outcome: AuditOutcome, detail: dict[str, Any]) -> None:
         """Audit one snapshot attempt; an audit failure never undoes a good backup."""

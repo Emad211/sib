@@ -1,13 +1,17 @@
-"""Web routes: serves the PWA shell, service worker, manifest and offline fallback."""
+"""Web routes: serves the PWA shell, the handover screen, service worker, manifest and offline fallback."""
 
 from pathlib import Path
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from shift.__version__ import __version__
+from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
+from shift.domain.permissions import Permission
+from shift.services.auth import Principal
 
 router = APIRouter(tags=["web"])
 
@@ -38,20 +42,21 @@ _BASELINE_HEADERS = {
 # the cache name busts on every version bump (__version__ is the single source).
 _SW_BODY = (_STATIC_DIR / "sw.js").read_text(encoding="utf-8").replace("__SHIFT_VERSION__", __version__)
 
+# A page guard: no session means a redirect to the login screen, not a JSON 401.
+HandoverCounter = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_COUNT_SUBMIT))]
 
-@router.get("/", response_class=HTMLResponse, summary="Serve PWA home shell")
-def get_home(request: Request) -> HTMLResponse:
-    """Render the main PWA shell and issue the double-submit CSRF cookie."""
+
+def _shell_page(request: Request, name: str, context: dict[str, Any] | None = None) -> HTMLResponse:
+    """Render one authenticated page with the CSRF cookie, the CSP headers and no HTTP cache.
+
+    The response stays out of the HTTP cache but not out of the worker's shell cache: a handover
+    screen opened offline is the gate that says the flow needs the clinic server (ADR-016).
+    """
     token, is_new = csrf_cookie_token(request)
-    settings = request.app.state.settings
     response = templates.TemplateResponse(
         request=request,
-        name="home.html",
-        context={
-            "request": request,
-            "csrf_token": token,
-            "show_dev_events": settings.environment == "development",
-        },
+        name=name,
+        context={"request": request, "csrf_token": token, **(context or {})},
     )
     if is_new:
         response.set_cookie(
@@ -67,6 +72,23 @@ def get_home(request: Request) -> HTMLResponse:
     response.headers["Cache-Control"] = "no-cache"
     response.headers["Vary"] = "Cookie"
     return response
+
+
+@router.get("/", response_class=HTMLResponse, summary="Serve PWA home shell")
+def get_home(request: Request) -> HTMLResponse:
+    """Render the main PWA shell and issue the double-submit CSRF cookie."""
+    settings = request.app.state.settings
+    return _shell_page(request, "home.html", {"show_dev_events": settings.environment == "development"})
+
+
+@router.get("/handover", response_class=HTMLResponse, summary="Serve the phone handover screen")
+def get_handover_page(request: Request, _principal: HandoverCounter) -> HTMLResponse:
+    """The screen a tired receptionist or nurse uses at 2 am (R-10).
+
+    Both the receptionist and the nurse hold the count permission, so both may open the screen; which
+    flow they may complete is decided by the API (H-10: a nurse never counts the cash box).
+    """
+    return _shell_page(request, "handover.html")
 
 
 @router.get("/offline.html", summary="Serve offline fallback page")

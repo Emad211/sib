@@ -12,11 +12,27 @@ from shift.domain.effects import (
     EffectBuilder,
     Effects,
     StockOperation,
-    cash_count,
+    baseline_recorded,
     cash_delta,
     cash_open,
+    no_effects,
+    settled_count,
     stock_delta,
     stock_set,
+)
+from shift.domain.handover_baseline import BaselineRecorded
+from shift.domain.handover_payloads import (
+    ChecklistAnswered,
+    CountSettled,
+    DiscrepancyRecorded,
+    EarlyLeaveReported,
+    EmergencyStartConfirmed,
+    HandoverSigned,
+    JointCounted,
+    OutgoingCounted,
+    ParcelHanded,
+    RecountRequested,
+    StepAdvanced,
 )
 from shift.domain.payloads import (
     CashCounted,
@@ -35,9 +51,21 @@ from shift.domain.payloads import (
 
 
 class EventType(StrEnum):
+    HANDOVER_BASELINE_RECORDED = "handover.baseline_recorded"
     HANDOVER_STARTED = "handover.started"
     HANDOVER_CASH_COUNTED = "handover.cash_counted"
     HANDOVER_ITEM_COUNTED = "handover.item_counted"
+    HANDOVER_RECOUNT_REQUESTED = "handover.recount_requested"
+    HANDOVER_STEP_ADVANCED = "handover.step_advanced"
+    HANDOVER_OUTGOING_COUNTED = "handover.outgoing_counted"
+    HANDOVER_JOINT_COUNTED = "handover.joint_counted"
+    HANDOVER_COUNT_SETTLED = "handover.count_settled"
+    HANDOVER_CHECKLIST_ANSWERED = "handover.checklist_answered"
+    HANDOVER_PARCEL_HANDED = "handover.parcel_handed"
+    HANDOVER_SIGNED = "handover.signed"
+    HANDOVER_EARLY_LEAVE_REPORTED = "handover.early_leave_reported"
+    HANDOVER_EMERGENCY_START_CONFIRMED = "handover.emergency_start_confirmed"
+    DISCREPANCY_RECORDED = "discrepancy.recorded"
     CASH_WITHDRAWN = "cash.withdrawn"
     CASH_DEPOSITED = "cash.deposited"
     STOCK_WEEKLY_COUNT = "stock.weekly_count"
@@ -62,9 +90,27 @@ class EventSpec:
 
 
 EVENT_SPECS: Mapping[EventType, EventSpec] = {
+    # The manager's first count: one event sets every shelf and seeds the reception box, so the
+    # first blind handover has a reference without anyone typing a declared figure (SHF-7.1).
+    EventType.HANDOVER_BASELINE_RECORDED: EventSpec(BaselineRecorded, baseline_recorded, requires_shift=True),
     EventType.HANDOVER_STARTED: EventSpec(ShiftOpened, cash_open, requires_shift=True),
-    EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
-    EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),
+    # A blind count is a record of what one person read, never a reference: only `count_settled`
+    # moves a shelf or the box, so an unconfirmed figure cannot become the next flow's reference.
+    EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, no_effects, requires_shift=True),
+    EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, no_effects, requires_shift=True),
+    EventType.HANDOVER_RECOUNT_REQUESTED: EventSpec(RecountRequested, no_effects, requires_shift=True),
+    EventType.HANDOVER_STEP_ADVANCED: EventSpec(StepAdvanced, no_effects, requires_shift=True),
+    EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, no_effects, requires_shift=True),
+    EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, no_effects, requires_shift=True),
+    # The one count event that writes: the shelf's SET, or the box's rebase to `counted + carry`
+    # (H-05, H-13, H-11, ADR-017 item 9).
+    EventType.HANDOVER_COUNT_SETTLED: EventSpec(CountSettled, settled_count, requires_shift=True),
+    EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),
+    EventType.HANDOVER_PARCEL_HANDED: EventSpec(ParcelHanded, no_effects, requires_shift=True),
+    EventType.HANDOVER_SIGNED: EventSpec(HandoverSigned, no_effects, requires_shift=True),
+    EventType.HANDOVER_EARLY_LEAVE_REPORTED: EventSpec(EarlyLeaveReported, no_effects, requires_shift=True),
+    EventType.HANDOVER_EMERGENCY_START_CONFIRMED: EventSpec(EmergencyStartConfirmed, no_effects, requires_shift=True),
+    EventType.DISCREPANCY_RECORDED: EventSpec(DiscrepancyRecorded, no_effects, requires_shift=True),
     EventType.CASH_WITHDRAWN: EventSpec(CashWithdrawn, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.CASH_DEPOSITED: EventSpec(CashDeposited, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.STOCK_WEEKLY_COUNT: EventSpec(WeeklyCount, stock_set),

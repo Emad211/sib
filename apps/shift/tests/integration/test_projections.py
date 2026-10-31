@@ -19,14 +19,14 @@ def test_stock_projection_uses_counts_restock_consumption_withdrawal_and_waste(
 ) -> None:
     store.append_many(
         [
-            build_event("handover.item_counted", payload={"item_id": "item-1", "location_id": "loc-1", "counted": 10}),
+            build_event("stock.weekly_count", payload={"item_id": "item-1", "location_id": "loc-1", "counted": 10}),
             build_event("stock.shelf_restocked", payload={"item_id": "item-1", "location_id": "loc-1", "quantity": 5}),
             build_event("acc.consumption", payload={"item_id": "item-1", "location_id": "loc-1", "quantity": 3}),
             build_event(
                 "stock.emergency_withdrawal", payload={"item_id": "item-1", "location_id": "loc-1", "quantity": 2}
             ),
             build_event("stock.waste_reported", payload={"item_id": "item-1", "location_id": "loc-1", "quantity": 1}),
-            build_event("handover.item_counted", payload={"item_id": "item-2", "location_id": "loc-2", "counted": 4}),
+            build_event("stock.weekly_count", payload={"item_id": "item-2", "location_id": "loc-2", "counted": 4}),
         ]
     )
 
@@ -41,7 +41,7 @@ def test_stock_projection_uses_counts_restock_consumption_withdrawal_and_waste(
     ]
 
 
-def test_cash_projection_uses_opening_receipts_withdrawals_deposits_and_count(
+def test_cash_projection_keys_on_the_box_and_an_opening_never_overwrites_it(
     store: EventStore, projections: ProjectionEngine, database: Database
 ) -> None:
     store.append_many(
@@ -51,7 +51,9 @@ def test_cash_projection_uses_opening_receipts_withdrawals_deposits_and_count(
             build_event("cash.withdrawn", shift_id="shift-1", payload={"amount": 50_000}),
             build_event("cash.deposited", shift_id="shift-1", payload={"amount": 100_000}),
             build_event("handover.cash_counted", shift_id="shift-1", payload={"counted": 900_000}),
+            # The next shift opens the same box and the nursing flow opens no cash at all (H-12).
             build_event("handover.started", shift_id="shift-2", payload={"opening_cash": 500_000}),
+            build_event("handover.started", shift_id="shift-2", payload={"opening_cash": None}),
         ]
     )
 
@@ -59,10 +61,72 @@ def test_cash_projection_uses_opening_receipts_withdrawals_deposits_and_count(
 
     with database.read() as connection:
         rows = projections_repo.cash_rows(connection)
-    assert rows == [
-        {"shift_id": "shift-1", "expected": 1_050_000, "counted": 900_000, "variance": -150_000},
-        {"shift_id": "shift-2", "expected": 500_000, "counted": 500_000, "variance": 0},
-    ]
+    # The blind count is a record, not a rebase: the box still shows what the receipts made it, and
+    # the next shift's opening never overwrites a live figure (H-05, ADR-017 item 8).
+    assert rows == [{"cash_box_id": "reception", "expected": 1_050_000, "counted": 1_000_000, "variance": -50_000}]
+
+
+def test_a_settled_cash_count_rebases_the_box_so_the_next_shifts_start_from_the_agreed_figure(
+    store: EventStore, projections: ProjectionEngine, database: Database
+) -> None:
+    """H-13: the agreed figure is the next `N0`, so an old gap cannot become a phantom discrepancy."""
+
+    def cash() -> list[dict[str, object]]:
+        with database.read() as connection:
+            return projections_repo.cash_rows(connection)
+
+    store.append_many(
+        [
+            build_event("handover.started", shift_id="2026-10-28#1", payload={"opening_cash": 1_000_000}),
+            build_event("acc.cash_receipt", shift_id="2026-10-28#1", payload={"amount": 200_000}),
+            build_event("handover.cash_counted", shift_id="2026-10-28#1", payload={"counted": 1_150_000}),
+            build_event(
+                "handover.count_settled",
+                shift_id="2026-10-28#1",
+                payload={"scope": "cash", "counted": 1_150_000, "basis": "agreeing_blind", "carry": 0},
+            ),
+            build_event(
+                "discrepancy.recorded",
+                shift_id="2026-10-28#1",
+                payload={"scope": "cash", "difference": 50_000, "culprit_id": "staff-out"},
+            ),
+        ]
+    )
+    projections.sync()
+    assert cash() == [{"cash_box_id": "reception", "expected": 1_150_000, "counted": 1_150_000, "variance": 0}]
+
+    store.append_many(
+        [
+            build_event("handover.started", shift_id="2026-10-28#2", payload={"opening_cash": 500_000}),
+            build_event("acc.cash_receipt", shift_id="2026-10-28#2", payload={"amount": 100_000}),
+        ]
+    )
+    projections.sync()
+    assert cash() == [{"cash_box_id": "reception", "expected": 1_250_000, "counted": 1_150_000, "variance": -100_000}]
+
+    store.append_many(
+        [
+            build_event(
+                "handover.count_settled",
+                shift_id="2026-10-28#2",
+                payload={"scope": "cash", "counted": 1_250_000, "basis": "joint", "carry": 0},
+            ),
+            build_event("handover.started", shift_id="2026-10-28#3", payload={"opening_cash": None}),
+            build_event("cash.withdrawn", shift_id="2026-10-28#3", payload={"amount": 50_000}),
+            build_event(
+                "handover.count_settled",
+                shift_id="2026-10-28#3",
+                payload={"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind", "carry": 0},
+            ),
+        ]
+    )
+    projections.sync()
+    settled = [{"cash_box_id": "reception", "expected": 1_200_000, "counted": 1_200_000, "variance": 0}]
+    assert cash() == settled
+
+    assert projections.rebuild(dry_run=True).drift == ()
+    assert projections.rebuild().drift == ()
+    assert cash() == settled
 
 
 def test_sync_is_incremental_and_advances_meta(
@@ -87,7 +151,7 @@ def test_a_lagging_projection_catches_up_without_double_applying_the_other(
     store.append_many(
         [
             build_event("handover.started", shift_id="shift-1", payload={"opening_cash": 1_000_000}),
-            build_event("handover.item_counted", payload={"item_id": "item-1", "location_id": "loc-1", "counted": 10}),
+            build_event("stock.weekly_count", payload={"item_id": "item-1", "location_id": "loc-1", "counted": 10}),
         ]
     )
     projections.sync()
@@ -102,7 +166,7 @@ def test_a_lagging_projection_catches_up_without_double_applying_the_other(
     with database.read() as connection:
         assert projections_repo.stock_rows(connection) == [{"item_id": "item-1", "location_id": "loc-1", "qty": 15}]
         assert projections_repo.cash_rows(connection) == [
-            {"shift_id": "shift-1", "expected": 1_000_000, "counted": 1_000_000, "variance": 0}
+            {"cash_box_id": "reception", "expected": 1_000_000, "counted": 1_000_000, "variance": 0}
         ]
 
 

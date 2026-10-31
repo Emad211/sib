@@ -111,6 +111,63 @@
    "storekeeper": 403
   }
  },
+ "GET /api/v1/handover/current [current_handovers]": {
+  "guard": "permission:handover.count.submit",
+  "note": "the open flows of this shift, so a second phone joins instead of needing the first one (S03 §3)",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 403,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /api/v1/handover/managers [list_managers]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 403,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /api/v1/handover/{handover_id} [get_handover_state]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "GET /api/v1/handover/{handover_id}/targets [handover_targets]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
  "GET /api/v1/settings [list_settings]": {
   "guard": "permission:settings.change",
   "roles": {
@@ -162,6 +219,21 @@
    "multi_role": 200,
    "nurse": 200,
    "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /handover [get_handover_page]": {
+  "guard": "permission:handover.count.submit",
+  "note": "the phone handover screen: a receptionist and a nurse both open it (H-10, H-12)",
+  "roles": {
+   "anon": 303,
+   "accountant": 403,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 403,
    "reception": 200,
    "shift_doctor": 200,
    "storekeeper": 200
@@ -321,6 +393,132 @@
    "reception": 200,
    "shift_doctor": 200,
    "storekeeper": 200
+  }
+ },
+ "POST /api/v1/handover/start [start_handover]": {
+  "guard": "permission:handover.start",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 403,
+   "reception": 422,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/advance [advance_handover]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/checklists [answer_checklist]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/counts [submit_count]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/early-leave [report_early_leave]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/emergency-start [confirm_emergency_start]": {
+  "guard": "permission:handover.start",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/joint [submit_joint_count]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/parcels [hand_parcel]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "anon": 401,
+   "accountant": 403,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/sign [sign_handover]": {
+  "guard": "permission:handover.sign",
+  "roles": {
+   "anon": 401,
+   "accountant": 404,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 404,
+   "purchaser": 403,
+   "reception": 404,
+   "shift_doctor": 403,
+   "storekeeper": 403
   }
  },
  "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {

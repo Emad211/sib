@@ -25,7 +25,6 @@ def test_setting_keys_are_the_stored_names() -> None:
         "takeover_window_minutes",
         "withdrawal_cap_toman",
         "session_ttl_hours",
-        "daily_card_skip_weekday",
         "weekly_count_time",
         "weekly_count_weekday",
     }
@@ -41,7 +40,6 @@ def test_specs_pin_the_kind_and_bounds_of_every_setting() -> None:
     assert SETTING_SPECS[SettingKey.WITHDRAWAL_CAP_TOMAN] == SettingSpec(SettingKind.INTEGER, 0, 100_000_000)
     assert SETTING_SPECS[SettingKey.SESSION_TTL_HOURS] == SettingSpec(SettingKind.INTEGER, 1, 24)
     assert SETTING_SPECS[SettingKey.WEEKLY_COUNT_TIME] == SettingSpec(SettingKind.CLOCK_TIME)
-    assert SETTING_SPECS[SettingKey.DAILY_CARD_SKIP_WEEKDAY] == SettingSpec(SettingKind.WEEKDAY, 0, 6)
     assert SETTING_SPECS[SettingKey.WEEKLY_COUNT_WEEKDAY] == SettingSpec(SettingKind.WEEKDAY, 0, 6)
 
 

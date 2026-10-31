@@ -21,7 +21,7 @@ class ShiftSide(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ShiftCutoff:
-    """The instant a handover started, frozen once and reused for the whole shift (R-05, H-11)."""
+    """The instant one handover flow started, frozen there and reused only for that flow (H-11)."""
 
     shift_id: str
     work_date: date
