@@ -36,8 +36,9 @@ def test_manifest_start_url_is_precached_and_every_precache_url_serves(client: T
 
     sw_text = _service_worker(client)
     precache = _precache_urls(sw_text)
-    assert manifest["start_url"] in precache
-    assert "/" in precache
+    # Pages are stored once a signed-in person opens them; a precached page would be a guest's.
+    assert manifest["start_url"] not in precache
+    assert "/" not in precache
     assert "cache.addAll" not in sw_text, "atomic addAll silently disables the whole cache"
     assert "Promise.allSettled" in sw_text
 

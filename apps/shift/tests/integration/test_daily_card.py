@@ -890,7 +890,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
 
     # A document with a version this code does not know is not guessed at.
     legacy = {**document, "schema": 2, "sections": _only(document, ("emergency_starts",))}
-    for schema in (1, 8):
+    for schema in (1, 9):
         with pytest.raises(ValueError):
             Card.from_payload({**legacy, "schema": schema})
 
