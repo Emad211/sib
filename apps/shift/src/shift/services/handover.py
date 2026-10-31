@@ -355,7 +355,12 @@ class HandoverService:
         if status in _PENDING:
             events.append((EventType.HANDOVER_RECOUNT_REQUESTED.value, _target_payload(target)))
         carry = self._settlement_carry(flow, target, new_chain)
-        events += _settlement(target, new_chain, basis="agreeing_blind", carry=0 if carry is None else carry.amount)
+        events += _settlement(
+            target,
+            new_chain,
+            basis="agreeing_blind" if target.scope == _CASH else "matched",
+            carry=0 if carry is None else carry.amount,
+        )
         self._append(flow.row, caller, events)
         self._report_carry(flow, caller, carry)
         return status
@@ -629,8 +634,8 @@ class HandoverService:
         for event in events_repo.iter_handover_events(connection, row.handover_id):
             handover, cash, items = _replay(event, handover, cash, items, references)
             if event.type == EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value:
-                # H-08 records who confirmed the emergency start and when; the when is its stamp.
-                emergency_at = parse_iso(event.client_at)
+                # H-08 records who confirmed the emergency start and when; the when is its server stamp.
+                emergency_at = parse_iso(event.server_at)
         return _Flow(row, handover, references, cash, items, emergency_at)
 
     def _references_of(self, handover_id: str) -> _References:
@@ -729,13 +734,19 @@ def _target_payload(target: CountTarget) -> dict[str, Any]:
 def _settlement(
     target: CountTarget, chain: ItemCount | CashCount, *, basis: str, carry: int = 0
 ) -> list[tuple[str, Mapping[str, Any]]]:
-    """What a settled chain writes: the cash rebase, then a discrepancy only when a gap is real."""
+    """What a settled chain writes: the one count event that moves a projection, then any real gap.
+
+    A shelf takes its figure here and nowhere else, and a cash chain rebases the box here, so no
+    provisional blind count can become the next flow's reference (H-05, H-13).
+    """
     if not chain.settled:
         return []
     events: list[tuple[str, Mapping[str, Any]]] = []
     if target.scope == _CASH:
         settled = {"scope": _CASH, "counted": chain.agreed, "basis": basis, "carry": carry}
-        events.append((EventType.HANDOVER_COUNT_SETTLED.value, settled))
+    else:
+        settled = {**_target_payload(target), "counted": chain.agreed, "basis": basis}
+    events.append((EventType.HANDOVER_COUNT_SETTLED.value, settled))
     if chain.discrepancy is not None:
         gap = {"difference": chain.discrepancy.difference, "culprit_id": chain.discrepancy.culprit_id}
         events.append((EventType.DISCREPANCY_RECORDED.value, {**_target_payload(target), **gap}))
@@ -791,6 +802,7 @@ def _enter_step(handover: Handover, entered: str) -> Handover:
     except ValueError as exc:
         raise HandoverError(f"unknown step in the handover log: {entered!r}") from exc
     steps = FLOW_STEPS[handover.flow]
-    if handover.closed or handover.step is None or steps[handover.position + 1] != target:
+    following = steps[handover.position + 1] if handover.position + 1 < len(steps) else None
+    if handover.closed or handover.step is None or following != target:
         raise HandoverError("the handover log skips or repeats a step")
     return handover.advance()

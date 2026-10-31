@@ -81,20 +81,22 @@ def cash_open(payload: Any) -> Effects:
     return Effects(cash=CashEffect(CashOperation.OPEN, payload.opening_cash, CashBox.RECEPTION.value))
 
 
-def cash_count(payload: Any) -> Effects:
-    """A closing blind count records only the counted amount."""
-    return Effects(cash=CashEffect(CashOperation.COUNT, payload.counted, CashBox.RECEPTION.value))
+def settled_count(payload: Any) -> Effects:
+    """Only a settled count moves a projection: a shelf's `SET` or the box's rebase (H-05, H-13).
 
+    Every count before the settlement is a record of what one person read. Moving stock on a
+    provisional figure would hand the next flow a reference nobody agreed to, so `item_counted`,
+    `outgoing_counted` and `joint_counted` carry no effect at all and this event does the writing.
 
-def cash_settle(payload: Any) -> Effects:
-    """A settled cash chain rebases the box to `counted + carry` (H-13, H-11).
-
-    Without the rebase the gap of one shift would sit inside every later reference, because the next
-    shift's `N0` is the figure the handover settled on (H-02, ADR-017 item 8). The carry is the cash
-    the box took in during the flow — the next shift's money, because the incoming person takes none
-    — so it stays on top of the agreed figure instead of being absorbed by it.
+    The cash side rebases the box to `counted + carry` (H-11): without the rebase the gap of one
+    shift would sit inside every later reference, because the next shift's `N0` is the figure the
+    handover settled on (H-02, ADR-017 items 8 and 9). The carry is the cash the box took in during
+    the flow — the next shift's money, because the incoming person takes none — so it stays on top of
+    the agreed figure instead of being absorbed by it.
     """
-    return Effects(cash=CashEffect(CashOperation.SETTLE, payload.counted, CashBox.RECEPTION.value, payload.carry))
+    if payload.scope == "cash":
+        return Effects(cash=CashEffect(CashOperation.SETTLE, payload.counted, CashBox.RECEPTION.value, payload.carry))
+    return Effects(stock=(StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted),))
 
 
 def cash_delta(operation: CashOperation) -> EffectBuilder:
@@ -109,17 +111,6 @@ def cash_delta(operation: CashOperation) -> EffectBuilder:
 def no_effects(_payload: Any) -> Effects:
     """A note, a checklist answer or a signature changes no stock and no cash by itself."""
     return Effects()
-
-
-def joint_count(payload: Any) -> Effects:
-    """An item joint count sets the shelf to the agreed figure (H-05).
-
-    A cash joint count moves nothing by itself: on the cash side that figure is only a count, and
-    the settlement event rebases the box (H-13).
-    """
-    if payload.scope == "cash":
-        return Effects()
-    return Effects(stock=(StockEffect(payload.item_id, payload.location_id, StockOperation.SET, payload.counted),))
 
 
 def baseline_recorded(payload: Any) -> Effects:

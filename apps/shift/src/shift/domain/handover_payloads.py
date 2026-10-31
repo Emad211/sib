@@ -9,10 +9,13 @@ from shift.domain.payloads import AmountRaw, Identifier, ItemCounted, Payload, Q
 
 CountScope = Literal["cash", "item"]
 SignerSide = Literal["incoming", "outgoing"]
-SettlementBasis = Literal["joint", "agreeing_blind"]
+# How a chain reached its figure: a joint recount, two agreeing blind counts, or a blind count that
+# already read the reference. Cash settles by the first two, an item chain by `matched` or `joint`.
+SettlementBasis = Literal["joint", "agreeing_blind", "matched"]
 DifferenceAmount = Annotated[int, Field(strict=True)]
 # What the box took in during a flow: any whole number of Toman, negative when money went out.
 SettlementCarry = Annotated[int, Field(strict=True)]
+_ITEM_BASES = frozenset({"joint", "matched"})
 
 
 class CountTarget(Payload):
@@ -44,10 +47,9 @@ class StepAdvanced(Payload):
 class OutgoingCounted(ItemCounted):
     """The outgoing person's blind third count of one item (H-05, Q-09).
 
-    Emit it only when that blind count reads the reference: the item then matches without a
-    joint count and the figure may replace the shelf quantity (S03 §5). On any other answer the
-    figure is provisional — emit `RecountRequested` for the joint count and let `JointCounted`
-    move the stock, so an unconfirmed figure never becomes the reference.
+    It is a record like every other blind count: the chain settles through `CountSettled`, which is
+    the only event that writes the shelf. A third count that reads the reference matches without a
+    joint count, and the settlement carries the matched figure (Q-09, ADR-017 item 1).
     """
 
 
@@ -58,26 +60,35 @@ class JointCounted(CountTarget):
 
 
 class CountSettled(CountTarget):
-    """A cash chain settled on one figure; `basis` says what really happened to get there (H-13).
+    """A count chain settled on one figure — the only count event that moves a projection (H-05, H-13).
 
-    Only a cash chain settles a box, so this event never names an item. The agreed figure is what
-    the next shift opens with, which is why it — not the joint count — rebases the projection.
+    Every count before this one is a record of what somebody read: a first blind count of 3 must not
+    turn a shelf of 10 into 3 before anyone agreed to it, and a cash count alone must not rebase the
+    box. So a shelf takes `counted` through this event's `SET`, and a cash chain rebases the box here.
 
-    `carry` is every cash movement the box recorded during the flow, that is after the flow's own
-    cutoff (`opened_at`): a paper patient pays only once the handover is over, so that money is the
-    next shift's and stays on top of the agreed figure (`expected = counted + carry`). It is frozen
-    here so a rebuild replays the same box, and it may be negative when a withdrawal was recorded
-    during the flow (H-11, ADR-017 item 6, owner's rule 1405/08/09).
+    `basis` says what really happened: `joint` or `agreeing_blind` for cash, `matched` or `joint` for
+    an item. `carry` is the cash the box recorded during the flow — after the flow's own cutoff, which
+    is the next shift's money because the incoming person takes none — and it only exists for cash: it
+    stays on top of the agreed figure (`expected = counted + carry`) and may be negative when a
+    withdrawal was recorded during the flow (H-11, ADR-017 items 6 and 9).
     """
 
     counted: Quantity
     basis: SettlementBasis
-    carry: SettlementCarry
+    carry: SettlementCarry | None = None
 
     @model_validator(mode="after")
-    def _cash_only(self) -> "CountSettled":
-        if self.scope != "cash":
-            raise ValueError("only a cash chain settles; items settle through their own count")
+    def _settles_its_own_scope(self) -> "CountSettled":
+        if self.scope == "cash":
+            if self.basis not in {"joint", "agreeing_blind"}:
+                raise ValueError("a cash chain settles by a joint recount or by two agreeing blind counts")
+            if self.carry is None:
+                raise ValueError("a cash settlement names the cash the box recorded during the flow")
+        else:
+            if self.basis not in _ITEM_BASES:
+                raise ValueError("an item chain settles on a matched blind count or on a joint count")
+            if self.carry is not None:
+                raise ValueError("only a cash settlement carries cash")
         return self
 
 

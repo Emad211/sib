@@ -165,15 +165,16 @@ def test_a_fact_before_a_flows_cutoff_keeps_its_shift_and_after_it_goes_to_the_n
     assert covering(_at(13, 10)) == MORNING
 
 
-def test_a_fact_exactly_at_the_flows_cutoff_is_already_the_next_shifts(
+def test_a_fact_exactly_at_the_flows_cutoff_still_belongs_to_the_closing_shift(
     scenario: SyntheticAccounting, bridge: AccountingBridge, database: Database
 ) -> None:
+    """H-11: the cutoff is inclusive (`domain/cutoff.py`), so only a later stamp moves a fact on."""
     invoice = _close_at(scenario.path, "2026-09-24 13:00:00", cash=7_000)
     _open_flow(database, opened_at=_at(13, 0))
 
     bridge.poll(scenario.path)
 
-    assert _attributed(database, invoice) == EVENING.text
+    assert _attributed(database, invoice) == MORNING.text
 
 
 def test_a_fact_closed_after_now_is_read_by_a_later_poll(

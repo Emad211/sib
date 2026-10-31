@@ -244,7 +244,23 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
             "counted": 1_000_000,
             "basis": "agreeing_blind",
             "carry": 0,
-        }
+        },
+        {
+            "scope": "item",
+            "item_id": PARA,
+            "location_id": SHELF,
+            "counted": 10,
+            "basis": "matched",
+            "carry": None,
+        },
+        {
+            "scope": "item",
+            "item_id": DICLO,
+            "location_id": SHELF,
+            "counted": 4,
+            "basis": "matched",
+            "carry": None,
+        },
     ]
     assert _payloads(database, handover_id, "discrepancy.recorded") == []
     assert [step for step in _payloads(database, handover_id, "handover.step_advanced")] == [
@@ -283,6 +299,19 @@ def test_a_mismatch_walks_to_the_joint_count_and_records_one_named_discrepancy(
 
     assert statuses == [CountStatus.RECOUNT, CountStatus.OUTGOING, CountStatus.JOINT, CountStatus.SETTLED]
     assert all(not any(character.isdigit() for character in status.value) for status in statuses)
+    # Only the settlement writes the shelf: the three blind counts and the joint figure left it alone.
+    assert [
+        payload for payload in _payloads(database, handover_id, "handover.count_settled") if payload["scope"] == "item"
+    ] == [
+        {
+            "scope": "item",
+            "item_id": PARA,
+            "location_id": SHELF,
+            "counted": 9,
+            "basis": "joint",
+            "carry": None,
+        }
+    ]
     assert _payloads(database, handover_id, "discrepancy.recorded") == [
         {
             "scope": "item",
@@ -486,7 +515,12 @@ def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
 
     for handover_id in (first, second, third):
         assert _payloads(database, handover_id, "discrepancy.recorded") == []
-        assert [payload["carry"] for payload in _payloads(database, handover_id, "handover.count_settled")] == [0]
+        cash = [
+            payload
+            for payload in _payloads(database, handover_id, "handover.count_settled")
+            if payload["scope"] == "cash"
+        ]
+        assert [payload["carry"] for payload in cash] == [0]
     with database.read() as connection:
         assert projections_repo.cash_rows(connection) == [
             {"cash_box_id": "reception", "expected": 1_080_000, "counted": 1_080_000, "variance": 0}
@@ -532,6 +566,29 @@ def test_the_flow_log_refuses_a_skipped_step(service: HandoverService, database:
 
     with pytest.raises(HandoverError, match="skips or repeats"):
         service.state(state.handover_id)
+
+
+def test_the_flow_log_refuses_a_step_past_the_last_one(service: HandoverService, store: EventStore) -> None:
+    """A forged advance at the dual-sign step is a broken log, never an IndexError (S03 §3, ADR-010)."""
+    state = _start(service, opening_cash=0)
+    handover_id = state.handover_id
+    _settle_cash(service, handover_id, 0)
+    service.advance(handover_id, caller=CALLER)
+    for item in (PARA, DICLO):
+        service.count(handover_id, _item(item), 0, caller=CALLER)
+    for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
+        assert service.advance(handover_id, caller=CALLER).step is step
+    store.append(
+        build_event(
+            "handover.step_advanced",
+            payload={"step": "dual_sign"},
+            shift_id=state.shift_id,
+            handover_id=handover_id,
+        )
+    )
+
+    with pytest.raises(HandoverError, match="skips or repeats"):
+        service.state(handover_id)
 
 
 def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverService) -> None:

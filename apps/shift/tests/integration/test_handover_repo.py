@@ -24,8 +24,8 @@ EVENING = ShiftKey(WORK_DATE, 2)
 NIGHT = ShiftKey(WORK_DATE, 3)
 
 
-def _at(hour: int, minute: int = 0) -> datetime:
-    return datetime(2026, 10, 28, hour, minute, tzinfo=TEHRAN)
+def _at(hour: int, minute: int = 0, second: int = 0) -> datetime:
+    return datetime(2026, 10, 28, hour, minute, second, tzinfo=TEHRAN)
 
 
 def _start(
@@ -104,6 +104,17 @@ def test_a_fact_moves_to_the_next_shift_once_its_flows_cutoff_has_started(databa
         assert handover_repo.shift_id_at(connection, _at(13, 10), HandoverFlow.RECEPTION) == EVENING.text
         assert handover_repo.shift_id_at(connection, _at(14, 0), HandoverFlow.RECEPTION) == EVENING.text
         assert handover_repo.shift_id_at(connection, to_utc(_at(13, 10)), HandoverFlow.RECEPTION) == EVENING.text
+
+
+def test_a_fact_stamped_exactly_at_the_cutoff_still_belongs_to_the_closing_shift(database: Database) -> None:
+    """H-11: the cutoff instant is inclusive (`domain/cutoff.py`), so only a later stamp moves on."""
+    _start(database, "reception", HandoverFlow.RECEPTION, opened_at=_at(13, 0))
+
+    with database.read() as connection:
+        assert handover_repo.shift_id_at(connection, _at(12, 59, 59), HandoverFlow.RECEPTION) == MORNING.text
+        assert handover_repo.shift_id_at(connection, _at(13, 0), HandoverFlow.RECEPTION) == MORNING.text
+        assert handover_repo.shift_id_at(connection, to_utc(_at(13, 0)), HandoverFlow.RECEPTION) == MORNING.text
+        assert handover_repo.shift_id_at(connection, _at(13, 0, 1), HandoverFlow.RECEPTION) == EVENING.text
 
 
 def test_a_newer_flow_of_the_other_kind_never_moves_the_fact(database: Database) -> None:

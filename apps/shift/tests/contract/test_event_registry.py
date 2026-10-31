@@ -4,19 +4,20 @@ import pytest
 from pydantic import ValidationError
 
 from event_fixtures import default_payload
-from shift.domain.effects import CashOperation, StockOperation
+from shift.domain.effects import CashOperation, Effects, StockOperation
 from shift.domain.events import EVENT_SPECS, EventType, UnknownEventType, effects_for, spec_for, validate_payload
 
 # What each event changes: the stock operations it applies, in order, and its cash operation (if any).
+# A blind count changes nothing: only `count_settled` may move a shelf or the box (H-05, H-13).
 EXPECTED_EFFECTS = {
     EventType.HANDOVER_BASELINE_RECORDED: ((StockOperation.SET,), CashOperation.OPEN),
     EventType.HANDOVER_STARTED: ((), CashOperation.OPEN),
-    EventType.HANDOVER_CASH_COUNTED: ((), CashOperation.COUNT),
-    EventType.HANDOVER_ITEM_COUNTED: ((StockOperation.SET,), None),
+    EventType.HANDOVER_CASH_COUNTED: ((), None),
+    EventType.HANDOVER_ITEM_COUNTED: ((), None),
     EventType.HANDOVER_RECOUNT_REQUESTED: ((), None),
     EventType.HANDOVER_STEP_ADVANCED: ((), None),
-    EventType.HANDOVER_OUTGOING_COUNTED: ((StockOperation.SET,), None),
-    EventType.HANDOVER_JOINT_COUNTED: ((StockOperation.SET,), None),
+    EventType.HANDOVER_OUTGOING_COUNTED: ((), None),
+    EventType.HANDOVER_JOINT_COUNTED: ((), None),
     EventType.HANDOVER_COUNT_SETTLED: ((), CashOperation.SETTLE),
     EventType.HANDOVER_CHECKLIST_ANSWERED: ((), None),
     EventType.HANDOVER_PARCEL_HANDED: ((), None),
@@ -60,7 +61,7 @@ def test_a_settled_cash_chain_rebases_the_box_and_a_joint_count_moves_it_not() -
         "handover.count_settled", {"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind", "carry": 0}
     )
 
-    assert effects_for("handover.joint_counted", joint, "shift-1").cash is None
+    assert effects_for("handover.joint_counted", joint, "shift-1") == Effects()
     cash = effects_for("handover.count_settled", settled, "shift-1").cash
     assert cash is not None
     assert (cash.operation, cash.amount, cash.cash_box_id, cash.carry) == (
@@ -69,6 +70,43 @@ def test_a_settled_cash_chain_rebases_the_box_and_a_joint_count_moves_it_not() -
         "reception",
         0,
     )
+
+
+def test_only_a_settled_count_moves_a_projection() -> None:
+    """H-05: a blind count of 3 never turns a shelf of 10 into 3; the settlement writes the shelf."""
+    blind = validate_payload("handover.item_counted", {"item_id": "item-1", "location_id": "shelf", "counted": 3})
+    outgoing = validate_payload(
+        "handover.outgoing_counted", {"item_id": "item-1", "location_id": "shelf", "counted": 3}
+    )
+    joint = validate_payload(
+        "handover.joint_counted", {"scope": "item", "item_id": "item-1", "location_id": "shelf", "counted": 9}
+    )
+    settled = validate_payload(
+        "handover.count_settled",
+        {"scope": "item", "item_id": "item-1", "location_id": "shelf", "counted": 9, "basis": "joint"},
+    )
+
+    for event_type, payload in (
+        ("handover.item_counted", blind),
+        ("handover.outgoing_counted", outgoing),
+        ("handover.joint_counted", joint),
+    ):
+        assert effects_for(event_type, payload, "shift-1") == Effects()
+
+    effects = effects_for("handover.count_settled", settled, "shift-1")
+    assert [(effect.item_id, effect.location_id, effect.operation, effect.quantity) for effect in effects.stock] == [
+        ("item-1", "shelf", StockOperation.SET, 9)
+    ]
+    assert effects.cash is None
+
+
+def test_an_item_settlement_needs_an_item_basis_and_carries_no_cash() -> None:
+    settled = validate_payload(
+        "handover.count_settled",
+        {"scope": "item", "item_id": "item-1", "location_id": "shelf", "counted": 9, "basis": "matched"},
+    )
+
+    assert effects_for("handover.count_settled", settled, "shift-1").cash is None
 
 
 def test_a_settlement_carries_every_cash_movement_of_the_flow_even_a_negative_one() -> None:
@@ -98,13 +136,18 @@ def test_a_settlement_without_its_carry_is_refused() -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 1, "basis": "joint", "carry": 0},
+        # a settlement names its target, and an item one carries no cash
+        {"scope": "item", "counted": 1, "basis": "joint"},
+        {"scope": "item", "item_id": "item-1", "location_id": "l", "counted": 1, "basis": "joint", "carry": 0},
+        # a settlement says what really happened, within its own scope
+        {"scope": "item", "item_id": "item-1", "location_id": "l", "counted": 1, "basis": "agreeing_blind"},
+        {"scope": "cash", "counted": 1, "basis": "matched", "carry": 0},
         {"scope": "cash", "counted": 1, "carry": 0},
         {"scope": "cash", "counted": 1, "basis": "guess", "carry": 0},
         {"scope": "cash", "item_id": "item-1", "counted": 1, "basis": "joint", "carry": 0},
     ],
 )
-def test_a_settlement_is_a_cash_chain_with_a_real_basis(payload: dict) -> None:
+def test_a_settlement_is_a_real_settlement_of_its_own_scope(payload: dict) -> None:
     with pytest.raises(ValidationError):
         validate_payload("handover.count_settled", payload)
 

@@ -138,9 +138,24 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
             elif event_type == "acc.cash_reversal":
                 payload = {"amount": payload["amount"], "reason": "reclosed"}
         elif shape == "settle":
+            # A settlement is the only count event that moves a projection: cash rebases the box,
+            # an item sets its shelf (H-05, H-13).
             counted = rng.randrange(0, 5_000_001)
-            basis = rng.choice(["joint", "agreeing_blind"])
-            payload = {"scope": "cash", "counted": counted, "basis": basis, "carry": rng.randrange(-250_000, 250_001)}
+            if rng.random() < 0.5:
+                payload = {
+                    "scope": "cash",
+                    "counted": counted,
+                    "basis": rng.choice(["joint", "agreeing_blind"]),
+                    "carry": rng.randrange(-250_000, 250_001),
+                }
+            else:
+                payload = {
+                    "scope": "item",
+                    "item_id": item,
+                    "location_id": location,
+                    "counted": rng.randrange(0, 50),
+                    "basis": rng.choice(["matched", "joint"]),
+                }
         elif shape == "count":
             payload = {"item_id": item, "location_id": location, "counted": rng.randrange(0, 50)}
         else:

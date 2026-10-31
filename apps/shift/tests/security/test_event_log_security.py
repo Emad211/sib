@@ -38,7 +38,7 @@ def test_payload_is_parameterised_data_not_sql(
     malicious = "x'); DROP TABLE events; --"
     store.append(
         build_event(
-            "handover.item_counted",
+            "stock.weekly_count",
             payload={"item_id": malicious, "location_id": "loc-1", "counted": 3},
         )
     )

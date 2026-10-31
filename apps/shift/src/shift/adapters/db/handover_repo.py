@@ -215,10 +215,15 @@ def shift_id_at(
     CPR or trolley fact only at the nursing ones: the newest flow of that kind started at or before
     the fact hands it to the shift following that flow's shift. Before any flow of that kind exists
     the clinic clock decides, with the covering clock injected so the rule is testable.
+
+    The cutoff instant itself is inclusive, as `domain/cutoff.py` says: a fact stamped exactly at a
+    flow's `opened_at` is still the shift that flow closes, and only a later stamp moves on.
     """
     row = latest_flow_at_or_before(connection, instant, flow)
     if row is None:
         return clock_covering(to_tehran(instant)).text
+    if row.opened_at == instant:
+        return row.shift_id
     return ShiftKey.parse(row.shift_id).following().text
 
 

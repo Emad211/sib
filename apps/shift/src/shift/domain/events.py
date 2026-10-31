@@ -13,12 +13,10 @@ from shift.domain.effects import (
     Effects,
     StockOperation,
     baseline_recorded,
-    cash_count,
     cash_delta,
     cash_open,
-    cash_settle,
-    joint_count,
     no_effects,
+    settled_count,
     stock_delta,
     stock_set,
 )
@@ -96,17 +94,17 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     # first blind handover has a reference without anyone typing a declared figure (SHF-7.1).
     EventType.HANDOVER_BASELINE_RECORDED: EventSpec(BaselineRecorded, baseline_recorded, requires_shift=True),
     EventType.HANDOVER_STARTED: EventSpec(ShiftOpened, cash_open, requires_shift=True),
-    EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
-    EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),
+    # A blind count is a record of what one person read, never a reference: only `count_settled`
+    # moves a shelf or the box, so an unconfirmed figure cannot become the next flow's reference.
+    EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, no_effects, requires_shift=True),
+    EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, no_effects, requires_shift=True),
     EventType.HANDOVER_RECOUNT_REQUESTED: EventSpec(RecountRequested, no_effects, requires_shift=True),
     EventType.HANDOVER_STEP_ADVANCED: EventSpec(StepAdvanced, no_effects, requires_shift=True),
-    # Setting the stock here is sound only because a matched outgoing count equals the reference
-    # (Q-09); a mismatched one is provisional and belongs to the joint count. See `OutgoingCounted`.
-    EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, stock_set, requires_shift=True),
-    EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, joint_count, requires_shift=True),
-    # A settled cash chain rebases the box, so the next shift's reference starts from the agreed
-    # figure rather than from the gap of the shift before it (H-02, H-13).
-    EventType.HANDOVER_COUNT_SETTLED: EventSpec(CountSettled, cash_settle, requires_shift=True),
+    EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, no_effects, requires_shift=True),
+    EventType.HANDOVER_JOINT_COUNTED: EventSpec(JointCounted, no_effects, requires_shift=True),
+    # The one count event that writes: the shelf's SET, or the box's rebase to `counted + carry`
+    # (H-05, H-13, H-11, ADR-017 item 9).
+    EventType.HANDOVER_COUNT_SETTLED: EventSpec(CountSettled, settled_count, requires_shift=True),
     EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),
     EventType.HANDOVER_PARCEL_HANDED: EventSpec(ParcelHanded, no_effects, requires_shift=True),
     EventType.HANDOVER_SIGNED: EventSpec(HandoverSigned, no_effects, requires_shift=True),
