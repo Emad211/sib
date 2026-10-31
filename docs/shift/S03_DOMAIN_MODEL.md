@@ -1,6 +1,6 @@
 # مدل دامنهٔ اپ شیفت
 
-> نسخه 1.5 · ۱۴۰۵/۰۸/۰۹ (پیش‌نویس، در SHF-1 دقیق می‌شود)
+> نسخه 1.6 · ۱۴۰۵/۰۸/۰۹
 
 ## ۱. موجودیت‌های پایه (قابل تنظیم و نسخه‌دار)
 
@@ -33,14 +33,21 @@
 
 | گروه | انواع |
 |---|---|
-| تحویل | `handover_started`، `cash_counted`، `item_counted`، `recount_requested`، `outgoing_counted`، `joint_counted`، `count_settled`، `step_advanced`، `checklist_answered`، `parcel_handed`، `handover_signed`، `early_leave_reported`، `emergency_start_confirmed` |
-| مغایرت | `discrepancy_recorded` (خودکار) |
-| رویداد شیفت | `card_transfer_reported`، `refund_requested`، `campaign_discount_applied`، `cash_withdrawn`، `waste_reported`، `patient_item_held`، `patient_item_delivered`، `emergency_withdrawal`، `equipment_fault`، `fault_assigned`، `fault_fixed`، `vitals_recorded`، `followup_opened`، `cleaning_confirmed` |
-| تأیید | `approved`، `rejected`، `changed` (همه با `ref_event_id`) |
+| تحویل | `handover.started`، `handover.cash_counted`، `handover.item_counted`، `handover.recount_requested`، `handover.outgoing_counted`، `handover.joint_counted`، `handover.count_settled`، `handover.step_advanced`، `handover.checklist_answered`، `handover.parcel_handed`، `handover.signed`، `handover.early_leave_reported`، `handover.emergency_start_confirmed` |
+| مغایرت | `discrepancy.recorded` (خودکار) |
+| رویداد شیفت — پول | `card.transfer_reported`، `refund.requested`، `campaign.discount_applied`، `cash.withdrawn` |
+| رویداد شیفت — انبار | `stock.waste_reported`، `stock.shelf_restocked`، `stock.emergency_withdrawal` |
+| رویداد شیفت — مراقبت | `patient.item_held`، `patient.item_delivered`، `vitals.recorded`، `vitals.followup_opened`، `cleaning.confirmed` |
+| رویداد شیفت — تجهیزات | `equipment.fault_reported`، `equipment.fault_assigned`، `equipment.fault_fixed` |
+| تأیید | `event.approved`، `event.rejected` (با `ref_event_id`، بی اثر projection)؛ `changed` (زنجیرهٔ خرید SHF-4) |
 | خرید | `order_drafted`، `order_decided`، `order_placed`، `delivery_received`، `delivery_flagged`، `delivery_transferred`، `invoice_digitized`، `payment_recorded`، `vendor_return`، `vendor_credit` |
-| انبار | `shelf_restocked`، `restock_confirmed`، `weekly_count`، `expiry_flagged` |
+| انبار | `restock_confirmed`، `stock.weekly_count`، `expiry_flagged` |
 | پاداش | `reward_earned`، `reward_confirmed`، `reward_revoked` |
 | تنظیمات | `setting_changed`، `item_changed`، `staff_changed` |
+
+**همهٔ رویدادهای شیفت** با `requires_shift` ثبت می‌شوند و در صف آفلاین گوشی (Outbox) تکرارناپذیر همگام می‌شوند؛ فقط تحویل شیفت برخط می‌ماند (ADR-016). فقط چهار نوعِ متحرک اثر projection دارند: `cash.withdrawn` روی صندوق (H-02) و `stock.waste_reported`، `stock.shelf_restocked`، `stock.emergency_withdrawal` روی قفسه (H-01)؛ بقیه فقط ثبت می‌شوند و وضعیتشان با تصمیم عوض می‌شود. `patient.item_held` و `patient.item_delivered` بیرون از شمارش‌اند: هیچ اثری روی موجودی ندارند و تحویل با `ref_event_id` به همان امانت وصل می‌شود.
+
+نام رویدادهای خرید، پاداش و تنظیمات هنوز در کد نیستند و تا SHF-4/SHF-5 به همین شکل می‌مانند؛ نام‌های رویداد شیفت و تأیید از رجیستری همین شاخه آمده‌اند.
 
 ## ۴. ماشین‌های حالت (نمونه)
 
@@ -51,7 +58,7 @@ pending ─count(x)─► [x == E] ─► matched
                     [x != E] ─► recount ─count(y)─► [y == E] ─► matched
                                                     [y != E] ─► outgoing ─count(z)─► [z == E] ─► matched
                                                                                      [z != E] ─► joint ─count(j)─► settled(j)
-settled(j): discrepancy_recorded(E − j, به نام خروجی) ؛ مرجع شیفت بعد = j
+settled(j): discrepancy.recorded(E − j, به نام خروجی) ؛ مرجع شیفت بعد = j
 ```
 
 > **Q-09 بسته شد (ADR-017، ۱۴۰۵/۰۸/۰۹):** اگر شمارش کور نفر خروجی (شمارش سوم) با مرجع بخواند، نتیجه «matched» است؛ شمارش مشترک لازم نیست و هیچ مغایرتی ثبت نمی‌شود. نمودار بالا همین را می‌گوید و اکنون تأییدِ مالک را دارد.
@@ -61,16 +68,16 @@ settled(j): discrepancy_recorded(E − j, به نام خروجی) ؛ مرجع ش
 ```text
 pending ─blind─► a, b ─► [a == b] ─► settled(a)
                      ─► [a ≠ b] ─► joint ─count(j)─► settled(j)   یک بازشماری مشترک، هر دو نفر حاضر
-settled(v): عدد توافق‌شده v ثبت می‌شود ؛ اختلاف v با مرجع (اگر بود) ← discrepancy_recorded به نام نفر خروجی، فقط هشدار به مدیر و بدون کسر از حقوق (H-06، H-13)
+settled(v): عدد توافق‌شده v ثبت می‌شود ؛ اختلاف v با مرجع (اگر بود) ← discrepancy.recorded به نام نفر خروجی، فقط هشدار به مدیر و بدون کسر از حقوق (H-06، H-13)
 ```
 
-> **ثبت تسویه (ADR-017 بند ۹):** هر بار که زنجیرهٔ صندوق تسویه می‌شود (چه با بازشماری مشترک، چه با دو شمارش کورِ هم‌خوان) یک رویداد `handover.count_settled` با `basis` (`joint` یا `agreeing_blind`) نوشته می‌شود. عدد تسویه‌شده مرجع بعدی است: `expected` و `counted` صندوق روی همان عدد می‌نشینند و `variance` صفر می‌شود تا فاصلهٔ همین شیفت در مرجع شیفت‌های بعد تکرار نشود؛ خودِ فاصله فقط در `discrepancy_recorded` می‌ماند. `joint_counted` معنای دقیق خودش را نگه می‌دارد و مرجع را جابه‌جا نمی‌کند.
+> **ثبت تسویه (ADR-017 بند ۹):** هر بار که زنجیرهٔ صندوق تسویه می‌شود (چه با بازشماری مشترک، چه با دو شمارش کورِ هم‌خوان) یک رویداد `handover.count_settled` با `basis` (`joint` یا `agreeing_blind`) نوشته می‌شود. عدد تسویه‌شده مرجع بعدی است: `expected` و `counted` صندوق روی همان عدد می‌نشینند و `variance` صفر می‌شود تا فاصلهٔ همین شیفت در مرجع شیفت‌های بعد تکرار نشود؛ خودِ فاصله فقط در `discrepancy.recorded` می‌ماند. `handover.joint_counted` معنای دقیق خودش را نگه می‌دارد و مرجع را جابه‌جا نمی‌کند.
 
 ### شروع اضطراری تک‌نفره (H-08)
 
 ```text
-early_leave_reported ─► emergency_start_confirmed (تأییدکنندهٔ تلفنی، server_at) ─► تحویل تک‌نفره
-هر discrepancy_recorded این مسیر: بدون نام مسئول، در `open_decisions` برای بررسی مدیر؛
+handover.early_leave_reported ─► handover.emergency_start_confirmed (تأییدکنندهٔ تلفنی، server_at) ─► تحویل تک‌نفره
+هر discrepancy.recorded این مسیر: بدون نام مسئول، در `open_decisions` برای بررسی مدیر؛
 هرگز خودکار به نام نفر غایب نوشته نمی‌شود.
 ```
 
@@ -85,14 +92,14 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 
 ### برداشت از صندوق
 
-`requested ─► [amount ≤ 300,000] approved_by_recipient | [amount > 300,000] waiting_manager ─► approved | rejected`
+`requested ─► [amount ≤ withdrawal_cap_toman] approved_by_recipient | [amount > withdrawal_cap_toman] waiting_manager ─► approved | rejected`
 
 ## ۵. projectionها
 
 | projection | تعریف |
 |---|---|
 | `stock(item, location)` | از رویدادهای شمارش تأییدشده + شارژ + مصرف حسابداری − برداشت − ضایعات |
-| `cash(cash_box)` | N0 + نقد حسابداری − برداشت‌ها − واریزها؛ کلید: صندوق (cash box)، نه شیفت (ADR-017). N0 از آخرین تسویه (`count_settled`) می‌آید و هر تسویهٔ تازه آن را جابه‌جا می‌کند |
+| `cash(cash_box)` | N0 + نقد حسابداری − برداشت‌ها − واریزها؛ کلید: صندوق (cash box)، نه شیفت (ADR-017). N0 از آخرین تسویه (`handover.count_settled`) می‌آید و هر تسویهٔ تازه آن را جابه‌جا می‌کند |
 | `open_decisions` | هر رویداد نیازمند تأیید مدیر که هنوز `approved/rejected/changed` ندارد |
 | `my_queue(user)` | کارهای باز نقش‌های کاربر در شیفت جاری (R-01، R-07) |
 | `reward_ledger(month)` | پاداش‌های تأییدشده منهای ابطال‌ها |
@@ -103,7 +110,7 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 |---|---|---|
 | `card_date` | روزی که کارت برای آن است (ISO) | PRIMARY KEY؛ یک کارت در هر روز |
 | `covered_from` / `covered_to` | نخستین و آخرین روزی که کارت می‌پوشاند (ISO) | شنبه دو روز |
-| `schema_version` | نسخهٔ شکل `payload` (`CARD_SCHEMA_VERSION`) | سند با نسخهٔ ناشناس خوانده نمی‌شود |
+| `schema_version` | نسخهٔ شکل `payload` (`CARD_SCHEMA_VERSION`، اکنون ۳) | کارت ذخیره‌شدهٔ نسخهٔ ۲ همچنان خوانده می‌شود و کارت تازه با ۳ نوشته می‌شود؛ سند با نسخهٔ ناشناس خوانده نمی‌شود |
 | `generated_at_utc` / `generated_at_tehran` | زمان ساخت | تا کارت بدون رمزگشایی سند پیدا شود |
 | `payload` | سند کارت به **canonical JSON** | تنها شکل سند؛ صفحه از همین می‌خواند |
 
@@ -111,7 +118,7 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 
 **چرا مشتق است، نه فقط‌افزودنی:** R-03 (ADR-010) روی لاگ رویداد است؛ کارت یک سند است، نه یک واقعیت درمانگاه، و از همان لاگ، جریان‌های تحویل و `audit_log` بازسازی می‌شود. پس اجرای دوبارهٔ یک روز همان یک ردیف را بازنویسی می‌کند و در لاگ رویداد چیزی عوض نمی‌شود. هر بازتولید در `audit_log` با اکشن `daily_card.generated` و `actor` برابر `shift-runtime` ثبت می‌شود و جزئیاتش فقط پنجرهٔ کارت است (تاریخ‌ها و تعداد روز)، نه شمارش یا عدد مرجع. کارت جزو projectionهای `rebuild` نیست؛ راهِ رسمی ساختن و خواندنش `DailyCardService` است.
 
-**واژگان بخش‌ها:** سند امروز پنج بخش دارد: `emergency_starts`، `cash_exceptions`، `discrepancies`، `flows`، `open_flows`. بخشی که داده‌اش در اپ هنوز وجود ندارد (رویدادهای SHF-3، خرید SHF-4، پاداش SHF-5) در سند نیست و صفحه هم آن را رندر نمی‌کند؛ بخشی که هست ولی آن روز ردیفی ندارد یک خط کم‌رنگ می‌گیرد، بی عدد و بی جای‌خالی.
+**واژگان بخش‌ها:** سند امروز هفت بخش دارد: `emergency_starts`، `cash_exceptions`، `discrepancies`، `flows`، `open_flows`، `shift_events`، `open_events`. دادهٔ SHF-3 الان هست: رویدادهای شیفت و تصمیم‌های باز (خرابی باز و تأیید در انتظار) در دو بخش آخر می‌آیند و تصمیم‌ها ردیف تازه نمی‌سازند، وضعیت ردیف را عوض می‌کنند. خرید SHF-4 و پاداش SHF-5 هنوز در اپ نیستند و بخشی هم در سند ندارند؛ صفحه آن را رندر نمی‌کند. بخشی که هست ولی آن روز ردیفی ندارد یک خط کم‌رنگ می‌گیرد، بی عدد و بی جای‌خالی.
 
 **روزهای پوشش‌داده‌شده:** کارت هر روز کار روز قبل را می‌پوشاند؛ جمعه کارت ندارد و کارت شنبه پنجشنبه و جمعه را می‌پوشاند (ADR-018). مرزها لحظهٔ نیمه‌شب تهران‌اند (UTC+03:30): `start` نیمه‌شب `covered_from` (شامل) و `end` نیمه‌شب روز بعد از `covered_to` (ناشامل). یک جریان تحویل به روزِ `opened_at` خودش تعلق دارد، ولی تحویل باز هر روزی که باز شده باشد در کارت می‌آید.
 
@@ -125,3 +132,4 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 - 1.3، ۱۴۰۵/۰۸/۰۹: برش زمانی به هر جریان تحویل منتقل شد (`opened_at` همان `cutoff_at` جریان، H-11)؛ projection صندوق از `cash(shift)` به `cash(cash_box)` تغییر کرد و اثر باز ADR-017 بسته شد؛ نام مغایرت صندوق پس از بازشماری مشترک در ماشین حالت H-13 ثبت شد (نفر خروجی، فقط هشدار).
 - 1.4، ۱۴۰۵/۰۸/۰۹: افزودن رویداد `count_settled` با فیلد `basis` به واژگان تحویل و قاعدهٔ جابه‌جایی N0 روی عدد تسویه‌شده (ADR-017 بند ۹)، رویداد `step_advanced` برای اینکه گام جریان از لاگ بازسازی شود، و قطعی‌شدن زنجیرهٔ شمارش تک‌نفرهٔ H-08 (ADR-017 بند ۱۰).
 - 1.5، ۱۴۰۵/۰۸/۰۹: افزودن بخش ۶ برای کارت روزانهٔ مدیر — جدول `daily_cards` (کلید `card_date`، `payload` به canonical JSON، `schema_version`)، دلیل مشتق و بازسازی‌پذیر بودن در برابر فقط‌افزودنی بودن `events` و ثبت بازتولید با اکشن `daily_card.generated` در `audit_log`، واژگان پنج بخش و نبود بخش بی‌داده، قاعدهٔ پوشش (جمعه بی کارت، شنبه دو روز، مرز نیمه‌شب تهران)، سطح `DailyCardService` و تزریق سازندهٔ کارت از سوی scheduler — همه بر پایهٔ کد SHF-6.1.
+- 1.6، ۱۴۰۵/۰۸/۰۹: رویدادهای شیفت SHF-3 در بخش ۳ با نام‌های واقعی رجیستری و گروه‌بندی پول/انبار/مراقبت/تجهیزات، رویداد تأیید `event.approved`/`event.rejected` با `ref_event_id` و بی اثر projection، و پاراگراف اثرها (تنها چهار نوع متحرک) و بیرون‌از‌شمارش بودن امانت بیمار؛ بخش ۶ با هفت بخش کارت (`shift_events`، `open_events`) و `CARD_SCHEMA_VERSION` برابر ۳ و خوانا ماندن کارت نسخهٔ ۲.
