@@ -55,7 +55,9 @@ def test_foreign_duplicate_is_detected_and_not_duplicated(synthetic_app):
     c = reception(synthetic_app)
     assert new_patient(c, national_id="P1234567", is_foreign="on", phone="09120000001").status_code == 200
     # same passport typed for a different name: must ask, like an Iranian ID would (FB-04)
-    again = new_patient(c, name="سارا", family_name="محمدی", national_id="p1234567", is_foreign="on", phone="09120000002")
+    again = new_patient(
+        c, name="سارا", family_name="محمدی", national_id="p1234567", is_foreign="on", phone="09120000002"
+    )
     assert again.status_code == 409 and again.get_json()["need_confirm"]
     # same person coming back reuses the patient instead of creating a second one
     same = new_patient(c, national_id="P1234567", is_foreign="on", phone="09120000001")
@@ -99,7 +101,9 @@ def test_voided_invoice_leaves_insurance_arrears_page_and_export(synthetic_app):
 
     page = c.get(f"/manager/insurance_arrears?{RANGE}&_diag=1").get_json()
     after_page = len(page["visit_arrears"]) + len(page["nursing_arrears"]) + len(page["supplementary_arrears"])
-    assert not any(a["invoice_id"] == iid for a in page["visit_arrears"] + page["nursing_arrears"] + page["supplementary_arrears"])
+    assert not any(
+        a["invoice_id"] == iid for a in page["visit_arrears"] + page["nursing_arrears"] + page["supplementary_arrears"]
+    )
     assert after_page < before_page and page["total_debt"] < before_total
     assert len(_csv_rows(c.get(f"/manager/insurance_arrears/export?{RANGE}"))) < before_csv
 
