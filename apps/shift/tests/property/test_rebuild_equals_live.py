@@ -5,11 +5,13 @@ discrepancies and both signatures — rebuilds to exactly the live stock and cas
 """
 
 from datetime import datetime
+from pathlib import Path
 
 from clocks import FixedClock
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from seed_reference_data import seed
+from synthetic_accounting import empty_accounting
 
 from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo
@@ -17,6 +19,7 @@ from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
 from shift.domain.handover_fsm import HandoverFlow, Signer
 from shift.domain.handover_payloads import CountTarget
+from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
 from shift.services.catalog import CatalogService
 from shift.services.event_store import EventStore
@@ -70,7 +73,7 @@ def test_rebuild_equals_live_over_10_000_random_events(
         } == live_checksums
 
 
-def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database) -> None:
+def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database, tmp_path: Path) -> None:
     """Counts, a joint count, a discrepancy and both signatures replay to the same two tables."""
     seed(database)
     clock = FixedClock(MOMENT)
@@ -83,6 +86,8 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
         catalog=CatalogService(database, clock=clock),
         audit=AuditService(database, clock=clock),
         clock=clock,
+        bridge=AccountingBridge(database, store, clock=clock),
+        accounting_path=str(empty_accounting(tmp_path / "accounting.db")),
     )
     store.append(
         build_event(

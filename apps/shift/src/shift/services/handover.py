@@ -11,7 +11,9 @@ the audit trail (the only place a reference may rest) and compared server-side; 
 answer with a `CountStatus` that carries no digit. Freezing it at the flow's own start is H-11: a cash
 receipt stamped after that instant belongs to the next shift and cannot change what this flow compares
 against. A settled item count is the shelf's next reference because its count event sets the quantity;
-a settled cash chain writes `handover.count_settled`, which rebases the box (ADR-017 item 9).
+a settled cash chain writes `handover.count_settled`, which rebases the box (ADR-017 item 9). A flow
+cannot start at all without a readable accounting copy, because the open-invoice guard and every
+reference come from it.
 """
 
 import logging
@@ -45,6 +47,10 @@ from shift.services.projections import ProjectionEngine
 log = logging.getLogger(__name__)
 
 REFERENCE_ACTION = "handover.reference"
+# R-02: a refusal never carries a number, and this one only says why the flow cannot start at all.
+NO_ACCOUNTING = (
+    "نسخهٔ حسابداری در دسترس نیست؛ بدون آن صورت‌حساب‌های باز و عدد مرجع قابل محاسبه نیستند و تحویل شیفت آغاز نمی‌شود."
+)
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -142,7 +148,11 @@ class HandoverService:
         caller: Caller,
         opening_cash: int | None = None,
     ) -> HandoverState:
-        """Open one flow of the shift the clinic clock says is running (D1), with its own cutoff."""
+        """Open one flow of the shift the clinic clock says is running (D1), with its own cutoff.
+
+        The accounting copy must be readable first: H-03's open-invoice guard and every reference are
+        computed from it, so a missing or unreachable copy refuses the start.
+        """
         self._read_accounting_now()
         started_at = self._clock.now_utc()
         shift = covering(to_tehran(started_at))
@@ -307,11 +317,18 @@ class HandoverService:
         return self.state(handover_id)
 
     def _read_accounting_now(self) -> None:
-        """Read accounting at the flow's own cutoff (S02 §2); a broken copy never blocks the handover."""
-        if self._bridge is not None and self._accounting_path is not None:
-            report = self._bridge.poll(self._accounting_path)
-            if report.degraded:
-                log.warning("the handover start read left the accounting bridge degraded: %s", report.error)
+        """Read accounting at the flow's own cutoff (S02 §2); without it the flow cannot start (H-03).
+
+        The open-invoice guard and the reference numbers only exist in the accounting copy, so a
+        missing or unreachable copy refuses the start instead of guessing: a silent allow would
+        produce false discrepancies. The refusal names no number (R-02).
+        """
+        if self._bridge is None or self._accounting_path is None:
+            raise HandoverError(NO_ACCOUNTING)
+        report = self._bridge.poll(self._accounting_path)
+        if report.degraded:
+            log.warning("the handover start read failed: %s", report.error)
+            raise HandoverError(NO_ACCOUNTING)
         self._projections.sync()
 
     def _freeze(self, flow: HandoverFlow, shift: ShiftKey, opening_cash: int | None) -> tuple[_References, int | None]:

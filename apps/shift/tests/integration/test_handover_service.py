@@ -1,12 +1,12 @@
 """The handover service end to end: one persisted flow, blind counts and the events (H-01..H-13).
 
 Every test runs on a synthetic database with the reference catalog seeded from
-`tools/seed_reference_data.py` and, where accounting matters, the synthetic accounting copy from
-`tools/make_synthetic_acc_db.py`. Nothing here reads a production database.
+`tools/seed_reference_data.py` and with a synthetic accounting copy from
+`tools/make_synthetic_acc_db.py`, because a handover refuses to start without a readable one (H-03).
+Nothing here reads a production database.
 """
 
 import json
-import sqlite3
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
@@ -16,10 +16,11 @@ import pytest
 from clocks import FixedClock
 from make_synthetic_acc_db import build
 from seed_reference_data import seed
+from synthetic_accounting import close_open_invoices, empty_accounting
 
 from event_fixtures import build_event
 from shift.adapters.accounting.views import parse_time
-from shift.adapters.db import projections_repo
+from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.common.clock import TEHRAN
 from shift.domain.handover_counts import CountStatus
@@ -30,7 +31,7 @@ from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
 from shift.services.catalog import CatalogService
 from shift.services.event_store import EventStore
-from shift.services.handover import Caller, HandoverService
+from shift.services.handover import NO_ACCOUNTING, Caller, HandoverService
 from shift.services.projections import ProjectionEngine
 
 DAY = date(2026, 10, 28)
@@ -77,8 +78,8 @@ def _service(
     catalog: CatalogService,
     clock: FixedClock,
     *,
-    bridge: AccountingBridge | None = None,
-    accounting_path: Path | None = None,
+    bridge: AccountingBridge | None,
+    accounting_path: Path | None,
 ) -> HandoverService:
     return HandoverService(
         database,
@@ -93,8 +94,17 @@ def _service(
 
 
 @pytest.fixture()
-def service(seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock) -> HandoverService:
-    return _service(seeded, store, catalog, clock)
+def accounting(tmp_path: Path) -> Path:
+    """The readable accounting copy every start reads (H-03)."""
+    return empty_accounting(tmp_path / "accounting.db")
+
+
+@pytest.fixture()
+def service(
+    seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock, accounting: Path
+) -> HandoverService:
+    bridge = AccountingBridge(seeded, store, clock=clock)
+    return _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=accounting)
 
 
 def _types(database: Database, handover_id: str) -> list[str]:
@@ -110,18 +120,6 @@ def _payloads(database: Database, handover_id: str, event_type: str) -> list[dic
             (handover_id, event_type),
         ).mappings()
         return [json.loads(row["payload"]) for row in rows]
-
-
-def _close_every_open_invoice(path: Path) -> None:
-    """Accounting's own close route would do this; here it just clears the H-03 guard."""
-    connection = sqlite3.connect(path)
-    try:
-        connection.execute(
-            "UPDATE invoices SET status = 'closed', closed_at = '2026-09-24 13:50:00' WHERE status = 'open'"
-        )
-        connection.commit()
-    finally:
-        connection.close()
 
 
 def _stock(store: EventStore, item_id: str, counted: int) -> None:
@@ -284,6 +282,38 @@ def test_a_flow_does_not_start_while_accounting_still_shows_an_open_invoice(
         _start(service, opening_cash=1_000_000)
 
 
+def test_a_flow_does_not_start_without_an_accounting_copy(
+    seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+) -> None:
+    """H-03: without the copy neither the open-invoice guard nor a reference can be computed."""
+    service = _service(seeded, store, catalog, clock, bridge=None, accounting_path=None)
+
+    with pytest.raises(HandoverError) as refusal:
+        _start(service, opening_cash=1_000_000)
+
+    assert refusal.value.args[0] == NO_ACCOUNTING
+    assert not any(character.isdigit() for character in str(refusal.value))
+    with seeded.read() as connection:
+        assert events_repo.count_events(connection) == 0
+        assert connection.exec_driver_sql("SELECT COUNT(*) FROM handover").scalar_one() == 0
+
+
+def test_a_flow_does_not_start_when_the_accounting_copy_is_unreachable(
+    tmp_path: Path, seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+) -> None:
+    broken = tmp_path / "broken.db"
+    broken.write_bytes(b"this is not a sqlite database, it is a text file")
+    bridge = AccountingBridge(seeded, store, clock=clock)
+    service = _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=broken)
+
+    with pytest.raises(HandoverError) as refusal:
+        _start(service, opening_cash=1_000_000)
+
+    assert refusal.value.args[0] == NO_ACCOUNTING
+    with seeded.read() as connection:
+        assert events_repo.count_events(connection) == 0
+
+
 def test_both_flows_of_one_shift_run_side_by_side(service: HandoverService) -> None:
     reception = _start(service, opening_cash=0)
     nursing = _start(service, HandoverFlow.NURSING, opening_cash=None)
@@ -303,7 +333,7 @@ def test_a_cash_receipt_stamped_after_the_flow_cutoff_is_not_in_its_reference(
 ) -> None:
     """H-11: the reference is frozen at the flow's own start, so a later receipt cannot change it."""
     scenario = build(tmp_path / "accounting.db")
-    _close_every_open_invoice(scenario.path)
+    close_open_invoices(scenario.path, "2026-09-24 13:50:00")
     clock.moment = parse_time("2026-09-24 14:05:00")  # before the 14:20 invoice is closed
     bridge = AccountingBridge(seeded, store, clock=clock)
     service = _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=scenario.path)

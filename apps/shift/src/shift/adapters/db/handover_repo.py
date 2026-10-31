@@ -139,32 +139,40 @@ def open_flows(connection: Connection) -> list[FlowRow]:
     return [_row(row) for row in rows]
 
 
-def latest_flow_at_or_before(connection: Connection, instant: datetime) -> FlowRow | None:
-    """The newest flow that had already started at `instant`; `opened_at` is stored as UTC ISO text."""
-    row = (
-        connection.exec_driver_sql(
-            f"{_SELECT} WHERE opened_at <= ? ORDER BY opened_at DESC, handover_id DESC LIMIT 1",
-            (utc_iso(instant),),
-        )
-        .mappings()
-        .first()
-    )
+def latest_flow_at_or_before(
+    connection: Connection, instant: datetime, flow: HandoverFlow | None = None
+) -> FlowRow | None:
+    """The newest flow of one kind that had already started at `instant`, or of any kind for None.
+
+    `opened_at` is stored as UTC ISO text, so text order is chronological order.
+    """
+    if flow is None:
+        sql = f"{_SELECT} WHERE opened_at <= ? ORDER BY opened_at DESC, handover_id DESC LIMIT 1"
+        parameters: tuple[object, ...] = (utc_iso(instant),)
+    else:
+        sql = f"{_SELECT} WHERE opened_at <= ? AND flow = ? ORDER BY opened_at DESC, handover_id DESC LIMIT 1"
+        parameters = (utc_iso(instant), flow.value)
+    row = connection.exec_driver_sql(sql, parameters).mappings().first()
     return None if row is None else _row(row)
 
 
-def shift_id_at(connection: Connection, instant: datetime, clock_covering: ClockCovering = covering) -> str:
-    """D3: the shift an accounting fact stamped `instant` belongs to (H-11).
+def shift_id_at(
+    connection: Connection,
+    instant: datetime,
+    flow: HandoverFlow,
+    clock_covering: ClockCovering = covering,
+) -> str:
+    """D3: the shift an accounting fact stamped `instant` belongs to, decided by its own flow (H-11).
 
-    Before any flow has started, the clinic clock decides: the fact belongs to the shift covering
-    its own instant. From the newest flow's cutoff on, the fact belongs to the shift that follows
-    that flow's shift — the flow was frozen against the shift it closes (D1), so this holds whether
-    or not the wall clock has crossed a boundary in between. `clock_covering` is injected, so the
-    rule is testable without a running clinic clock.
+    Each flow kind freezes its own cutoff, so a cash fact looks only at the reception flows and a
+    CPR or trolley fact only at the nursing ones: the newest flow of that kind started at or before
+    the fact hands it to the shift following that flow's shift. Before any flow of that kind exists
+    the clinic clock decides, with the covering clock injected so the rule is testable.
     """
-    flow = latest_flow_at_or_before(connection, instant)
-    if flow is None:
+    row = latest_flow_at_or_before(connection, instant, flow)
+    if row is None:
         return clock_covering(to_tehran(instant)).text
-    return ShiftKey.parse(flow.shift_id).following().text
+    return ShiftKey.parse(row.shift_id).following().text
 
 
 def open_invoice_count(connection: Connection) -> int:

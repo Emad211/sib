@@ -100,10 +100,22 @@ def test_a_fact_moves_to_the_next_shift_once_its_flows_cutoff_has_started(databa
         # 13:10 is still inside the morning shift on the wall clock, but the reception flow started,
         # so H-11 hands the fact to the shift that follows the flow's own shift.
         assert covering(_at(13, 10)) == MORNING
-        assert handover_repo.shift_id_at(connection, _at(12, 59)) == MORNING.text
-        assert handover_repo.shift_id_at(connection, _at(13, 10)) == EVENING.text
-        assert handover_repo.shift_id_at(connection, _at(14, 0)) == EVENING.text
-        assert handover_repo.shift_id_at(connection, to_utc(_at(13, 10))) == EVENING.text
+        assert handover_repo.shift_id_at(connection, _at(12, 59), HandoverFlow.RECEPTION) == MORNING.text
+        assert handover_repo.shift_id_at(connection, _at(13, 10), HandoverFlow.RECEPTION) == EVENING.text
+        assert handover_repo.shift_id_at(connection, _at(14, 0), HandoverFlow.RECEPTION) == EVENING.text
+        assert handover_repo.shift_id_at(connection, to_utc(_at(13, 10)), HandoverFlow.RECEPTION) == EVENING.text
+
+
+def test_a_newer_flow_of_the_other_kind_never_moves_the_fact(database: Database) -> None:
+    """D3 per flow: each kind freezes its own cutoff, so a later nursing flow leaves cash alone."""
+    _start(database, "reception", HandoverFlow.RECEPTION, shift=MORNING, opened_at=_at(13, 0))
+    _start(database, "nursing", HandoverFlow.NURSING, shift=EVENING, opened_at=_at(19, 0))
+
+    with database.read() as connection:
+        assert handover_repo.shift_id_at(connection, _at(19, 30), HandoverFlow.RECEPTION) == EVENING.text
+        assert handover_repo.shift_id_at(connection, _at(19, 30), HandoverFlow.NURSING) == NIGHT.text
+        newest = handover_repo.latest_flow_at_or_before(connection, _at(19, 30))
+    assert newest is not None and newest.handover_id == "nursing"
 
 
 def test_a_later_shifts_flow_moves_facts_on_again(database: Database) -> None:
@@ -111,15 +123,16 @@ def test_a_later_shifts_flow_moves_facts_on_again(database: Database) -> None:
     _start(database, "reception-evening", HandoverFlow.RECEPTION, shift=EVENING, opened_at=_at(18, 0))
 
     with database.read() as connection:
-        assert handover_repo.shift_id_at(connection, _at(18, 10)) == NIGHT.text
-        assert handover_repo.shift_id_at(connection, _at(17, 0)) == EVENING.text
+        assert handover_repo.shift_id_at(connection, _at(18, 10), HandoverFlow.RECEPTION) == NIGHT.text
+        assert handover_repo.shift_id_at(connection, _at(17, 0), HandoverFlow.RECEPTION) == EVENING.text
 
 
 def test_before_any_flow_the_clinic_clock_decides(database: Database) -> None:
     with database.read() as connection:
-        assert handover_repo.shift_id_at(connection, _at(8, 0)) == MORNING.text
-        assert handover_repo.shift_id_at(connection, _at(20, 0)) == NIGHT.text
-        assert handover_repo.shift_id_at(connection, _at(20, 0), lambda _instant: MORNING) == MORNING.text
+        assert handover_repo.shift_id_at(connection, _at(8, 0), HandoverFlow.RECEPTION) == MORNING.text
+        assert handover_repo.shift_id_at(connection, _at(20, 0), HandoverFlow.NURSING) == NIGHT.text
+        clock = lambda _instant: MORNING  # noqa: E731 — the injected rule, not a real clock
+        assert handover_repo.shift_id_at(connection, _at(20, 0), HandoverFlow.NURSING, clock) == MORNING.text
 
 
 def test_the_open_invoice_guard_reads_the_accounting_mirror(database: Database) -> None:

@@ -5,11 +5,12 @@ and never with OFFSET. Each page is committed together with its watermark, and t
 appends `acc.cash_receipt` events keyed by `(invoice_id, closed_at, amount)`, so a crash, a re-poll or
 a lost watermark cannot count the same close twice.
 
-Which shift a fact belongs to is decided per fact, by the handover flows already recorded: the newest
-flow started at or before the fact's stamp hands it to the shift that follows that flow's shift, and
-before any flow the clinic clock decides (H-11, D3). The poll itself never attributes by its own wall
-clock, so a poll that runs late or early cannot move a fact into another shift. `shift_resolver` is
-the single seam tests pin.
+Which shift a fact belongs to is decided per fact and per flow: a cash fact follows the reception
+flows, and an item follows the flow whose step counts its location (reception's shelf, nursing's CPR
+room and trolley). The newest flow of that kind started at or before the fact's stamp hands it to the
+shift following that flow's shift, and before any flow of that kind the clinic clock decides (H-11,
+D3). The poll itself never attributes by its own wall clock, so a poll that runs late or early cannot
+move a fact into another shift. `shift_resolver` is the single seam tests pin.
 
 Accounting can take a cash fact back. An invoice that is reopened and closed again arrives with a
 new `closed_at`: the bridge keeps the old version in `acc_cash` (`superseded_at`) and appends two
@@ -49,6 +50,7 @@ from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, utc_iso
 from shift.common.ids import new_ulid
 from shift.domain.events import EventType
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.event_store import EventStore, NewEvent
@@ -66,15 +68,15 @@ _MAX_ERROR_LENGTH = 500
 MirrorRow = dict[str, Any]
 MirrorBuilder = Callable[[Mapping[str, Any], str], MirrorRow]
 MirrorInserter = Callable[[Connection, Sequence[Mapping[str, Any]]], int]
-ShiftResolver = Callable[[datetime], ShiftKey]
+ShiftResolver = Callable[[datetime, HandoverFlow], ShiftKey]
 
 
 def shift_resolver(database: Database, clock_covering: Callable[[datetime], ShiftKey] = covering) -> ShiftResolver:
-    """Bind the attribution rule (H-11, D3) to one database, so every fact is resolved the same way."""
+    """Bind the per-flow attribution rule (H-11, D3) to one database, so every fact resolves the same."""
 
-    def resolve(instant: datetime) -> ShiftKey:
+    def resolve(instant: datetime, flow: HandoverFlow) -> ShiftKey:
         with database.read() as connection:
-            return ShiftKey.parse(handover_repo.shift_id_at(connection, instant, clock_covering))
+            return ShiftKey.parse(handover_repo.shift_id_at(connection, instant, flow, clock_covering))
 
     return resolve
 
@@ -237,7 +239,8 @@ class AccountingBridge:
         self._store = store
         self._clock = clock or SystemClock()
         self._page_size = page_size
-        # The one seam that decides a fact's shift (H-11, D3); tests pin it, production binds the flows.
+        # The one seam that decides a fact's shift (H-11, D3): it takes the fact's instant and the flow
+        # that owns it, so tests pin it and production binds the recorded flows.
         self._resolve_shift = resolve_shift if resolve_shift is not None else shift_resolver(database)
 
     def poll(self, accounting_path: str | Path) -> PollReport:
@@ -429,7 +432,7 @@ class AccountingBridge:
         """A new close; when it replaces one, its `ref_event_id` names the receipt it supersedes."""
         closed_at_text = str(mirrored["closed_at"])
         closed_at = views.parse_time(closed_at_text)
-        shift = self._resolve_shift(closed_at)
+        shift = self._resolve_shift(closed_at, HandoverFlow.RECEPTION)
         return NewEvent(
             client_event_id=new_ulid(closed_at),
             type=EventType.ACC_CASH_RECEIPT.value,
@@ -501,7 +504,7 @@ class AccountingBridge:
                         version,
                         at=at,
                         reason="refunded" if str(void["kind"]) == "refund" else "voided",
-                        shift=self._resolve_shift(at),
+                        shift=self._resolve_shift(at, HandoverFlow.RECEPTION),
                     )
                 )
                 compensated.append(void_id)
