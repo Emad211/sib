@@ -21,6 +21,12 @@
     <p class="ho-text">کدام تحویل را برمی‌دارید؟</p>
     <button id="handover-start-reception" class="ho-action ho-action-primary" type="button">تحویل پذیرش</button>
     <button id="handover-start-nursing" class="ho-action ho-action-primary" type="button">تحویل پرستاری</button>
+    <!-- S03 §3: a second phone joins the flow instead of needing the phone that opened it. -->
+    <section id="handover-open" class="ho-open hidden" aria-labelledby="handover-open-title">
+      <h2 id="handover-open-title" class="ho-job-title">تحویل باز</h2>
+      <p class="ho-hint">این تحویل‌های شیفت هنوز امضا نشده‌اند. با پیوستن، همین تحویل را روی این گوشی ادامه دهید.</p>
+      <ul id="handover-open-list" class="ho-open-list" role="list"></ul>
+    </section>
     <p id="handover-refusal" class="ho-error hidden" role="alert"></p>
   </section>
 
@@ -39,6 +45,7 @@
     </div>
     <p id="handover-message" class="ho-message hidden" role="status"></p>
     <div id="handover-step" class="ho-step"></div>
+    <button id="handover-refresh" class="ho-link" type="button">تازه‌سازی وضعیت</button>
     <button id="handover-early-leave" class="ho-link" type="button">خروج زودهنگام نفر خروجی</button>
     <div id="handover-early-leave-confirm" class="ho-confirm hidden">
       <p class="ho-hint">اگر نفر خروجی رفته است، تحویل تا تأیید تلفنی مدیر ادامه پیدا نمی‌کند.</p>

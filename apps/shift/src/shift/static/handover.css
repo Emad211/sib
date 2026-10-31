@@ -257,3 +257,78 @@
   background-color: var(--color-surface-raised);
   border-radius: var(--radius-md);
 }
+
+/* The open flows of this shift: one join button per flow, so a second phone can take part. */
+.ho-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.ho-open-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ho-open-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ho-checklist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ho-checklist-name {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.ho-checklist-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ho-checklist-actions .ho-action {
+  flex: 1;
+}
+
+.ho-answered {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--color-success);
+}
+
+.ho-text-input,
+.ho-reading {
+  width: 100%;
+  min-height: 56px;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1.125rem;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.ho-reading {
+  flex: 1;
+  min-width: 0;
+}
+
+.ho-number-small {
+  min-height: 56px;
+  font-size: 1.25rem;
+}

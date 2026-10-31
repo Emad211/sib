@@ -4,9 +4,12 @@
  * The screen a tired receptionist or nurse uses at 2 am: one job per screen (R-10), big type,
  * big tap targets, no dense tables. It drives the slice-4 API and shows the answer of a blind
  * count as a status word only — never a reference, an expected figure, a comparison or a delta
- * (R-02, ADR-011). The phone is the shared surface of a handover: the status
- * «گوشی را به نفر خروجی بدهید» is what hands it to the other person, so both signatures are
- * tapped on the phone that opened the flow.
+ * (R-02, ADR-011).
+ *
+ * Each person signs on their own phone, so a second phone joins the flow the first one opened
+ * (`GET /current`) and the sign screen offers only the caller's own signature (S03 §3, H-04).
+ * The checklists and the parcels in transit are recorded on their own steps instead of being
+ * walked past, and the checklists step leaves only when every item has an answer.
  *
  * Handover calls go straight to `fetch` and never into the IndexedDB outbox (ADR-016): a flow
  * needs the clinic server, and offline the screen says so instead of pretending.
@@ -16,6 +19,8 @@ const API = "/api/v1/handover";
 const ALREADY_OPEN = "این تحویل از قبل برای این شیفت باز شده است";
 const STORAGE_KEY = "shift:handover";
 const FLOWS = ["reception", "nursing"];
+
+const FLOW_LABELS = { reception: "پذیرش", nursing: "پرستاری" };
 
 const STEP_LABELS = {
   cash: "صندوق",
@@ -65,6 +70,9 @@ let state = null;
 let targets = null;
 let lastStep = null;
 let busy = false;
+// Which checklist items this phone has answered for the open flow; the step leaves only when
+// every item on the list is in here, so nobody walks past H-04's checklist step.
+const answeredChecklists = new Set();
 
 class OfflineLeft extends Error {}
 class Refusal extends Error {
@@ -204,6 +212,14 @@ function wholeNumber(raw) {
   return { value: Number(text) };
 }
 
+function decimalNumber(raw) {
+  // A checklist reading is a gauge value, never a negative: the event's own schema refuses one.
+  const text = foldDigits(raw).trim();
+  if (!text) return { error: "عدد را وارد کنید." };
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(text)) return { error: "فقط عدد وارد کنید." };
+  return { value: Number(text) };
+}
+
 function fa(value) {
   return Number(value).toLocaleString("fa-IR");
 }
@@ -213,6 +229,17 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined && text !== null) node.textContent = text;
   return node;
+}
+
+function textField(className, id, label) {
+  const input = document.createElement("input");
+  input.className = className;
+  input.type = "text";
+  input.autocomplete = "off";
+  input.dir = "ltr";
+  input.id = id;
+  input.setAttribute("aria-label", label);
+  return input;
 }
 
 function countField(target) {
@@ -363,35 +390,124 @@ function renderItems() {
   });
 }
 
+function checklistRow(row) {
+  const item = element("li", "ho-checklist-item");
+  item.dataset.itemId = row.item_id;
+  item.appendChild(element("p", "ho-checklist-name", row.name));
+  if (answeredChecklists.has(row.item_id)) {
+    item.appendChild(element("p", "ho-answered", "پاسخ ثبت شد."));
+    return item;
+  }
+  const actions = element("div", "ho-checklist-actions");
+  if (row.kind === "reading") {
+    const input = textField("ho-reading", `handover-reading-${row.item_id}`, `مقدار ${row.name}`);
+    input.inputMode = "decimal";
+    const submit = element("button", "ho-action ho-action-primary", "ثبت");
+    submit.id = `handover-checklist-${row.item_id}-submit`;
+    submit.type = "button";
+    submit.addEventListener("click", () => guard(() => answerChecklist(row.item_id, true, input)));
+    actions.append(input, submit);
+  } else {
+    const yes = element("button", "ho-action ho-action-primary", "بله");
+    yes.id = `handover-checklist-${row.item_id}-yes`;
+    yes.type = "button";
+    yes.addEventListener("click", () => guard(() => answerChecklist(row.item_id, true)));
+    const no = element("button", "ho-action", "خیر");
+    no.id = `handover-checklist-${row.item_id}-no`;
+    no.type = "button";
+    no.addEventListener("click", () => guard(() => answerChecklist(row.item_id, false)));
+    actions.append(yes, no);
+  }
+  item.appendChild(actions);
+  return item;
+}
+
 function renderChecklists() {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("h2", "ho-job-title", "چک‌لیست"));
-  job.appendChild(element("p", "ho-hint", "این موارد را ببینید و بعد ادامه بدهید."));
+  job.appendChild(element("p", "ho-hint", "هر مورد را پاسخ بدهید؛ تا پاسخ همهٔ موارد، ادامه فعال نمی‌شود."));
   const list = element("ul", "ho-checklist");
   list.id = "handover-checklist-list";
-  for (const row of (targets && targets.checklists) || []) {
-    list.appendChild(element("li", null, row.name));
-  }
+  const rows = (targets && targets.checklists) || [];
+  for (const row of rows) list.appendChild(checklistRow(row));
   job.appendChild(list);
-  job.appendChild(advanceButton("بررسی کردم، ادامه"));
+  if (!rows.length) {
+    job.appendChild(element("p", "ho-text", "چک‌لیستی برای این تحویل ثبت نشده است."));
+    job.appendChild(advanceButton("ادامه"));
+  } else if (rows.every((row) => answeredChecklists.has(row.item_id))) {
+    job.appendChild(advanceButton("ادامه"));
+  }
   stepContainer.appendChild(job);
+}
+
+async function answerChecklist(itemId, ok, input) {
+  const body = { item_id: itemId, ok: ok };
+  if (input) {
+    const answer = decimalNumber(input.value);
+    if (answer.error) {
+      showMessage(answer.error, "error");
+      return;
+    }
+    body.reading = answer.value;
+  }
+  await request(`${API}/${state.handover_id}/checklists`, "POST", body);
+  answeredChecklists.add(itemId);
+  await refresh();
+  showMessage("پاسخ ثبت شد.", "ok");
 }
 
 function renderParcels() {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("h2", "ho-job-title", "بسته‌های در راه"));
-  job.appendChild(element("p", "ho-text", "اگر بستهٔ در راهی هست، آن را به نفر بعدی تحویل بدهید."));
-  job.appendChild(advanceButton("تحویل شد، ادامه"));
+  job.appendChild(
+    element(
+      "p",
+      "ho-text",
+      "اگر بستهٔ در راهی هست، شناسهٔ آن و تعداد بسته‌ها را ثبت کنید. اگر بسته‌ای در راه نیست، ادامه بدهید."
+    )
+  );
+  const idLabel = element("label", "ho-label", "شناسهٔ بسته");
+  idLabel.htmlFor = "handover-parcel-id";
+  const idInput = textField("ho-text-input", "handover-parcel-id", "شناسهٔ بسته");
+  const countLabel = element("label", "ho-label", "تعداد بسته");
+  countLabel.htmlFor = "handover-parcel-packages";
+  const countInput = textField("ho-number ho-number-small", "handover-parcel-packages", "تعداد بسته");
+  countInput.inputMode = "numeric";
+  const submit = element("button", "ho-action ho-action-primary", "ثبت بسته");
+  submit.id = "handover-parcel-submit";
+  submit.type = "button";
+  submit.addEventListener("click", () => guard(submitParcel));
+  job.append(idLabel, idInput, countLabel, countInput, submit);
+  job.appendChild(advanceButton("بسته‌ای در راه نیست، ادامه"));
   stepContainer.appendChild(job);
+}
+
+async function submitParcel() {
+  const parcelId = $("handover-parcel-id").value.trim();
+  if (!parcelId) {
+    showMessage("شناسهٔ بسته را وارد کنید.", "error");
+    return;
+  }
+  const packages = wholeNumber($("handover-parcel-packages").value);
+  if (packages.error) {
+    showMessage(packages.error, "error");
+    return;
+  }
+  await request(`${API}/${state.handover_id}/parcels`, "POST", {
+    parcel_id: parcelId,
+    packages: packages.value,
+  });
+  await refresh();
+  showMessage("بسته ثبت شد.", "ok");
 }
 
 function renderSign() {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("h2", "ho-job-title", "امضای دو طرف"));
-  job.appendChild(element("p", "ho-hint", "هر نفر امضای خودش را روی همین گوشی ثبت می‌کند."));
+  job.appendChild(element("p", "ho-hint", "هر نفر امضای خودش را روی گوشی خودش ثبت می‌کند."));
   if (state.emergency) {
     job.appendChild(element("p", "ho-hint", "نفر خروجی حاضر نیست؛ فقط نفر ورودی امضا می‌کند."));
   }
@@ -405,23 +521,25 @@ function renderSign() {
     if (signed.has(key)) list.appendChild(element("li", null, `${label} — امضا شد`));
   }
   job.appendChild(list);
-  if (!signed.has("incoming")) {
-    job.appendChild(signButton("incoming", "امضای نفر ورودی"));
-  }
-  if (!state.emergency && !signed.has("outgoing")) {
-    job.appendChild(signButton("outgoing", "امضای نفر خروجی"));
-  }
+  const mine = element("button", "ho-action ho-action-primary", "ثبت امضای من");
+  mine.id = "handover-sign-own";
+  mine.type = "button";
+  mine.addEventListener("click", () => guard(signOwn));
+  job.appendChild(mine);
+  job.appendChild(
+    element("p", "ho-hint", "اگر نفر دیگر هنوز امضا نکرده است، بعد از امضای او «تازه‌سازی وضعیت» را بزنید.")
+  );
   stepContainer.appendChild(job);
 }
 
-function signButton(signer, label) {
-  const button = element("button", "ho-action ho-action-primary", label);
-  button.id = `handover-sign-${signer}`;
-  button.type = "button";
-  button.addEventListener("click", () =>
-    guard(async () => adopt(await request(`${API}/${state.handover_id}/sign`, "POST", { signer: signer })))
-  );
-  return button;
+async function signOwn() {
+  // The server matches the session's person against the flow's two people (S03 §3), so the
+  // request names no signer: this phone can only ever sign its own side.
+  const next = await request(`${API}/${state.handover_id}/sign`, "POST");
+  await adopt(next);
+  if (!next.closed) {
+    showMessage("امضای شما ثبت شد؛ منتظر امضای نفر دیگر باشید.", "ok");
+  }
 }
 
 function renderStep(step) {
@@ -481,6 +599,7 @@ function render() {
 /* ---------- flow lifecycle ---------- */
 
 async function adopt(next) {
+  if (state !== null && state.handover_id !== next.handover_id) answeredChecklists.clear();
   state = next;
   remember(next.flow, next.handover_id);
   if (next.closed) {
@@ -502,6 +621,28 @@ async function refresh() {
     return;
   }
   render();
+}
+
+async function loadOpenFlows() {
+  const flows = await request(`${API}/current`);
+  const list = $("handover-open-list");
+  list.replaceChildren();
+  for (const flow of flows) {
+    const row = element("li", "ho-open-row");
+    const join = element("button", "ho-action", `پیوستن به تحویل ${FLOW_LABELS[flow.flow] || flow.flow}`);
+    join.id = `handover-join-${flow.flow}`;
+    join.type = "button";
+    join.addEventListener("click", () => guard(() => joinFlow(flow.handover_id)));
+    const where = STEP_LABELS[flow.step] || "";
+    const note = flow.early_left ? `${where} — نفر خروجی رفته است` : where;
+    row.append(join, element("p", "ho-hint", `مرحلهٔ جاری: ${note}`));
+    list.appendChild(row);
+  }
+  $("handover-open").classList.toggle("hidden", flows.length === 0);
+}
+
+async function joinFlow(handoverId) {
+  await adopt(await request(`${API}/${handoverId}`));
 }
 
 async function startFlow(flowName) {
@@ -582,7 +723,9 @@ async function boot() {
     state = null;
     targets = null;
     lastStep = null;
+    answeredChecklists.clear();
     showScreen("start");
+    await loadOpenFlows();
   }
 }
 
@@ -591,13 +734,18 @@ async function boot() {
 $("handover-retry").addEventListener("click", () => guard(boot));
 $("handover-start-reception").addEventListener("click", () => guard(() => startFlow("reception")));
 $("handover-start-nursing").addEventListener("click", () => guard(() => startFlow("nursing")));
-$("handover-exists-back").addEventListener("click", () => {
-  state = null;
-  targets = null;
-  lastStep = null;
-  showRefusal("");
-  showScreen("start");
-});
+$("handover-exists-back").addEventListener("click", () =>
+  guard(async () => {
+    state = null;
+    targets = null;
+    lastStep = null;
+    answeredChecklists.clear();
+    showRefusal("");
+    showScreen("start");
+    await loadOpenFlows();
+  })
+);
+$("handover-refresh").addEventListener("click", () => guard(refresh));
 $("handover-early-leave").addEventListener("click", () => {
   // H-08 blocks the flow until a manager confirms, so a stray tap needs one deliberate second tap.
   $("handover-early-leave").classList.add("hidden");
