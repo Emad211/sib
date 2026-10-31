@@ -29,7 +29,7 @@ from pydantic import BaseModel, ValidationError
 from shift.adapters.db import events_repo, projections_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
-from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_tehran
+from shift.common.clock import Clock, SystemClock, tehran_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.event_types import EventType
 from shift.domain.permissions import Permission, Role
@@ -57,7 +57,7 @@ from shift.domain.purchase_payloads import (
     VendorReturn,
 )
 from shift.domain.shift_clock import covering
-from shift.domain.stock_checks import WeeklyStatus, weekly_status
+from shift.domain.stock_checks import WeeklyStatus
 from shift.services import store_actions
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, Item, ItemKind
