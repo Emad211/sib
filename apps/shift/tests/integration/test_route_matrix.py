@@ -45,6 +45,7 @@ PATH_VALUES = {
     "location_id": "shelf_reception",
     "setting": "session_ttl_hours",
     "role": "nurse",
+    "campaign_id": "cmp-matrix",
     # A day the matrix app never generated a card for, so the manager gets the 404 page.
     "card_date": "2026-10-29",
     # An id no flow ever used: every guarded handover route answers 404 for a permitted role.
@@ -69,13 +70,27 @@ BODIES = {
         "client_event_id": "01J00000000000000000000000",
         "idempotency_key": "01J00000000000000000000000",
         "type": "stock.waste_reported",
-        "payload": {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5},
+        "payload": {
+            "item_id": "para_500_amp",
+            "location_id": "shelf_reception",
+            "quantity": 5,
+            "waste_kind": "broken",
+            "culprit_id": "staff-reception",
+            "confirmer_id": "staff-spare",
+        },
         "client_at": "2026-10-28T10:00:00Z",
     },
     "PUT /api/v1/catalog/items/{item_id}": _ITEM_BODY,
     "PUT /api/v1/catalog/locations/{location_id}": {"name": "قفسهٔ پذیرش", "retired": False},
     "PUT /api/v1/catalog/staff/{staff_id}/roles/{role}": {"granted": True},
     "PUT /api/v1/settings/{setting}": {"value": "8"},
+    "PUT /api/v1/campaigns/{campaign_id}": {
+        "name": "کمپین آزمایشی",
+        "service": "پذیرش",
+        "amount_toman": 10_000,
+        "starts_on": "2026-10-01",
+        "ends_on": "2026-12-31",
+    },
     # A body the flow vocabulary cannot accept, so probing the start cell never opens a real flow
     # (a second reception flow of the same shift would answer 409 instead of the recorded status).
     "POST /api/v1/handover/start": {"flow": "not-a-flow"},
@@ -99,7 +114,7 @@ BODIES = {
     "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
 }
-PAGES = {"GET /login", "GET /enroll", "GET /admin/devices"}
+PAGES = {"GET /login", "GET /enroll", "GET /admin/devices", "GET /manager/campaigns"}
 
 
 def _rows() -> dict[str, dict[str, object]]:

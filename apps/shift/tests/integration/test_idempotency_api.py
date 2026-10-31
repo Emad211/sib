@@ -8,6 +8,7 @@ from auth_fixtures import PIN, ROLES, create_device, create_staff, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from seed_reference_data import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
@@ -28,7 +29,14 @@ def _event_payload(**overrides: Any) -> dict[str, Any]:
         "client_event_id": event_id,
         "idempotency_key": event_id,
         "type": "stock.waste_reported",
-        "payload": {"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5},
+        "payload": {
+            "item_id": "para_500_amp",
+            "location_id": "shelf_reception",
+            "quantity": 5,
+            "waste_kind": "broken",
+            "culprit_id": "staff-reception",
+            "confirmer_id": "staff-spare",
+        },
         "client_at": datetime(2026, 10, 28, 10, 0, tzinfo=UTC).isoformat(),
     }
     payload.update(overrides)
@@ -52,6 +60,7 @@ def _headers(session: dict[str, Any]) -> dict[str, str]:
 def seeded(client: TestClient) -> TestClient:
     """The real app with one staff member and one phone per role, on a fixed shift."""
     seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
+    seed_catalog(client.app.state.database)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
     return client
 
@@ -146,14 +155,25 @@ def test_a_staff_member_without_the_events_permission_gets_403(seeded: TestClien
         assert events_repo.count_events(connection) == 0
 
 
-@pytest.mark.parametrize("role", sorted(ROLES))
-def test_every_shift_role_may_append_events(seeded: TestClient, role: str) -> None:
-    """Event ingestion is shift work: each closed role holds `events.append`."""
+@pytest.mark.parametrize("role", ["reception", "nurse", "storekeeper", "shift_doctor", "manager", "multi_role"])
+def test_a_role_with_the_kind_permission_may_append_its_event(seeded: TestClient, role: str) -> None:
+    """Event ingestion is shift work, but each kind also names the roles that may record it (R-07)."""
     session = _login(seeded, role)
 
     response = seeded.post("/api/v1/events", json=_event_payload(), headers=_headers(session))
 
     assert response.status_code == status.HTTP_200_OK, response.text
+
+
+@pytest.mark.parametrize("role", ["accountant", "purchaser"])
+def test_a_role_without_the_kind_permission_is_refused(seeded: TestClient, role: str) -> None:
+    """Holding `events.append` is not enough: the waste kind belongs to the shelf's roles."""
+    session = _login(seeded, role)
+
+    response = seeded.post("/api/v1/events", json=_event_payload(), headers=_headers(session))
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "اجازهٔ ثبت" in response.json()["error"]["message"]
 
 
 def test_idempotency_key_wins_over_a_new_client_event_id(seeded: TestClient) -> None:
@@ -232,7 +252,16 @@ def test_the_authenticated_shift_date_is_accepted(seeded: TestClient) -> None:
 def test_ingest_updates_projections_and_replay_does_not_double_apply(seeded: TestClient) -> None:
     """The only production write path keeps proj_stock in step with the event log."""
     session = _login(seeded)
-    body = _event_payload(payload={"item_id": "bandage_roll", "location_id": "emergency_cabinet", "quantity": 5})
+    body = _event_payload(
+        payload={
+            "item_id": "para_500_amp",
+            "location_id": "shelf_reception",
+            "quantity": 5,
+            "waste_kind": "broken",
+            "culprit_id": "staff-reception",
+            "confirmer_id": "staff-spare",
+        }
+    )
 
     first = seeded.post("/api/v1/events", json=body, headers=_headers(session))
     replay = seeded.post("/api/v1/events", json=body, headers=_headers(session))
@@ -243,7 +272,7 @@ def test_ingest_updates_projections_and_replay_does_not_double_apply(seeded: Tes
     database: Database = seeded.app.state.database
     with database.read() as connection:
         rows = projections_repo.stock_rows(connection)
-    assert rows == [{"item_id": "bandage_roll", "location_id": "emergency_cabinet", "qty": -5}]
+    assert rows == [{"item_id": "para_500_amp", "location_id": "shelf_reception", "qty": -5}]
 
 
 def test_oversized_body_is_rejected_before_parsing(seeded: TestClient) -> None:

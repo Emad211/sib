@@ -13,6 +13,7 @@ from shift.adapters.db.core import Database
 from shift.api import (
     deps,
     routes_auth,
+    routes_campaigns,
     routes_catalog,
     routes_devices,
     routes_events,
@@ -32,6 +33,7 @@ from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditService
 from shift.services.auth import AuthService
 from shift.services.backup import BackupService
+from shift.services.campaigns import CampaignService
 from shift.services.catalog import CatalogService
 from shift.services.daily_card import DailyCardService
 from shift.services.devices import DeviceService
@@ -40,6 +42,7 @@ from shift.services.handover import HandoverService
 from shift.services.projections import ProjectionEngine
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
+from shift.services.shift_events import ShiftEventService
 
 
 def _catalog_service(request: Request) -> CatalogService:
@@ -55,6 +58,11 @@ def _settings_service(request: Request) -> SettingsService:
 def _daily_card_service(request: Request) -> DailyCardService:
     """The daily card service created in the lifespan (the manager's card pages)."""
     return request.app.state.daily_card
+
+
+def _campaign_service(request: Request) -> CampaignService:
+    """The campaign calendar created in the lifespan (manager API and page)."""
+    return request.app.state.campaigns
 
 
 def _daily_card_action(cards: DailyCardService) -> Callable[[datetime], str]:
@@ -144,6 +152,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.devices = DeviceService(database, clock=clock, audit=audit)
         application.state.catalog = CatalogService(database, clock=clock)
         application.state.settings_service = SettingsService(database, clock=clock)
+        # The manager's campaign calendar is the only source of a «ت» discount (S01 §3).
+        application.state.campaigns = CampaignService(database, clock=clock)
+        # The staff phone's shift events (SHF-3): one validated, idempotent writer for every kind.
+        application.state.shift_events = ShiftEventService(
+            database,
+            application.state.events,
+            application.state.projections,
+            application.state.catalog,
+            application.state.settings_service,
+            campaigns=application.state.campaigns,
+            clock=clock,
+        )
         # The manager's daily card (SHF-6.1) reads the log, the flows and the audit trail and stores
         # one document per day; the scheduler's action below is the only thing that generates it.
         application.state.daily_card = DailyCardService(database, clock=clock, audit=audit)
@@ -211,6 +231,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     # The manager's card and settings pages (SHF-6.1): server-rendered, one page guard each.
     app.include_router(routes_manager.build_manager_router(cards=_daily_card_service, settings=_settings_service))
+    # The campaign calendar behind the shift event «ت» (SHF-3): manager API and manager page.
+    app.include_router(
+        routes_campaigns.build_campaign_router(
+            guard=deps.require(Permission.CATALOG_MANAGE),
+            page_guard=deps.require_page(Permission.SETTINGS_CHANGE),
+            campaigns=_campaign_service,
+        )
+    )
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.exists():

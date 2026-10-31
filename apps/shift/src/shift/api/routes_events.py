@@ -18,9 +18,8 @@ from shift.api.deps import require, running_shift
 from shift.domain.permissions import Permission
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
-from shift.services.event_store import EventStore
-from shift.services.outbox import EventSubmission, OutboxService, OutboxValidationError
-from shift.services.projections import ProjectionEngine
+from shift.services.outbox import EventSubmission, OutboxValidationError
+from shift.services.shift_events import ShiftEventService
 
 MAX_REQUEST_BYTES = 64 * 1024
 _MAX_IDENTIFIER = 128
@@ -85,14 +84,36 @@ class EventOut(BaseModel):
     status: str
 
 
-def get_event_store(request: Request) -> EventStore:
-    """Retrieve the app EventStore from application state."""
-    return request.app.state.events
+class PendingEventOut(BaseModel):
+    """One undecided shift event the signed-in approver may decide."""
+
+    event_id: str
+    type: str
+    code: str
+    label: str
+    at_tehran: str
+    shift_id: str
+    actor: dict[str, str | None]
+    summary: dict[str, Any]
 
 
-def get_projections(request: Request) -> ProjectionEngine:
-    """Retrieve the app projection engine so each append becomes visible immediately."""
-    return request.app.state.projections
+def get_shift_events(request: Request) -> ShiftEventService:
+    """The shift-event service created in the lifespan (routes never build their own)."""
+    return request.app.state.shift_events
+
+
+@router.get(
+    "/shift-events/pending",
+    response_model=list[PendingEventOut],
+    summary="Events waiting for this approver in the running shift",
+)
+def get_pending_events(
+    principal: Annotated[Principal, Depends(require(Permission.SHIFT_EVENT_APPROVE))],
+    shift: Annotated[ShiftKey, Depends(running_shift)],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
+) -> list[PendingEventOut]:
+    """Only the current shift, only the kinds this person's role may decide (R-01, R-07)."""
+    return [PendingEventOut(**entry.to_payload()) for entry in service.pending_for(principal, shift)]
 
 
 @router.post(
@@ -106,13 +127,12 @@ def post_event(
     response: Response,
     principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
     shift: Annotated[ShiftKey, Depends(running_shift)],
-    store: Annotated[EventStore, Depends(get_event_store)],
-    projections: Annotated[ProjectionEngine, Depends(get_projections)],
+    service: Annotated[ShiftEventService, Depends(get_shift_events)],
 ) -> EventOut:
     """Validate an event payload and insert it idempotently for the session principal.
 
     Duplicate idempotency_key replays return the existing seq with HTTP 200.
-    Invalid payloads return HTTP 422; anonymous requests fail closed with 401.
+    Invalid payloads or a clinic rule refusal return HTTP 422; anonymous requests fail closed with 401.
     """
     submission = EventSubmission(
         type=event_in.type,
@@ -129,9 +149,8 @@ def post_event(
         shift_work_date=shift.work_date,
     )
 
-    outbox_svc = OutboxService(store, projections)
     try:
-        result = outbox_svc.record_event(submission)
+        result = service.record(submission, principal=principal, shift=shift)
     except OutboxValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

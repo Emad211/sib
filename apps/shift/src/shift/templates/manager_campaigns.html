@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}سیب — کمپین‌ها{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  <nav class="mg-nav" aria-label="صفحه‌های مدیر">
+    <a class="mg-nav-link" href="/manager/card">کارت امروز</a>
+    <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
+    <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
+  </nav>
+
+  <header class="mg-head">
+    <h1 class="mg-title">کمپین‌های تخفیف</h1>
+    <p class="mg-meta">تخفیف فقط از همین فهرست اعمال می‌شود. کمپینی که روز شیفت در بازهٔ آن نباشد، روی گوشی پرسنل نمی‌آید.</p>
+  </header>
+
+  <section class="mg-section" aria-label="کمپین‌های تعریف‌شده">
+    <h2 class="mg-section-title">فهرست کمپین‌ها</h2>
+    <ul class="mg-list" role="list">
+      {% for campaign in campaigns %}
+      <li class="mg-row">
+        <p class="mg-line">
+          <span class="mg-strong">{{ campaign.name }}</span>
+          <span class="mg-id">({{ campaign.campaign_id }})</span>
+        </p>
+        <p class="mg-line">خدمات شامل: {{ campaign.service }}</p>
+        <p class="mg-amount">{{ campaign.amount }} <span class="mg-unit">تومان</span></p>
+        <p class="mg-line">از {{ campaign.from }} تا {{ campaign.to }}</p>
+        <p class="mg-meta">تعریف‌کننده: {{ campaign.created_by }} — {{ campaign.created_at }}</p>
+        <button class="btn mg-save" type="button"
+                data-campaign-edit="{{ campaign.campaign_id }}"
+                data-campaign-name="{{ campaign.name }}"
+                data-campaign-service="{{ campaign.service }}"
+                data-campaign-amount="{{ campaign.amount_toman }}"
+                data-campaign-starts="{{ campaign.starts_on }}"
+                data-campaign-ends="{{ campaign.ends_on }}">ویرایش این کمپین</button>
+      </li>
+      {% else %}
+      <li class="mg-empty">هنوز کمپینی تعریف نشده است؛ تخفیف روی گوشی پرسنل هم وجود ندارد.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <form class="mg-section" data-campaign-form>
+    <h2 class="mg-section-title">کمپین تازه یا اصلاح کمپین</h2>
+
+    <label class="mg-meta" for="campaign-id">شناسه (لاتین، در رویداد تخفیف همین می‌آید)</label>
+    <input class="form-control mg-input" id="campaign-id" name="campaign_id" type="text" dir="ltr"
+           pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" maxlength="64" required>
+
+    <label class="mg-meta" for="campaign-name">نام کمپین</label>
+    <input class="form-control mg-input" id="campaign-name" name="name" type="text" maxlength="80" required>
+
+    <label class="mg-meta" for="campaign-service">خدمات شامل</label>
+    <input class="form-control mg-input" id="campaign-service" name="service" type="text" maxlength="80" required>
+
+    <label class="mg-meta" for="campaign-amount">مقدار تخفیف (تومان)</label>
+    <input class="form-control mg-input" id="campaign-amount" name="amount_toman" type="number" step="1"
+           inputmode="numeric" dir="ltr" min="0" max="{{ max_amount }}" required>
+
+    <label class="mg-meta" for="campaign-starts">روز شروع (YYYY-MM-DD)</label>
+    <input class="form-control mg-input" id="campaign-starts" name="starts_on" type="date" dir="ltr" required>
+
+    <label class="mg-meta" for="campaign-ends">روز پایان (YYYY-MM-DD)</label>
+    <input class="form-control mg-input" id="campaign-ends" name="ends_on" type="date" dir="ltr" required>
+
+    <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
+    <p class="mg-status" role="status"></p>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/manager-campaigns.js"></script>
+{% endblock %}

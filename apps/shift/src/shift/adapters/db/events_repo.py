@@ -139,3 +139,39 @@ def iter_between(connection: Connection, *, after: str, until: str) -> Iterator[
 def count_events(connection: Connection) -> int:
     """Number of stored events; used by tests and health diagnostics."""
     return int(connection.exec_driver_sql("SELECT COUNT(*) FROM events").scalar_one())
+
+
+def iter_shift(connection: Connection, shift_id: str) -> Iterator[EventRecord]:
+    """Yield every event stamped with one shift, in server order."""
+    result = connection.exec_driver_sql(f"{_SELECT} WHERE shift_id = ? ORDER BY seq", (shift_id,))
+    for row in result.mappings():
+        yield _record(row)
+
+
+def latest_ref(connection: Connection, ref_event_id: str, types: tuple[str, ...]) -> EventRecord | None:
+    """The newest event of one of `types` that references `ref_event_id` (a decision or assignment)."""
+    if not types:
+        return None
+    placeholders = ", ".join("?" for _ in types)
+    row = (
+        connection.exec_driver_sql(
+            f"{_SELECT} WHERE ref_event_id = ? AND type IN ({placeholders}) ORDER BY seq DESC LIMIT 1",
+            (ref_event_id, *types),
+        )
+        .mappings()
+        .first()
+    )
+    return _record(row) if row is not None else None
+
+
+def count_ref(connection: Connection, ref_event_id: str, types: tuple[str, ...]) -> int:
+    """How many events of `types` already reference `ref_event_id` (used for one-delivery rules)."""
+    if not types:
+        return 0
+    placeholders = ", ".join("?" for _ in types)
+    return int(
+        connection.exec_driver_sql(
+            f"SELECT COUNT(*) FROM events WHERE ref_event_id = ? AND type IN ({placeholders})",
+            (ref_event_id, *types),
+        ).scalar_one()
+    )

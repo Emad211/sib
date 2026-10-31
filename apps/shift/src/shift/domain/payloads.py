@@ -10,6 +10,9 @@ Identifier = Annotated[str, Field(min_length=1, max_length=128)]
 Quantity = Annotated[int, Field(strict=True, ge=0)]
 AmountRaw = Annotated[float, Field(ge=0, allow_inf_nan=False)]
 ReversalReason = Literal["reclosed", "voided", "refunded"]
+WasteKind = Literal["broken", "expired", "damaged"]
+RestockSource = Literal["store", "vendor"]
+Note = Annotated[str, Field(max_length=500)]
 
 
 class Payload(BaseModel):
@@ -33,7 +36,11 @@ class CashAmount(Payload):
 
 
 class CashWithdrawn(CashAmount):
-    pass
+    """A cash withdrawal: the recipient and reason are required on new records (SHF-3 «د»)."""
+
+    recipient_id: Identifier | None = None
+    reason: Note | None = None
+    manager_id: Identifier | None = None
 
 
 class CashDeposited(CashAmount):
@@ -70,15 +77,25 @@ class StockDelta(Payload):
 
 
 class ShelfRestocked(StockDelta):
-    pass
+    """A mid-shift entry: from the store or from a vendor with an invoice reference (SHF-3 «و»)."""
+
+    source: RestockSource | None = None
+    reference: Annotated[str, Field(max_length=200)] | None = None
 
 
 class EmergencyWithdrawal(StockDelta):
-    pass
+    """Two people open the sealed envelope; the storekeeper confirms it afterwards (SHF-3)."""
+
+    reason: Note | None = None
+    second_person_id: Identifier | None = None
 
 
 class WasteReported(StockDelta):
-    pass
+    """Confirmed waste: a second person who is not the culprit confirms it (SHF-3 «ض»)."""
+
+    waste_kind: WasteKind | None = None
+    culprit_id: Identifier | None = None
+    confirmer_id: Identifier | None = None
 
 
 class ConsumptionRecorded(StockDelta):

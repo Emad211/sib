@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
@@ -20,6 +19,7 @@ from shift.domain.effects import (
     stock_delta,
     stock_set,
 )
+from shift.domain.event_types import EventType, UnknownEventType
 from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_payloads import (
     ChecklistAnswered,
@@ -48,37 +48,7 @@ from shift.domain.payloads import (
     WasteReported,
     WeeklyCount,
 )
-
-
-class EventType(StrEnum):
-    HANDOVER_BASELINE_RECORDED = "handover.baseline_recorded"
-    HANDOVER_STARTED = "handover.started"
-    HANDOVER_CASH_COUNTED = "handover.cash_counted"
-    HANDOVER_ITEM_COUNTED = "handover.item_counted"
-    HANDOVER_RECOUNT_REQUESTED = "handover.recount_requested"
-    HANDOVER_STEP_ADVANCED = "handover.step_advanced"
-    HANDOVER_OUTGOING_COUNTED = "handover.outgoing_counted"
-    HANDOVER_JOINT_COUNTED = "handover.joint_counted"
-    HANDOVER_COUNT_SETTLED = "handover.count_settled"
-    HANDOVER_CHECKLIST_ANSWERED = "handover.checklist_answered"
-    HANDOVER_PARCEL_HANDED = "handover.parcel_handed"
-    HANDOVER_SIGNED = "handover.signed"
-    HANDOVER_EARLY_LEAVE_REPORTED = "handover.early_leave_reported"
-    HANDOVER_EMERGENCY_START_CONFIRMED = "handover.emergency_start_confirmed"
-    DISCREPANCY_RECORDED = "discrepancy.recorded"
-    CASH_WITHDRAWN = "cash.withdrawn"
-    CASH_DEPOSITED = "cash.deposited"
-    STOCK_WEEKLY_COUNT = "stock.weekly_count"
-    STOCK_SHELF_RESTOCKED = "stock.shelf_restocked"
-    STOCK_EMERGENCY_WITHDRAWAL = "stock.emergency_withdrawal"
-    STOCK_WASTE_REPORTED = "stock.waste_reported"
-    ACC_CASH_RECEIPT = "acc.cash_receipt"
-    ACC_CASH_REVERSAL = "acc.cash_reversal"
-    ACC_CONSUMPTION = "acc.consumption"
-
-
-class UnknownEventType(ValueError):
-    """The event type is not in the registry."""
+from shift.domain.shift_events import shift_event_specs
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +59,7 @@ class EventSpec:
     requires_shift: bool = False
 
 
-EVENT_SPECS: Mapping[EventType, EventSpec] = {
+BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
     # The manager's first count: one event sets every shelf and seeds the reception box, so the
     # first blind handover has a reference without anyone typing a declared figure (SHF-7.1).
     EventType.HANDOVER_BASELINE_RECORDED: EventSpec(BaselineRecorded, baseline_recorded, requires_shift=True),
@@ -121,6 +91,21 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.ACC_CASH_REVERSAL: EventSpec(CashReversal, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.ACC_CONSUMPTION: EventSpec(ConsumptionRecorded, stock_delta(StockOperation.SUBTRACT)),
 }
+
+
+def _shift_event_specs() -> Mapping[EventType, EventSpec]:
+    """The composed SHF-3 vocabulary; a kind's own spec wins over the provisional base row.
+
+    The four moving kinds keep a base row for the older modules that imported it, but the kind module
+    is the single owner now and its spec (shift-scoped) replaces the provisional one.
+    """
+    composed = dict(BASE_EVENT_SPECS)
+    for event_type, (payload_model, effects) in shift_event_specs().items():
+        composed[EventType(event_type)] = EventSpec(payload_model, effects, requires_shift=True)
+    return composed
+
+
+EVENT_SPECS: Mapping[EventType, EventSpec] = _shift_event_specs()
 
 
 def spec_for(event_type: str) -> EventSpec:

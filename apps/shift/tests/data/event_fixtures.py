@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from shift.common.ids import new_ulid
+from shift.domain.shift_events import kind_for
 from shift.services.event_store import NewEvent
 
 WORK_DATE = date(2026, 10, 28)
@@ -60,6 +61,9 @@ def default_payload(event_type: str) -> dict[str, Any]:
         "acc.consumption",
     }:
         return {"item_id": "item-1", "location_id": "location-1", "quantity": 2}
+    kind = kind_for(event_type)
+    if kind is not None:
+        return kind.sample()
     raise ValueError(f"no default payload for {event_type}")
 
 
