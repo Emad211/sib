@@ -59,7 +59,7 @@
     <h2 id="mg-gap-title" class="mg-section-title">مغایرت‌ها</h2>
     {% for row in card.sections.discrepancies %}
     <article class="mg-row">
-      <p class="mg-amount">{{ row.difference }}</p>
+      <p class="mg-amount">{{ row.difference }}{% if row.direction %} <span class="mg-unit">{{ row.direction }}</span>{% endif %}</p>
       <p class="mg-line">{{ row.flow }} · {{ row.at }}</p>
       <p class="mg-line mg-culprit">{% if row.culprit %}به نام {{ row.culprit }}{% else %}بدون مقصر{% endif %}</p>
     </article>

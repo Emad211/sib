@@ -26,7 +26,7 @@ from shift.common.jalali import format_jalali
 from shift.domain.permissions import Permission
 from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
 from shift.services.auth import Principal
-from shift.services.daily_card import Card, DailyCardService, Person
+from shift.services.daily_card import SHORTAGE, SURPLUS, Card, DailyCardService, Person
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
@@ -39,6 +39,8 @@ SATURDAY = 5
 CARD_NOT_FOUND = "کارتی برای این روز پیدا نشد."
 
 FLOW_LABELS = {"reception": "پذیرش", "nursing": "پرستاری"}
+# Which way a gap went, so the manager reads a shortage from a surplus and never a bare figure.
+DIRECTION_LABELS = {SHORTAGE: "کسری", SURPLUS: "مازاد"}
 SHIFT_LABELS = {1: "شیفت صبح", 2: "شیفت عصر", 3: "شیفت شب"}
 WEEKDAY_LABELS = {
     0: "دوشنبه",
@@ -227,11 +229,12 @@ def _cash_rows(card: Card) -> list[dict[str, str]]:
 
 
 def _discrepancy_rows(card: Card) -> list[dict[str, str]]:
-    """The gap and its person; `culprit` None is the unnamed emergency path, never a guess (H-08)."""
+    """The gap, which way it went, and its person; `culprit` None is the unnamed path (H-07/H-08)."""
     return [
         {
             "flow": _flow(entry.flow),
             "difference": f"{entry.difference:,}",
+            "direction": DIRECTION_LABELS.get(entry.direction, ""),
             "culprit": None if entry.culprit is None else _person(entry.culprit),
             "at": _stamp_fa(entry.at_tehran),
         }
