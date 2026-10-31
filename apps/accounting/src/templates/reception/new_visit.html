@@ -280,7 +280,7 @@
             if (searchTimeout) clearTimeout(searchTimeout);
 
             // Only search if 10 digits and valid format
-            if (val.length === 10 && /^\d{10}$/.test(val) && val !== lastSearchedId) {
+            if (((val.length === 10 && /^\d{10}$/.test(val)) || (isForeignCheckbox.checked && val.length >= 6)) && val !== lastSearchedId) {
                 searchIndicator.style.display = 'inline';
                 searchTimeout = setTimeout(async () => {
                     lastSearchedId = val;

@@ -378,22 +378,31 @@ def invoice_void(invoice_id):
     if problem:
         flash(problem, "error")
         return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
-    db.execute(
-        "INSERT INTO invoice_voids (invoice_id, kind, amount, refund_method, reason, voided_by) VALUES (?, ?, ?, ?, ?, ?)",
-        (invoice_id, kind, inv["total_amount"] or 0, method if kind == "refund" else None, reason, g.user["username"]),
-    )
-    db.execute("UPDATE invoices SET status = 'voided' WHERE id = ? AND status = 'closed'", (invoice_id,))
-    db.commit()
-    log_activity(
-        ActionType.INVOICE_VOID,
-        ActionCategory.INVOICE,
-        invoice_id=invoice_id,
-        patient_id=inv["patient_id"],
-        amount=inv["total_amount"] or 0,
-        old_value="closed",
-        new_value=f"voided:{kind}",
-        description=("بازپرداخت فاکتور: " if kind == "refund" else "ابطال فاکتور: ") + reason,
-    )
+    # The void record, the status change and the activity log are one transaction: either all
+    # three are saved or none is (a money event must never exist without its audit trail).
+    try:
+        db.execute(
+            "INSERT INTO invoice_voids (invoice_id, kind, amount, refund_method, reason, voided_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (invoice_id, kind, inv["total_amount"] or 0, method if kind == "refund" else None, reason, g.user["username"]),
+        )
+        db.execute("UPDATE invoices SET status = 'voided' WHERE id = ? AND status = 'closed'", (invoice_id,))
+        log_activity(
+            ActionType.INVOICE_VOID,
+            ActionCategory.INVOICE,
+            invoice_id=invoice_id,
+            patient_id=inv["patient_id"],
+            amount=inv["total_amount"] or 0,
+            old_value="closed",
+            new_value=f"voided:{kind}",
+            description=("بازپرداخت فاکتور: " if kind == "refund" else "ابطال فاکتور: ") + reason,
+            atomic=True,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("invoice_void: rolled back")
+        flash("ثبت ابطال انجام نشد و هیچ تغییری ذخیره نشد؛ دوباره تلاش کنید.", "error")
+        return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
     flash("فاکتور باطل شد و از گزارش‌ها کم شد.", "success")
     return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
 
@@ -425,23 +434,30 @@ def invoice_reopen(invoice_id):
     if problem:
         flash(problem, "error")
         return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
-    db.execute(
-        "UPDATE invoices SET status = 'open', closed_at = NULL, closed_by = NULL, closed_by_name = NULL "
-        "WHERE id = ? AND status = 'closed'",
-        (invoice_id,),
-    )
-    db.execute("DELETE FROM invoice_payment_lines WHERE invoice_id = ?", (invoice_id,))  # rewritten when closed again
-    db.commit()
-    log_activity(
-        ActionType.INVOICE_REOPEN,
-        ActionCategory.INVOICE,
-        invoice_id=invoice_id,
-        patient_id=inv["patient_id"],
-        amount=inv["total_amount"] or 0,
-        old_value=f"closed by {inv['closed_by']} at {inv['closed_at']}",
-        new_value="open",
-        description="بازگشایی برای اصلاح: " + reason,
-    )
+    try:  # status change, payment lines and log: one transaction
+        db.execute(
+            "UPDATE invoices SET status = 'open', closed_at = NULL, closed_by = NULL, closed_by_name = NULL "
+            "WHERE id = ? AND status = 'closed'",
+            (invoice_id,),
+        )
+        db.execute("DELETE FROM invoice_payment_lines WHERE invoice_id = ?", (invoice_id,))  # rewritten when closed again
+        log_activity(
+            ActionType.INVOICE_REOPEN,
+            ActionCategory.INVOICE,
+            invoice_id=invoice_id,
+            patient_id=inv["patient_id"],
+            amount=inv["total_amount"] or 0,
+            old_value=f"closed by {inv['closed_by']} at {inv['closed_at']}",
+            new_value="open",
+            description="بازگشایی برای اصلاح: " + reason,
+            atomic=True,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("invoice_reopen: rolled back")
+        flash("بازگشایی انجام نشد و هیچ تغییری ذخیره نشد؛ دوباره تلاش کنید.", "error")
+        return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
     flash("فاکتور دوباره باز شد؛ پذیرش شیفت می‌تواند اصلاح و دوباره ببندد.", "success")
     return redirect(url_for("manager.invoice_history", invoice_id=invoice_id))
 
