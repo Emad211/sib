@@ -153,6 +153,41 @@
   </section>
   {% endif %}
 
+  {% if "rewards" in card.sections %}
+  {% set rewards = card.sections.rewards %}
+  <section class="mg-section" aria-labelledby="mg-rewards-title">
+    <h2 id="mg-rewards-title" class="mg-section-title">پاداش‌های روز و در انتظار</h2>
+    <p class="mg-note">پاداش در ماهی پرداخت می‌شود که تأیید شده است؛ ردیف در انتظار تا تصمیم شما روی کارت می‌ماند.</p>
+    {% for row in rewards %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.earner }} — {{ row.work }}</p>
+      <p class="mg-line">{{ row.status }}</p>
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line mg-muted">{{ row.at }}{% if row.deduction_month %} · کسر از فیش ماه {{ row.deduction_month }}{% endif %}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "campaign_discounts" in card.sections %}
+  {% set campaigns = card.sections.campaign_discounts %}
+  <section class="mg-section" aria-labelledby="mg-campaigns-title">
+    <h2 id="mg-campaigns-title" class="mg-section-title">گزارش کمپین</h2>
+    <p class="mg-note">تخفیف‌های ثبت‌شدهٔ این روز، به تفکیک کمپین؛ عدد کل همان جمعی است که گزارش کمپین می‌آورد.</p>
+    {% for row in campaigns %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.name }}{% if row.service %} — {{ row.service }}{% endif %}</p>
+      <p class="mg-line">{{ row.count }} تخفیف · مبلغ کمپین: {{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-amount">{{ row.total }} <span class="mg-unit">تومان</span></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if "late_cash" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-late-cash-title">
     <h2 id="mg-late-cash-title" class="mg-section-title">نقد دیررسیده</h2>
