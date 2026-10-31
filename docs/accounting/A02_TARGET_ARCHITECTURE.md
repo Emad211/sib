@@ -26,38 +26,34 @@
 └────────────────────────────────────────────────────────────┘
 ```
 
+**امروز (واقعیت کد):** blueprintها در `src/api/` هستند (شامل بستهٔ `api/manager/`) و SQL هم دارند؛ `src/web/` فقط `csrf.py` دارد و `web/authz.py` و `@require_role` هنوز نیست (ACC-2.1). این نمودار مقصد است، نه وضع فعلی؛ جابه‌جایی طبق بخش ۵.
+
 **قاعدهٔ وابستگی:** هر لایه فقط لایهٔ زیرش را می‌شناسد. یک تست معماری (با `import-linter` یا تست سادهٔ پایتون) این قاعده را در CI اجبار می‌کند.
 
 ## ۳. ساختار پوشه‌ها
 
+ساختار امروز کد:
+
 ```text
 apps/accounting/
-├── start.py                     ← نقطهٔ ورود exe (بدون تغییر رفتار)
+├── start.py                     ← نقطهٔ ورود exe
 ├── HesabdariSib.spec
 ├── requirements.lock
 ├── src/
-│   ├── app.py                   ← فقط create_app و ثبت blueprintها
-│   ├── config/settings.py       ← مسیرها، کلید نشست، منطقهٔ زمانی (یک‌جا)
-│   ├── web/
-│   │   ├── auth.py
-│   │   ├── authz.py             ← دکوراتور @require_role و ماتریس دسترسی
-│   │   ├── reception/           ← invoices.py, items.py, patients.py, shift.py, ledgers.py
-│   │   ├── manager/             ← dashboard.py, reports.py, tariffs.py, users.py, payroll.py, settings.py, logs.py
-│   │   └── doctor.py
-│   ├── services/
-│   │   ├── billing.py           ← محاسبهٔ سهم‌ها (همان منطق تست‌شدهٔ فعلی)
-│   │   ├── invoices.py
-│   │   ├── reports/             ← یک موتور: تعریف گزارش ← کوئری ← جدول/CSV/Excel
-│   │   ├── payroll.py
-│   │   ├── backup.py            ← SQLite backup API (ADR-008)
-│   │   └── activity_log.py
-│   ├── domain/                  ← money.py, shifts.py, jalali.py, national_id.py
-│   ├── adapters/sqlite/
-│   │   ├── db.py                ← اتصال، row_factory، PRAGMAها
-│   │   ├── migrations/          ← 0001_baseline.py, 0002_...py (A03)
-│   │   ├── schema.sql           ← فقط برای دیتابیس خالی؛ هم‌ارز با آخرین مهاجرت
-│   │   └── repos/
-│   ├── templates/  static/      ← بدون تغییر ساختار در فاز ۲
+│   ├── app.py                   ← create_app، ثبت blueprintها، فیلترهای Jinja، CLI، scheduler
+│   ├── config/settings.py       ← مسیرها، نام فایل کلید نشست، حالت production
+│   ├── api/                     ← routeها (امروز اینجا هستند و SQL درون‌خطی دارند)
+│   │   ├── auth.py              ← /auth و login_required
+│   │   ├── dashboard.py         ← /
+│   │   ├── reception.py         ← /reception و /reception/api/*
+│   │   └── manager/             ← بستهٔ /manager: dashboard, reports, exports, arrears, tariffs, users, payroll, logs, settings, expenses, _common
+│   ├── web/csrf.py              ← CSRF؛ authz.py و @require_role هنوز نیست (ACC-2.1)
+│   ├── services/                ← auth_service, reception_service, backup, scheduler, exports, activity_logger, manager_finance, manager_insights, shift_handover, staff_performance, tariff_audit, patient_matching (manager_service.py هنوز خالی است)
+│   ├── domain/                  ← money.py, billing.py, shifts.py, jalali.py, identity.py (کد ملی همان‌جاست), patients.py, visits.py, user.py (reports.py هنوز خالی است)
+│   ├── common/                  ← jalali.py, utils.py (iran_now و کارهای work_date)، validators.py
+│   ├── adapters/sqlite/         ← core.py (اتصال و schema)، یک *_repo.py برای هر aggregate، schema.sql
+│   │   └── migrations/          ← m0001_baseline.py ... m0007_shift_contract_voids.py (A03)
+│   ├── templates/  static/      ← قالب‌ها به تفکیک نقش (auth، reception، manager، errors)
 └── tests/                       ← A04
 ```
 
