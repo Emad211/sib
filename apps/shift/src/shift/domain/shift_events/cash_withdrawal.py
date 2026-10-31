@@ -4,13 +4,20 @@ The owner's rule: the phone asks the recipient, the reason and the amount, and u
 `withdrawal_cap_toman` the recipient's own agreement carries the record; above the cap only a named
 manager does, and that name must hold the manager role — a name is not an approval. The rule reads the
 catalog and the shift's settings through `ShiftEventContext`; the projection takes the amount out of
-the reception box (H-02, `cash_delta(SUBTRACT)`).
+the reception box at once (H-02, `cash_delta(SUBTRACT)`).
+
+The money has moved, so the recipient's confirmation is recorded after the fact and never delays the
+projection: `confirmer_field="recipient_id"` makes the «گیرنده» the named decider of this kind. No
+role is named in `approvable_by`, and the recorder never confirms their own record: when the recipient
+recorded the withdrawal themselves, any other staff member answers for it, while the manager may
+always decide an open record.
 
 A row stored before SHF-3 carries only the amount, so the payload model keeps `recipient_id`, `reason`
 and `manager_id` optional and every old row still replays. The missing pair is refused here instead,
 which runs for a new record only: the service resolves a replay before it asks this rule.
 """
 
+from collections.abc import Mapping
 from typing import Any
 
 from shift.domain.effects import CashOperation, cash_delta
@@ -45,6 +52,23 @@ ABOVE_CAP_WITHOUT_MANAGER = "برداشت بالای سقف بدون تأیید 
 MANAGER_AT_OR_BELOW_CAP = "برداشت تا سقف نیازی به تأیید مدیر ندارد."
 
 
+def is_above_cap(amount: int, already_withdrawn: int, cap: int) -> bool:
+    """Whether one withdrawal takes the shift's running total over the box's cap (ADR-019).
+
+    The owner decided the cap counts the shift's withdrawals together, not each record alone, so four
+    small withdrawals cannot empty the box without a manager. A withdrawal counted here is one this
+    shift already recorded, by **its own occurred shift**: an offline queue crossing midnight still
+    counts against the shift it happened in. The projection effect stays immediate either way, because
+    the cash really left the box and waiting for an approval would create a false gap.
+    """
+    return already_withdrawn + amount > cap
+
+
+def is_above_cap_payload(payload: Mapping[str, Any]) -> bool:
+    """Whether a stored withdrawal was recorded above the cap, which is why it names a manager."""
+    return payload.get("manager_id") is not None
+
+
 def validate(payload: CashWithdrawn, context: ShiftEventContext) -> None:
     """Refuse a withdrawal the clinic cannot stand behind, before anything is appended."""
     if payload.recipient_id is None or payload.reason is None:
@@ -53,7 +77,7 @@ def validate(payload: CashWithdrawn, context: ShiftEventContext) -> None:
         raise ShiftEventError(UNKNOWN_RECIPIENT)
     if payload.amount <= 0:
         raise ShiftEventError(NOT_POSITIVE)
-    if payload.amount > context.withdrawal_cap:
+    if is_above_cap(payload.amount, context.withdrawn_in_shift(), context.withdrawal_cap):
         approver = None if payload.manager_id is None else context.staff_roles(payload.manager_id)
         if approver is None or Role.MANAGER.value not in approver:
             raise ShiftEventError(ABOVE_CAP_WITHOUT_MANAGER)
@@ -83,6 +107,11 @@ KIND = KindSpec(
     sample=sample,
     summarize=summarize,
     validate=validate,
+    confirmer_field="recipient_id",
+    # An above-cap withdrawal is decided by the manager afterwards, from their own session; the
+    # record already moved the box (ADR-019). A below-cap one names no manager and waits for nobody.
+    approvable_by=(Role.MANAGER,),
+    manager_only_when=is_above_cap_payload,
     card_fields=("amount", "recipient_id", "reason"),
 )
 

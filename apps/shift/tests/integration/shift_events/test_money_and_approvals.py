@@ -1,11 +1,10 @@
 """The money kinds and the decision events that close them (S01 §3: E-01, E-02, E-03, E-12).
 
 Money is the one group where a quiet bug costs the clinic: a reported transfer the accountant never
-sees, a refund approved by someone the owner did not name, a decision written twice or in the wrong
-shift, a discount taken off a campaign that is not running. Each case here runs through the real
-`ShiftEventService` on a migrated synthetic database, so the kind rule, the permission, the approval
-gate and the projection are exercised together. Nothing reads a production database and every value
-is invented (ADR-006).
+sees, a refund approved by someone the owner did not name, a decision written twice, a discount taken
+off a campaign that is not running. Each case here runs through the real `ShiftEventService` on a
+migrated synthetic database, so the kind rule, the permission, the approval gate and the projection
+are exercised together. Nothing reads a production database and every value is invented (ADR-006).
 """
 
 from datetime import date, timedelta
@@ -80,15 +79,20 @@ def _record(
     ref_event_id: str | None = None,
     shift: ShiftKey = SHIFT,
 ) -> SubmissionResult:
-    """One phone submission; `key` is the outbox idempotency key a replay carries again."""
+    """One phone submission; `key` is the outbox idempotency key a replay carries again.
+
+    The occurred instant belongs to the shift the submission is made in: the server attributes a
+    record by when it happened (F5), so a decision taken in the next shift carries that shift's clock.
+    """
+    occurred = inside_shift(shift.work_date, shift.rank)
     return service.record(
         EventSubmission(
             type=event_type,
             payload=payload,
             actor_id=actor.staff_id,
             device_id=actor.device_id,
-            client_at=CLIENT_AT,
-            client_event_id=new_ulid(CLIENT_AT),
+            client_at=occurred,
+            client_event_id=new_ulid(occurred),
             idempotency_key=key,
             shift_id=shift.text,
             ref_event_id=ref_event_id,
@@ -139,12 +143,14 @@ def test_a_card_transfer_is_one_pending_record_for_the_accountant(database: Data
     assert (replay.seq, replay.event_id) == (first.seq, first.event_id)
     assert [event.payload for event in _events(database, "card.transfer_reported")] == [transfer]
 
-    pending = {entry.event_id: entry for entry in service.pending_for(_principal(Role.ACCOUNTANT), SHIFT)}
+    pending = {entry.event_id: entry for entry in service.pending_for(_principal(Role.ACCOUNTANT))}
     assert list(pending) == [first.event_id]
     assert (pending[first.event_id].code, pending[first.event_id].label_fa) == ("ک", "کارت‌به‌کارت")
     assert pending[first.event_id].summary == transfer
-    assert service.pending_for(reception, SHIFT) == [], "the phone that reported it holds no approval right"
-    assert service.pending_for(_principal(Role.MANAGER), SHIFT) == [], "only the accountant decides a transfer"
+    assert service.pending_for(reception) == [], "the phone that reported it holds no approval right"
+    assert [entry.event_id for entry in service.pending_for(_principal(Role.MANAGER))] == [first.event_id], (
+        "the manager may always decide an open record"
+    )
     assert _cash(database) == cash_before, "E-01: proj_cash is identical before and after the report"
 
 
@@ -159,13 +165,13 @@ def test_the_accountant_decides_a_card_transfer_once(database: Database) -> None
     with pytest.raises(ShiftEventRuleError):
         _record(
             service,
-            _principal(Role.MANAGER),
+            _principal(Role.STOREKEEPER),
             "event.approved",
             {"note": "تأیید شد"},
-            key="manager-approval",
+            key="storekeeper-approval",
             ref_event_id=transfer.event_id,
         )
-    assert _events(database, "event.approved") == [], "a manager holds the permission, not this approval right"
+    assert _events(database, "event.approved") == [], "a storekeeper decides stock, not a transfer"
 
     approval = _record(
         service,
@@ -182,7 +188,7 @@ def test_the_accountant_decides_a_card_transfer_once(database: Database) -> None
         (transfer.event_id, accountant.staff_id, {"note": "تأیید شد"})
     ]
     assert summary_for(kind_for(decisions[0].type), decisions[0].payload) == {"note": "تأیید شد"}
-    assert service.pending_for(accountant, SHIFT) == [], "a decided record leaves the accountant's list"
+    assert service.pending_for(accountant) == [], "a decided record leaves the accountant's list"
 
     with pytest.raises(ShiftEventRuleError):
         _record(
@@ -231,8 +237,10 @@ def test_the_person_who_reported_a_transfer_never_approves_it(database: Database
     assert other.created, "the record stays decidable by another accountant"
 
 
-def test_a_decision_is_recorded_only_in_the_shift_that_holds_the_record(database: Database) -> None:
+def test_an_undecided_report_is_still_decided_in_the_next_shift(database: Database) -> None:
+    """F2: the accountant who arrives later closes the transfer the earlier shift reported."""
     service = _service(database)
+    accountant = _principal(Role.ACCOUNTANT)
     transfer = _record(
         service,
         _principal(Role.RECEPTION),
@@ -241,19 +249,30 @@ def test_a_decision_is_recorded_only_in_the_shift_that_holds_the_record(database
         key="card-1",
     )
 
+    late = _record(
+        service,
+        accountant,
+        "event.approved",
+        {"note": "تأیید شد"},
+        key="late-approval",
+        ref_event_id=transfer.event_id,
+        shift=NEXT_SHIFT,
+    )
+
+    assert late.created
+    assert [(event.ref_event_id, event.shift_id) for event in _events(database, "event.approved", NEXT_SHIFT)] == [
+        (transfer.event_id, NEXT_SHIFT.text)
+    ]
     with pytest.raises(ShiftEventRuleError):
         _record(
             service,
-            _principal(Role.ACCOUNTANT),
-            "event.approved",
-            {"note": "تأیید شد"},
-            key="late-approval",
+            accountant,
+            "event.rejected",
+            {"note": "رد شد"},
+            key="second-decision",
             ref_event_id=transfer.event_id,
             shift=NEXT_SHIFT,
         )
-
-    assert _events(database, "event.approved") == []
-    assert _events(database, "event.approved", shift=NEXT_SHIFT) == []
 
 
 # --- «ب» refund: the doctor or the manager, never the accountant (E-02) ---------------------------
@@ -278,8 +297,8 @@ def test_a_refund_waits_for_the_shift_doctor_or_the_manager(database: Database) 
         key="refund-2",
     )
 
-    assert {entry.event_id for entry in service.pending_for(doctor, SHIFT)} == {first.event_id, second.event_id}
-    assert service.pending_for(_principal(Role.ACCOUNTANT), SHIFT) == [], "the accountant approves money, not refunds"
+    assert {entry.event_id for entry in service.pending_for(doctor)} == {first.event_id, second.event_id}
+    assert service.pending_for(_principal(Role.ACCOUNTANT)) == [], "the accountant approves money, not refunds"
 
     with pytest.raises(ShiftEventRuleError):
         _record(
@@ -303,7 +322,7 @@ def test_a_refund_waits_for_the_shift_doctor_or_the_manager(database: Database) 
         ref_event_id=second.event_id,
     ).created
     assert {event.ref_event_id for event in _events(database, "event.approved")} == {first.event_id, second.event_id}
-    assert service.pending_for(doctor, SHIFT) == []
+    assert service.pending_for(doctor) == []
 
 
 # --- «ت» campaign discount: only a campaign running on this work day (E-03) ------------------------
@@ -352,6 +371,41 @@ def _campaign(campaigns: CampaignService, campaign_id: str, *, starts_on: date, 
 
 
 # --- the kinds' own payload rules -----------------------------------------------------------------
+
+
+def test_the_manager_may_decide_any_open_record_but_never_their_own(database: Database) -> None:
+    """Master decision: the manager answers for any open record — except the one they recorded."""
+    service = _service(database)
+    manager = _principal(Role.MANAGER)
+    transfer = _record(
+        service,
+        _principal(Role.RECEPTION),
+        "card.transfer_reported",
+        {"amount": 70_000, "admission_no": "A-1010"},
+        key="card-10",
+    )
+
+    assert [entry.event_id for entry in service.pending_for(manager)] == [transfer.event_id]
+    approval = _record(
+        service,
+        manager,
+        "event.approved",
+        {"note": "تأیید مدیر"},
+        key="manager-approval",
+        ref_event_id=transfer.event_id,
+    )
+    assert approval.created
+    assert service.pending_for(_principal(Role.ACCOUNTANT)) == []
+
+    own = _record(
+        service,
+        manager,
+        "refund.requested",
+        {"admission_no": "A-1011", "reason": "اشتباه در ثبت پذیرش."},
+        key="own-refund",
+    )
+    with pytest.raises(ShiftEventRuleError, match="ثبت‌کننده"):
+        _record(service, manager, "event.approved", {}, key="self-approval", ref_event_id=own.event_id)
 
 
 def test_a_zero_transfer_a_blank_reason_and_an_empty_admission_write_nothing(database: Database) -> None:

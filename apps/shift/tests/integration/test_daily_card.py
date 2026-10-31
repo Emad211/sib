@@ -522,7 +522,7 @@ def test_shift_events_read_every_kind_with_its_status_and_its_names(
         ("equipment.fault_reported", "fixed"),
         ("cleaning.confirmed", "recorded"),
         ("vitals.recorded", "recorded"),
-        ("stock.shelf_restocked", "recorded"),
+        ("stock.shelf_restocked", "pending"),
         ("card.transfer_reported", "approved"),
         ("card.transfer_reported", "pending"),
     ]
@@ -560,7 +560,7 @@ def test_shift_events_read_every_kind_with_its_status_and_its_names(
 def test_open_events_hold_a_forgotten_fault_and_a_waiting_approval(
     service: DailyCardService, synthetic_day: None
 ) -> None:
-    """Open means still waiting: a three-day-old fault and an undecided transfer, oldest first."""
+    """Open means still waiting: a three-day-old fault, an undecided transfer, an unconfirmed entry."""
     card = service.regenerate(CARD_DAY)
     assert card is not None
 
@@ -568,14 +568,17 @@ def test_open_events_hold_a_forgotten_fault_and_a_waiting_approval(
         ("equipment.fault_reported", "reported"),
         ("equipment.fault_reported", "assigned"),
         ("card.transfer_reported", "pending"),
+        ("stock.shelf_restocked", "pending"),
     ]
-    # Whole hours to the build moment: three days plus the morning, and the same night's transfer.
-    assert [entry.age_hours for entry in card.open_events] == [93, 92, 21]
+    # Whole hours to the build moment: three days plus the morning, the same night's transfer, and the
+    # mid-shift entry the storekeeper or the reception has not confirmed yet.
+    assert [entry.age_hours for entry in card.open_events] == [93, 92, 21, 20]
     assert all(entry.age_hours >= 72 for entry in card.open_events[:2]), "the forgotten fault shows its age"
     assert card.open_events[0].row.summary["device"] == OLD_FAULT_DEVICE
     assert card.open_events[0].row.at_tehran == tehran_iso(_opened_earlier(10, 0))
     assert card.open_events[1].row.summary["device"] == ASSIGNED_FAULT_DEVICE
     assert card.open_events[2].row.at_tehran == tehran_iso(_monday(9, 40))
+    assert card.open_events[3].row.at_tehran == tehran_iso(_monday(11, 0))
     # A fixed fault, an approved transfer and a merely recorded event are waiting on nobody.
     open_times = {entry.row.at_tehran for entry in card.open_events}
     assert tehran_iso(_monday(13, 0)) not in open_times
@@ -597,12 +600,15 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
     # Stored as canonical JSON, so the keys arrive sorted and the same day always stores the same text.
     assert set(document["sections"]) == {
         "emergency_starts",
+        "over_cap_withdrawals",
         "cash_exceptions",
         "discrepancies",
         "flows",
         "open_flows",
         "shift_events",
         "open_events",
+        "late_cash",
+        "held_events",
     }
     assert document["card_date"] == "2026-10-27"
     assert document["generated_at"] == "2026-10-27T04:01:00+00:00"
@@ -625,14 +631,14 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
     assert str(ITEM_REFERENCE) not in stored
 
 
-def test_a_schema_2_card_reads_with_empty_shift_events_and_a_new_card_writes_schema_3(
+def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_current_schema(
     service: DailyCardService, database: Database, synthetic_day: None
 ) -> None:
     """The two new sections are additive: a card stored before them still opens, just without them."""
     card = service.regenerate(CARD_DAY)
     assert card is not None
     document = json.loads(_stored_payload(database, CARD_DAY))
-    assert document["schema"] == CARD_SCHEMA_VERSION == 3
+    assert document["schema"] == CARD_SCHEMA_VERSION == 4
 
     legacy = {
         "schema": 2,
@@ -640,7 +646,10 @@ def test_a_schema_2_card_reads_with_empty_shift_events_and_a_new_card_writes_sch
         "covered_from": document["covered_from"],
         "covered_to": document["covered_to"],
         "generated_at": document["generated_at"],
-        "sections": {name: document["sections"][name] for name in SECTION_NAMES[:5]},
+        "sections": {
+            name: document["sections"][name]
+            for name in ("emergency_starts", "cash_exceptions", "discrepancies", "flows", "open_flows")
+        },
     }
     with database.write() as connection:
         card_repo.upsert(
@@ -658,12 +667,12 @@ def test_a_schema_2_card_reads_with_empty_shift_events_and_a_new_card_writes_sch
 
     stored = service.get(CARD_DAY)
     assert stored is not None
-    assert stored.present_sections == SECTION_NAMES[:5]
+    assert stored.present_sections == ("emergency_starts", "cash_exceptions", "discrepancies", "flows", "open_flows")
     assert stored.shift_events == ()
     assert stored.open_events == ()
     assert stored.emergency_starts == card.emergency_starts
     # A document with a version this code does not know is not guessed at.
-    for schema in (1, 4):
+    for schema in (1, 5):
         with pytest.raises(ValueError):
             Card.from_payload({**legacy, "schema": schema})
 
@@ -747,3 +756,98 @@ def test_generate_due_stores_the_two_day_saturday_card_and_nothing_on_friday(
     assert [card.card_date for card in saturday] == [SATURDAY]
     assert (saturday[0].covered_from, saturday[0].covered_to, saturday[0].day_count) == (THURSDAY, FRIDAY, 2)
     assert service.get(SATURDAY) == saturday[0]
+
+
+def test_the_card_shows_above_cap_withdrawals_late_cash_and_held_records(
+    service: DailyCardService,
+    database: Database,
+    clock: FixedClock,
+    synthetic_day: None,
+) -> None:
+    """F1, F3/F4 and F5: the three money-and-offline flags the manager has to read first."""
+    store = EventStore(database, clock=clock)
+    shift = "2026-10-26#2"
+    _event(
+        store,
+        clock,
+        _monday(15, 10),
+        "cash.withdrawn",
+        shift_id=shift,
+        actor_id="staff-in",
+        payload={
+            "amount": 400_000,
+            "recipient_id": "staff-in",
+            "reason": "خرید فوری",
+            "manager_id": "manager-1",
+        },
+    )
+    _event(
+        store,
+        clock,
+        _monday(15, 20),
+        "handover.late_cash_recorded",
+        shift_id=shift,
+        actor_id="staff-in",
+        payload={
+            "handover_id": "ho-reception",
+            "amount": -50_000,
+            "occurred_at": "2026-10-26T07:00:00+00:00",
+        },
+    )
+    held_id = _event(
+        store,
+        clock,
+        _monday(15, 30),
+        "event.held",
+        shift_id=shift,
+        actor_id="staff-in",
+        payload={
+            "reason": "stale",
+            "type": "cash.withdrawn",
+            "event_id": "01J00000000000000000000000",
+            "occurred_at": "2026-10-20T09:00:00+00:00",
+            "payload": {"amount": 1_000},
+        },
+    )
+
+    card = service.regenerate(CARD_DAY)
+
+    assert card is not None
+    assert [(row.amount, row.manager.name) for row in card.over_cap_withdrawals] == [(400_000, "Dr. Hamid Tavakoli")]
+    assert card.over_cap_withdrawals[0].recipient.id == "staff-in"
+    assert [(row.handover_id, row.amount) for row in card.late_cash] == [("ho-reception", -50_000)]
+    assert isinstance(card.late_cash[0].explains_discrepancy, bool)
+    assert [(row.held_event_id, row.reason) for row in card.held_events] == [(held_id, "stale")]
+    assert "۷۲" in card.held_events[0].message
+
+    # The page renders the stored document, so a section this reader forgets is a section the manager
+    # never sees; the three money-and-offline sections must survive the round trip unchanged.
+    stored = Card.from_payload(card.to_payload())
+    assert stored.over_cap_withdrawals == card.over_cap_withdrawals
+    assert stored.late_cash == card.late_cash
+    assert stored.held_events == card.held_events
+    assert set(stored.present_sections) == set(SECTION_NAMES)
+
+
+def test_a_withdrawal_inside_a_handover_reaches_the_card_as_an_outflow(
+    service: DailyCardService,
+    database: Database,
+    clock: FixedClock,
+    synthetic_day: None,
+) -> None:
+    """F1: cash that left the box during a handover is flagged like a receipt, not shown as zero."""
+    audit = AuditService(database, clock=clock)
+    _audit(
+        audit,
+        clock,
+        _monday(15, 10),
+        "handover.cash_exception",
+        subject_id="ho-reception",
+        detail={"flow": "reception", "amount": 0, "outflow": 100_000},
+    )
+
+    card = service.regenerate(CARD_DAY)
+
+    assert card is not None
+    row = next(entry for entry in card.cash_exceptions if entry.handover_id == "ho-reception")
+    assert (row.amount, row.outflow) == (0, 100_000)

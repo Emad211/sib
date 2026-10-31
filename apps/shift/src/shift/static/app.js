@@ -175,6 +175,15 @@
 
         info.appendChild(title);
         info.appendChild(time);
+
+        if (item.status === "failed") {
+          // F6: a refused record must say why, in the server's own words, and offer a way out.
+          const reason = document.createElement("span");
+          reason.className = "outbox-item-reason";
+          reason.textContent = item.last_error || "سرور این رویداد را نپذیرفت.";
+          info.appendChild(reason);
+        }
+
         li.appendChild(info);
 
         const actions = document.createElement("div");
@@ -188,8 +197,17 @@
           retryBtn.textContent = "تلاش مجدد";
           retryBtn.onclick = () => window.ShiftOutbox.retryFailedItem(item.idempotency_key);
 
+          const dismissBtn = document.createElement("button");
+          dismissBtn.className = "btn btn-secondary btn-compact";
+          dismissBtn.textContent = "حذف";
+          dismissBtn.onclick = () => {
+            const sure = window.confirm("این رویداد از صف گوشی حذف شود؟ دیگر فرستاده نمی‌شود.");
+            if (sure) window.ShiftOutbox.dismissOutboxItem(item.idempotency_key);
+          };
+
           actions.appendChild(badge);
           actions.appendChild(retryBtn);
+          actions.appendChild(dismissBtn);
         } else {
           const badge = document.createElement("span");
           badge.className = "badge badge-queued";

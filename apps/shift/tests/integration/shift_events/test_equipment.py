@@ -135,7 +135,7 @@ def test_the_chain_records_three_notes_moves_nothing_and_never_pends(clinic: Dat
 
     reported = service.record(_submission(REPORTED, FAULT, reception), principal=reception, shift=SHIFT)
     # Assignment is the next step, not an approval: nothing waits for a manager's decision here.
-    assert service.pending_for(manager, SHIFT) == []
+    assert service.pending_for(manager) == []
 
     assigned = service.record(
         _submission(

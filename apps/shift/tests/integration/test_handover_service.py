@@ -534,14 +534,19 @@ def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
     assert _exceptions(database) == []
 
 
-def test_a_withdrawal_during_a_flow_is_carried_negatively_and_is_no_exception(
+def test_a_withdrawal_during_a_flow_is_carried_negatively_and_flagged_like_a_receipt(
     service: HandoverService,
     database: Database,
     store: EventStore,
     projections: ProjectionEngine,
     clock: FixedClock,
 ) -> None:
-    """H-11: the carry is symmetric. Only a receipt breaks the owner's rule; a withdrawal does not."""
+    """H-11: the carry is symmetric, and the owner's no-money-during-handover rule flags both signs.
+
+    The cash really left the box, so the withdrawal is accepted and stays on top of the agreed figure
+    as a negative carry; the manager still has to see that money moved during a handover, exactly as
+    for a receipt that landed inside the window.
+    """
     clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
     handover_id = _start(service, opening_cash=1_000_000).handover_id
     assert service.count(handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.INCOMING
@@ -557,7 +562,9 @@ def test_a_withdrawal_during_a_flow_is_carried_negatively_and_is_no_exception(
         assert projections_repo.cash_rows(connection) == [
             {"cash_box_id": "reception", "expected": 980_000, "counted": 1_000_000, "variance": 20_000}
         ]
-    assert _exceptions(database) == []
+    assert _exceptions(database) == [
+        {"subject_id": handover_id, "detail": {"flow": "reception", "amount": 0, "outflow": 20_000}}
+    ]
 
 
 def test_the_flow_log_refuses_a_skipped_step(service: HandoverService, database: Database, store: EventStore) -> None:

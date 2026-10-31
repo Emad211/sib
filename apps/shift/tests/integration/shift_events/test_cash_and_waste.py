@@ -299,14 +299,14 @@ def test_a_replayed_withdrawal_writes_once(bench: Bench) -> None:
 
 
 def test_a_confirmed_waste_is_recorded_and_lowers_the_shelf(bench: Bench) -> None:
-    """E-05: the item leaves the reference quantity, and the waste waits for no approval."""
+    """E-05: the item leaves the reference quantity at once; the second person closes it afterwards."""
     reception = _principal("reception")
 
     result = bench.record("stock.waste_reported", _waste(quantity=2), reception)
 
     assert result.created is True
     assert bench.quantity() == SHELF_QUANTITY - 2
-    assert bench.service.pending_for(_principal("storekeeper"), SHIFT) == []
+    assert bench.service.pending_for(_principal("storekeeper")) == [], "a waste waits for its named person"
     assert bench.event_types()[-1] == "stock.waste_reported"
 
 
@@ -381,7 +381,8 @@ def test_a_replayed_waste_writes_once(bench: Bench) -> None:
 def test_a_rebuild_reproduces_both_projections_including_the_old_rows(bench: Bench) -> None:
     """Every projection must be rebuildable, and an old row without the new fields must still replay."""
     reception = _principal("reception")
-    bench.record("cash.withdrawn", _withdrawal(amount=SEEDED_CAP), reception)
+    # The cap is the shift's running total (ADR-019): both withdrawals together stay just under it.
+    bench.record("cash.withdrawn", _withdrawal(amount=SEEDED_CAP - 100_000), reception)
     bench.record("stock.waste_reported", _waste(quantity=2), reception, key="phone-1:waste-2")
     bench.record("cash.withdrawn", _withdrawal(amount=50_000), reception, key="phone-1:withdrawal-2")
     # Rows stored before SHF-3 carry neither the recipient nor the confirmer; they are history and replay.
@@ -403,5 +404,5 @@ def test_a_rebuild_reproduces_both_projections_including_the_old_rows(bench: Ben
 
     assert report.drift == ()
     assert (bench.cash(), bench.quantity()) == live
-    assert live[0]["expected"] == OPENING_CASH - SEEDED_CAP - 50_000 - 25_000
+    assert live[0]["expected"] == OPENING_CASH - (SEEDED_CAP - 100_000) - 50_000 - 25_000
     assert live[1] == SHELF_QUANTITY - 3

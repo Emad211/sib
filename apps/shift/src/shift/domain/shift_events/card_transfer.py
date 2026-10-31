@@ -46,7 +46,6 @@ KIND = KindSpec(
     summarize=_summary,
     validate=_validate,
     approvable_by=(Role.ACCOUNTANT,),
-    requires_approval=True,
     card_fields=("amount", "admission_no"),
 )
 

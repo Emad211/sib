@@ -29,7 +29,7 @@ custody the baseline set, and refuses with a Persian message when neither exists
 
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
 
@@ -43,6 +43,7 @@ from shift.adapters.db.handover_repo import FlowRow
 from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.domain.cash_box import CashBox
+from shift.domain.cash_cutoff import CashMovement, signed_cash, windows
 from shift.domain.events import EventType
 from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
@@ -81,6 +82,18 @@ _COUNT_EVENTS = frozenset(
         _JOINT_EVENT,
     }
 )
+# Every kind whose effect takes money into or out of the reception box; the settle divides them by
+# the side of its own cutoff they occurred on (H-11). The registry stays the authority for what an
+# event does — `signed_money` reads the effect rather than a second hand-written table.
+_MONEY_TYPES = (
+    EventType.CASH_WITHDRAWN.value,
+    EventType.CASH_DEPOSITED.value,
+    EventType.ACC_CASH_RECEIPT.value,
+    EventType.ACC_CASH_REVERSAL.value,
+)
+_CASH_SETTLED = EventType.HANDOVER_COUNT_SETTLED.value
+_ADJUSTED = EventType.HANDOVER_CASH_REFERENCE_ADJUSTED.value
+_LATE_CASH = EventType.HANDOVER_LATE_CASH_RECORDED.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +152,7 @@ class _Carry:
 
     amount: int
     receipts: int
+    outflow: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +165,10 @@ class _Flow:
     cash: CashCount | None
     items: Mapping[tuple[str, str], ItemCount]
     emergency_at: datetime | None
+    # Where in the log this flow starts, so "appended after the flow began" is a sequence question
+    # and never a clock one (H-11), and how far its cash reference has already been adjusted.
+    start_seq: int = 0
+    adjustment: int = 0
 
 
 class HandoverService:
@@ -345,7 +363,7 @@ class HandoverService:
 
     def count(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """Take one blind count and answer with a status only; the reference stays here (R-02)."""
-        flow = self._live(handover_id)
+        flow, events = self._cash_reference_ready(self._live(handover_id), target)
         chain = self._current(flow, target)
         if chain.status is CountStatus.JOINT:
             raise HandoverError("the joint count is recorded through `joint`")
@@ -353,9 +371,7 @@ class HandoverService:
             raise HandoverError("this target is already settled")
         event_type = _count_event(chain.status, target)
         new_chain, status = chain.count(counted)
-        events: list[tuple[str, Mapping[str, Any]]] = [
-            (event_type, _count_payload(target, counted)),
-        ]
+        events.append((event_type, _count_payload(target, counted)))
         if status in _PENDING:
             events.append((EventType.HANDOVER_RECOUNT_REQUESTED.value, _target_payload(target)))
         carry = self._settlement_carry(flow, target, new_chain)
@@ -371,14 +387,12 @@ class HandoverService:
 
     def joint(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """The figure both people counted together; it settles the chain (H-05, H-13)."""
-        flow = self._live(handover_id)
+        flow, events = self._cash_reference_ready(self._live(handover_id), target)
         chain = self._current(flow, target)
         if chain.status is not CountStatus.JOINT:
             raise HandoverError("this target has no joint count to record")
         new_chain, status = chain.count(counted)
-        events: list[tuple[str, Mapping[str, Any]]] = [
-            (_JOINT_EVENT, {**_target_payload(target), "counted": counted}),
-        ]
+        events.append((_JOINT_EVENT, {**_target_payload(target), "counted": counted}))
         carry = self._settlement_carry(flow, target, new_chain)
         events += _settlement(target, new_chain, basis="joint", carry=0 if carry is None else carry.amount)
         self._append(flow.row, caller, events)
@@ -517,45 +531,107 @@ class HandoverService:
     def _settlement_carry(self, flow: _Flow, target: CountTarget, chain: ItemCount | CashCount) -> _Carry | None:
         """The cash a settling chain must keep on top of its figure, or None when nothing settles.
 
-        The frozen reference is what the box held when the flow started (H-11), so what the box
-        holds beyond it is exactly the cash recorded during the flow: the next shift's money, which
-        the agreed figure must not swallow. A receipt stamped inside the flow's own window cannot
-        happen in the owner's sequence and is summed for the manager.
+        The carry is the signed net of the money that **occurred after** the flow's cutoff — a
+        receipt puts money on top of the agreed figure, a withdrawal or a deposit takes money off it
+        — because that is the next shift's money: the incoming person takes nothing during the
+        handover (H-11). What occurred **before** the cutoff is already inside the counted figure,
+        so it is never subtracted a second time here; it moved the reference instead.
+
+        A receipt stamped inside the flow's own window cannot happen in the owner's sequence and is
+        summed for the manager, and a withdrawal inside it is reported the same way: the cash really
+        moved, so it is accepted and flagged rather than refused.
         """
         if not chain.settled:
             return None
         if target.scope != _CASH or flow.references.cash is None:
             return _Carry(amount=0, receipts=0)
-        reference = flow.references.cash
+        movements = self._money_movements(flow.start_seq)
+        split = windows(movements, flow.row.opened_at)
         with self._database.read() as connection:
-            box = next(
-                (
-                    row
-                    for row in projections_repo.cash_rows(connection)
-                    if row["cash_box_id"] == CashBox.RECEPTION.value
-                ),
-                None,
-            )
             receipts = handover_repo.cash_receipt_total(
                 connection, after=flow.row.opened_at, until=self._clock.now_utc()
             )
-        live = reference if box is None else int(box["expected"])
-        return _Carry(amount=live - reference, receipts=receipts)
+        return _Carry(amount=split.carry, receipts=receipts, outflow=split.outflow)
+
+    def _cash_reference_ready(
+        self, flow: _Flow, target: CountTarget
+    ) -> tuple[_Flow, list[tuple[str, Mapping[str, Any]]]]:
+        """Move the flow's cash reference to where its own log says it now is (H-11).
+
+        A cash event that occurred before this flow's cutoff but arrived while it was being counted
+        belongs inside the counted figure: the frozen reference gains its delta before the
+        comparison, and the flow writes that delta into its own log so a rebuild replays exactly the
+        comparison the two people saw. Only then can `expected = counted + carry` be honest.
+        """
+        if target.scope != _CASH or flow.references.cash is None:
+            return flow, []
+        delta = self._pending_adjustment(flow)
+        if not delta:
+            return flow, []
+        reference = flow.cash.reference if flow.cash is not None else flow.references.cash
+        adjusted = replace(flow.cash or CashCount(reference, flow.handover.culprit_id), reference=reference + delta)
+        return replace(flow, cash=adjusted, adjustment=flow.adjustment + delta), [(_ADJUSTED, {"delta": delta})]
+
+    def _pending_adjustment(self, flow: _Flow) -> int:
+        """How far the reference still has to move for the pre-cutoff money that arrived late.
+
+        Only money this flow's own cutoff owns may move it. A record that belongs to an earlier flow —
+        money that flow already saw, and whose late-cash reversal put its box back — must never move
+        the next flow's reference: that would count one movement twice and invent a gap against the
+        outgoing person (H-11).
+        """
+        movements = [movement for movement in self._money_movements(flow.start_seq) if self._belongs_to(flow, movement)]
+        split = windows(movements, flow.row.opened_at)
+        return split.before_cutoff - flow.adjustment
+
+    def _belongs_to(self, flow: _Flow, movement: CashMovement) -> bool:
+        """Whether one money movement's own cutoff is this flow's, and no late-cash record owns it."""
+        with self._database.read() as connection:
+            row = handover_repo.first_flow_at_or_after(connection, movement.occurred_at, HandoverFlow.RECEPTION)
+            if row is None or row.handover_id != flow.row.handover_id:
+                return False
+            late = events_repo.count_ref(connection, movement.event_id, (EventType.HANDOVER_LATE_CASH_RECORDED.value,))
+        return not late
+
+    def _money_movements(self, after_seq: int) -> list[CashMovement]:
+        """Every money event appended after a flow started, with when it occurred and what it moved."""
+        with self._database.read() as connection:
+            records = events_repo.money_movements_after(connection, after_seq, _MONEY_TYPES)
+        movements: list[CashMovement] = []
+        for record in records:
+            amount = signed_cash(record.type, record.payload, record.shift_id)
+            if amount:
+                movements.append(
+                    CashMovement(
+                        seq=record.seq,
+                        event_id=record.event_id,
+                        occurred_at=parse_iso(record.client_at),
+                        amount=amount,
+                    )
+                )
+        return movements
 
     def _report_carry(self, flow: _Flow, caller: Caller, carry: _Carry | None) -> None:
         """Tell the manager, through the audit trail only, that a receipt landed inside a flow.
 
         The audit trail is the one sink allowed to carry a number (R-02, ADR-011): no response, no
-        response header, no `logs/shift.log` line and no client-visible event ever carries it.
+        response header, no `logs/shift.log` line and no client-visible event ever carries it. A
+        withdrawal inside the window is flagged the same way: the cash really moved, so the record
+        is accepted and the manager is told instead of the operation being refused.
         """
-        if carry is None or not carry.receipts:
+        if carry is None:
+            return
+        detail: dict[str, Any] = {"flow": flow.row.flow.value, "amount": carry.receipts}
+        if carry.outflow:
+            detail["outflow"] = carry.outflow
+        if not carry.receipts and not carry.outflow:
             return
         self._audit.record(
             AuditEntry(
                 actor_id=caller.actor_id,
                 action=EXCEPTION_ACTION,
                 subject_id=flow.row.handover_id,
-                detail={"flow": flow.row.flow.value, "amount": carry.receipts},
+                detail=detail,
             )
         )
 
@@ -654,12 +730,19 @@ class HandoverService:
         items: dict[tuple[str, str], ItemCount] = {}
         cash: CashCount | None = None
         emergency_at: datetime | None = None
+        start_seq = 0
+        adjustment = 0
         for event in events_repo.iter_handover_events(connection, row.handover_id):
+            if start_seq == 0 and event.type == EventType.HANDOVER_STARTED.value:
+                # The freeze point: money appended after this row is what the settle has to place.
+                start_seq = event.seq
+            if event.type == _ADJUSTED:
+                adjustment += int(event.payload["delta"])
             handover, cash, items = _replay(event, handover, cash, items, references)
             if event.type == EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value:
                 # H-08 records who confirmed the emergency start and when; the when is its server stamp.
                 emergency_at = parse_iso(event.server_at)
-        return _Flow(row, handover, references, cash, items, emergency_at)
+        return _Flow(row, handover, references, cash, items, emergency_at, start_seq, adjustment)
 
     def _references_of(self, handover_id: str) -> _References:
         """Read the references frozen at `start` back from the audit trail (R-02 allows them nowhere else)."""
@@ -802,6 +885,11 @@ def _replay(
         return handover.confirm_emergency_start(payload["manager_id"]), cash, items
     if event.type == EventType.HANDOVER_SIGNED.value:
         return handover.sign(Signer(payload["signer"])), cash, items
+    if event.type == EventType.HANDOVER_CASH_REFERENCE_ADJUSTED.value:
+        if references.cash is None:
+            raise HandoverError("a cash reference moved in a flow that hands over no cash")
+        chain = cash if cash is not None else CashCount(references.cash, handover.culprit_id)
+        return handover, replace(chain, reference=chain.reference + int(payload["delta"])), items
     if event.type not in _COUNT_EVENTS:
         return handover, cash, items  # notes, recount requests, settlements and discrepancies
     key, counted = _counted_target(event)

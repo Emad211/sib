@@ -19,6 +19,7 @@ carry the flows. Every value is synthetic: staff from `tests/data/auth_fixtures.
 import threading
 import time
 from collections.abc import Callable, Generator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from seed_reference_data import seed as seed_catalog
 from shift.adapters.db import events_repo
 from shift.adapters.db.core import Database
 from shift.app import create_app
+from shift.common.clock import TEHRAN
 from shift.common.ids import new_ulid
 from shift.config.settings import Settings
 
@@ -179,7 +181,8 @@ def _receipt_for(base_url: str) -> str:
                 "payload": {"amount": TRANSFER_AMOUNT, "admission_no": ADMISSION_NO},
                 "client_event_id": client_event_id,
                 "idempotency_key": client_event_id,
-                "client_at": "2026-10-28T09:15:00+03:30",
+                # The phone stamps its own instant; a fixed date would be an old queue by now (F5).
+                "client_at": datetime.now(tz=TEHRAN).isoformat(),
             },
             headers={"X-CSRFToken": signed_in.json()["csrf_token"]},
         )

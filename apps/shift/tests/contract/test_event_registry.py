@@ -24,6 +24,10 @@ EXPECTED_EFFECTS = {
     EventType.HANDOVER_SIGNED: ((), None),
     EventType.HANDOVER_EARLY_LEAVE_REPORTED: ((), None),
     EventType.HANDOVER_EMERGENCY_START_CONFIRMED: ((), None),
+    # H-11's two internal records: the adjustment explains a moved cash reference, and the late-cash
+    # notice cancels the movement it explains (its sample is a withdrawal, so the effect is an ADD).
+    EventType.HANDOVER_CASH_REFERENCE_ADJUSTED: ((), None),
+    EventType.HANDOVER_LATE_CASH_RECORDED: ((), CashOperation.ADD),
     EventType.DISCREPANCY_RECORDED: ((), None),
     EventType.CASH_WITHDRAWN: ((), CashOperation.SUBTRACT),
     EventType.CASH_DEPOSITED: ((), CashOperation.SUBTRACT),
@@ -46,6 +50,10 @@ EXPECTED_EFFECTS = {
     EventType.VITALS_FOLLOWUP_OPENED: ((), None),
     EventType.CLEANING_CONFIRMED: ((), None),
     EventType.EVENT_APPROVED: ((), None),
+    # F5's held-record records: keeping, releasing and refusing a record change no projection.
+    EventType.EVENT_HELD: ((), None),
+    EventType.EVENT_RELEASED: ((), None),
+    EventType.EVENT_HOLD_REJECTED: ((), None),
     EventType.EVENT_REJECTED: ((), None),
 }
 
@@ -239,6 +247,8 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.HANDOVER_SIGNED,
         EventType.HANDOVER_EARLY_LEAVE_REPORTED,
         EventType.HANDOVER_EMERGENCY_START_CONFIRMED,
+        EventType.HANDOVER_CASH_REFERENCE_ADJUSTED,
+        EventType.HANDOVER_LATE_CASH_RECORDED,
         EventType.DISCREPANCY_RECORDED,
         EventType.CASH_WITHDRAWN,
         EventType.CASH_DEPOSITED,
@@ -260,6 +270,9 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.CLEANING_CONFIRMED,
         EventType.EVENT_APPROVED,
         EventType.EVENT_REJECTED,
+        EventType.EVENT_HELD,
+        EventType.EVENT_RELEASED,
+        EventType.EVENT_HOLD_REJECTED,
     }
 
 

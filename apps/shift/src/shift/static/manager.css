@@ -261,3 +261,11 @@
     font-size: 1.25rem;
   }
 }
+
+/* F5: the two decisions on a held record sit side by side under its reason. */
+.mg-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}

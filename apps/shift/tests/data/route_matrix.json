@@ -182,7 +182,21 @@
    "storekeeper": 404
   }
  },
- "GET /api/v1/settings [list_settings]": {
+ "GET /api/v1/manager/held-events [list_held]": {
+  "guard": "permission:daily_card.view",
+  "note": "F5: the manager's held records; the manager releases or rejects each one on the card",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ }, "GET /api/v1/settings [list_settings]": {
   "guard": "permission:settings.change",
   "roles": {
    "accountant": 403,
@@ -211,15 +225,16 @@
   }
  },
  "GET /api/v1/shift-events/pending [get_pending_events]": {
-  "guard": "permission:shift_event.approve",
+  "guard": "permission:events.append",
+  "note": "my open items: any phone that may append asks, because the named confirmer of a record may be a nurse or a receptionist; the service returns only the records this person may decide (R-01, R-07)",
   "roles": {
    "accountant": 200,
    "anon": 401,
    "manager": 200,
    "multi_role": 200,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
    "shift_doctor": 200,
    "storekeeper": 200
   }
@@ -637,7 +652,34 @@
    "storekeeper": 403
   }
  },
- "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
+ "POST /api/v1/manager/held-events/{held_event_id}/release [release_held]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/held-events/{held_event_id}/reject [reject_held]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ }, "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
   "guard": "permission:staff.pin.reset",
   "roles": {
    "accountant": 403,

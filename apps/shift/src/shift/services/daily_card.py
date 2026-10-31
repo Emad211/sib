@@ -22,6 +22,7 @@ fault or an undecided approval — whatever day it was opened on, oldest first. 
 never a row of its own; it only decides the status of the event it references.
 """
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -36,6 +37,7 @@ from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_teh
 from shift.common.hashing import canonical_json
 from shift.domain.daily_card import CARD_SCHEMA_VERSION, CardWindow, due_card_days, window_for
 from shift.domain.events import EventType
+from shift.domain.occurred_time import HELD_MESSAGES
 from shift.domain.shift_events import (
     APPROVED,
     DECISION_TYPES,
@@ -47,6 +49,7 @@ from shift.domain.shift_events import (
 )
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.handover import EXCEPTION_ACTION
+from shift.services.shift_events import waits_for_decision
 
 # The background runtime produces the cards, exactly as it produces the snapshots; runtime.RUNTIME_ACTOR
 # is the same name, and the card service does not import the asyncio runtime for one string.
@@ -61,6 +64,12 @@ _FAULT_REPORTED = EventType.EQUIPMENT_FAULT_REPORTED.value
 _FAULT_ASSIGNED = EventType.EQUIPMENT_FAULT_ASSIGNED.value
 _FAULT_FIXED = EventType.EQUIPMENT_FAULT_FIXED.value
 _SECONDS_PER_HOUR = 3600
+# F3/F4, F1 and F5: the money and offline records the manager has to see first.
+_WITHDRAWN = EventType.CASH_WITHDRAWN.value
+_LATE_CASH = EventType.HANDOVER_LATE_CASH_RECORDED.value
+_HELD = EventType.EVENT_HELD.value
+_RELEASED = EventType.EVENT_RELEASED.value
+_HOLD_REJECTED = EventType.EVENT_HOLD_REJECTED.value
 
 # The status a shift-event row carries on the card; `open_events` keeps the three that still wait.
 STATUS_PENDING = "pending"
@@ -76,14 +85,17 @@ OPEN_STATUSES = frozenset({STATUS_PENDING, STATUS_REPORTED, STATUS_ASSIGNED})
 # a section simply does not carry it, and the page then does not render it (schema 2 has five).
 SECTION_NAMES = (
     "emergency_starts",
+    "over_cap_withdrawals",
     "cash_exceptions",
     "discrepancies",
     "flows",
     "open_flows",
     "shift_events",
     "open_events",
+    "late_cash",
+    "held_events",
 )
-LEGACY_SCHEMA_VERSIONS = frozenset({2})
+LEGACY_SCHEMA_VERSIONS = frozenset({2, 3})
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +152,9 @@ class CashException:
     flow: str
     at_tehran: str
     amount: int
+    # Money that left the box inside the window, as a positive figure: a withdrawal during a
+    # handover is accepted and flagged exactly like a receipt, and the card must show it (F1).
+    outflow: int = 0
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -147,6 +162,7 @@ class CashException:
             "flow": self.flow,
             "at_tehran": self.at_tehran,
             "amount": self.amount,
+            "outflow": self.outflow,
         }
 
     @classmethod
@@ -156,6 +172,7 @@ class CashException:
             flow=str(payload["flow"]),
             at_tehran=str(payload["at_tehran"]),
             amount=int(payload["amount"]),
+            outflow=int(payload.get("outflow", 0)),
         )
 
 
@@ -339,6 +356,118 @@ class OpenEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class WithdrawalLine:
+    """A withdrawal above the cap: the owner wants every one of them impossible to miss.
+
+    The wizard asks for the manager's name only above the cap and refuses a manager name at or below
+    it, so a stored `manager_id` is the record's own proof that the cap was passed when it happened.
+    """
+
+    event_id: str
+    at_tehran: str
+    amount: int
+    reason: str
+    recipient: Person
+    manager: Person
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "at_tehran": self.at_tehran,
+            "amount": self.amount,
+            "reason": self.reason,
+            "recipient": self.recipient.to_payload(),
+            "manager": self.manager.to_payload(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "WithdrawalLine":
+        return cls(
+            event_id=str(payload["event_id"]),
+            at_tehran=str(payload["at_tehran"]),
+            amount=int(payload["amount"]),
+            reason=str(payload["reason"]),
+            recipient=Person.from_payload(payload["recipient"]),
+            manager=Person.from_payload(payload["manager"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LateCashLine:
+    """A cash record that happened before a flow's cutoff but arrived after it settled (H-11)."""
+
+    event_id: str
+    handover_id: str | None
+    amount: int
+    occurred_at_tehran: str
+    received_at_tehran: str
+    actor: Person
+    explains_discrepancy: bool
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "handover_id": self.handover_id,
+            "amount": self.amount,
+            "occurred_at_tehran": self.occurred_at_tehran,
+            "received_at_tehran": self.received_at_tehran,
+            "actor": self.actor.to_payload(),
+            "explains_discrepancy": self.explains_discrepancy,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "LateCashLine":
+        return cls(
+            event_id=str(payload["event_id"]),
+            handover_id=None if payload.get("handover_id") is None else str(payload["handover_id"]),
+            amount=int(payload["amount"]),
+            occurred_at_tehran=str(payload["occurred_at_tehran"]),
+            received_at_tehran=str(payload["received_at_tehran"]),
+            actor=Person.from_payload(payload["actor"]),
+            explains_discrepancy=bool(payload["explains_discrepancy"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class HeldLine:
+    """A record the server kept instead of applying: the manager releases it or keeps it out (F5)."""
+
+    held_event_id: str
+    event_id: str
+    label: str
+    reason: str
+    message: str
+    occurred_at_tehran: str
+    received_at_tehran: str
+    actor: Person
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "held_event_id": self.held_event_id,
+            "event_id": self.event_id,
+            "label": self.label,
+            "reason": self.reason,
+            "message": self.message,
+            "occurred_at_tehran": self.occurred_at_tehran,
+            "received_at_tehran": self.received_at_tehran,
+            "actor": self.actor.to_payload(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "HeldLine":
+        return cls(
+            held_event_id=str(payload["held_event_id"]),
+            event_id=str(payload["event_id"]),
+            label=str(payload["label"]),
+            reason=str(payload["reason"]),
+            message=str(payload["message"]),
+            occurred_at_tehran=str(payload["occurred_at_tehran"]),
+            received_at_tehran=str(payload["received_at_tehran"]),
+            actor=Person.from_payload(payload["actor"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Card:
     """One day's manager card: the window it covers, when it was built, and its seven sections.
 
@@ -359,6 +488,9 @@ class Card:
     open_flows: tuple[OpenFlow, ...] = ()
     shift_events: tuple[ShiftEventLine, ...] = ()
     open_events: tuple[OpenEvent, ...] = ()
+    over_cap_withdrawals: tuple[WithdrawalLine, ...] = ()
+    late_cash: tuple[LateCashLine, ...] = ()
+    held_events: tuple[HeldLine, ...] = ()
     present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
@@ -382,6 +514,9 @@ class Card:
                 "open_flows": [entry.to_payload() for entry in self.open_flows],
                 "shift_events": [entry.to_payload() for entry in self.shift_events],
                 "open_events": [entry.to_payload() for entry in self.open_events],
+                "over_cap_withdrawals": [entry.to_payload() for entry in self.over_cap_withdrawals],
+                "late_cash": [entry.to_payload() for entry in self.late_cash],
+                "held_events": [entry.to_payload() for entry in self.held_events],
             },
         }
 
@@ -404,6 +539,13 @@ class Card:
             open_flows=tuple(OpenFlow.from_payload(entry) for entry in sections["open_flows"]),
             shift_events=tuple(ShiftEventLine.from_payload(entry) for entry in sections.get("shift_events", ())),
             open_events=tuple(OpenEvent.from_payload(entry) for entry in sections.get("open_events", ())),
+            # The three money-and-offline sections are read back too: the page renders the stored
+            # document, so a section this reader forgets is a section the manager never sees.
+            over_cap_withdrawals=tuple(
+                WithdrawalLine.from_payload(entry) for entry in sections.get("over_cap_withdrawals", ())
+            ),
+            late_cash=tuple(LateCashLine.from_payload(entry) for entry in sections.get("late_cash", ())),
+            held_events=tuple(HeldLine.from_payload(entry) for entry in sections.get("held_events", ())),
             present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
@@ -438,6 +580,9 @@ class DailyCardService:
                 open_flows=_open_flows(connection, moment, names),
                 shift_events=_shift_events(connection, window, names, catalog, index),
                 open_events=_open_events(moment, names, catalog, index),
+                over_cap_withdrawals=_over_cap_withdrawals(connection, window, names),
+                late_cash=_late_cash(connection, window, names),
+                held_events=_held_events(connection, window, names),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -565,6 +710,7 @@ def _cash_exceptions(connection: Connection, window: CardWindow) -> tuple[CashEx
             flow=str(row.detail.get("flow", "")),
             at_tehran=row.at_tehran,
             amount=int(row.detail.get("amount", 0)),
+            outflow=int(row.detail.get("outflow", 0)),
         )
         for row in rows
     )
@@ -685,7 +831,9 @@ class _EventIndex:
         if kind.requires_approval:
             decision = self._decisions.get(event.event_id)
             if decision is None:
-                return STATUS_PENDING
+                # A record stored before the clinic asked for a second person has no decider at all:
+                # it is finished, not an open item nobody could ever close.
+                return STATUS_PENDING if waits_for_decision(kind, event) else STATUS_RECORDED
             return STATUS_APPROVED if decision == APPROVED else STATUS_REJECTED
         if event.type == _FAULT_REPORTED:
             if event.event_id in self._fixed:
@@ -776,3 +924,80 @@ def _summary_value(field_kind: FieldKind | None, value: Any, names: _Names, cata
         # The clinic's only multi field is the cleaning checklist, which ticks catalog items.
         return [_summary_value(FieldKind.ITEM, item, names, catalog) for item in value]
     return value
+
+
+def _over_cap_withdrawals(connection: Connection, window: CardWindow, names: _Names) -> tuple[WithdrawalLine, ...]:
+    """Every withdrawal that named a manager: only an above-cap one asks for that name (F3/F4).
+
+    The wizard asks for the manager's name above the cap and refuses it at or below the cap, so the
+    stored name is the record's own proof of which side of the cap it was on, whatever the setting says
+    today. The owner wants them impossible to miss, next to the emergency starts.
+    """
+    rows: list[WithdrawalLine] = []
+    for event in _window_events(connection, window, _WITHDRAWN):
+        manager_id = event.payload.get("manager_id")
+        if not manager_id:
+            continue
+        rows.append(
+            WithdrawalLine(
+                event_id=event.event_id,
+                at_tehran=event.at_tehran,
+                amount=int(event.payload["amount"]),
+                reason=str(event.payload.get("reason") or ""),
+                recipient=names.person(str(event.payload.get("recipient_id") or "")),
+                manager=names.person(str(manager_id)),
+            )
+        )
+    return tuple(rows)
+
+
+def _late_cash(connection: Connection, window: CardWindow, names: _Names) -> tuple[LateCashLine, ...]:
+    """A cash record that happened before a flow's cutoff but reached the server after it settled."""
+    rows: list[LateCashLine] = []
+    for event in _window_events(connection, window, _LATE_CASH):
+        handover_id = event.payload.get("handover_id")
+        rows.append(
+            LateCashLine(
+                event_id=event.event_id,
+                handover_id=None if handover_id is None else str(handover_id),
+                amount=int(event.payload["amount"]),
+                occurred_at_tehran=tehran_iso(parse_iso(str(event.payload["occurred_at"]))),
+                received_at_tehran=event.at_tehran,
+                actor=names.person(event.actor_id),
+                explains_discrepancy=(
+                    False if handover_id is None else _flow_has_cash_discrepancy(connection, str(handover_id))
+                ),
+            )
+        )
+    return tuple(rows)
+
+
+def _flow_has_cash_discrepancy(connection: Connection, handover_id: str) -> bool:
+    """Whether a flow settled its box on a gap — the gap a late record may explain (H-11)."""
+    rows = connection.exec_driver_sql(
+        "SELECT payload FROM events WHERE handover_id = ? AND type = ?", (handover_id, _DISCREPANCY)
+    ).mappings()
+    return any(json.loads(row["payload"]).get("scope") == "cash" for row in rows)
+
+
+def _held_events(connection: Connection, window: CardWindow, names: _Names) -> tuple[HeldLine, ...]:
+    """Every held record of the window no manager has released or rejected yet (F5)."""
+    rows: list[HeldLine] = []
+    for event in _window_events(connection, window, _HELD):
+        if events_repo.count_ref(connection, event.event_id, (_RELEASED, _HOLD_REJECTED)):
+            continue
+        payload = event.payload
+        kind = kind_for(str(payload.get("type") or ""))
+        rows.append(
+            HeldLine(
+                held_event_id=event.event_id,
+                event_id=str(payload["event_id"]),
+                label=kind.label_fa if kind is not None else "رویداد ناشناس",
+                reason=str(payload["reason"]),
+                message=HELD_MESSAGES.get(str(payload["reason"]), HELD_MESSAGES["stale"]),
+                occurred_at_tehran=tehran_iso(parse_iso(str(payload["occurred_at"]))),
+                received_at_tehran=event.at_tehran,
+                actor=names.person(event.actor_id),
+            )
+        )
+    return tuple(rows)

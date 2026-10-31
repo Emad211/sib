@@ -267,7 +267,7 @@ def test_the_storekeeper_confirms_an_emergency_withdrawal_afterwards(desk: Desk)
     """The shelf already dropped; the confirmation is the storekeeper's signature on it (H-01 `U`)."""
     recorded = _record(desk, desk.nurse, WITHDRAWN, _withdrawal())
 
-    pending = desk.service.pending_for(desk.storekeeper, desk.shift)
+    pending = desk.service.pending_for(desk.storekeeper)
     assert [entry.event_id for entry in pending] == [recorded.event_id]
     entry = pending[0]
     assert (entry.type, entry.code) == (WITHDRAWN, "اض")
@@ -277,7 +277,7 @@ def test_the_storekeeper_confirms_an_emergency_withdrawal_afterwards(desk: Desk)
     decision = _record(desk, desk.storekeeper, APPROVED, {}, ref_event_id=recorded.event_id)
 
     assert decision.created
-    assert desk.service.pending_for(desk.storekeeper, desk.shift) == []
+    assert desk.service.pending_for(desk.storekeeper) == []
     assert _shelf(desk) == SHELF_BEFORE - 2, "the confirmation never moves the shelf a second time"
 
 
@@ -288,7 +288,7 @@ def test_an_accountant_may_not_decide_an_emergency_withdrawal(desk: Desk) -> Non
     with pytest.raises(ShiftEventRuleError):
         _record(desk, desk.accountant, APPROVED, {}, ref_event_id=recorded.event_id)
 
-    assert [entry.event_id for entry in desk.service.pending_for(desk.storekeeper, desk.shift)] == [recorded.event_id]
+    assert [entry.event_id for entry in desk.service.pending_for(desk.storekeeper)] == [recorded.event_id]
 
 
 def test_a_replayed_withdrawal_writes_and_moves_the_shelf_once(desk: Desk) -> None:

@@ -175,3 +175,29 @@ def count_ref(connection: Connection, ref_event_id: str, types: tuple[str, ...])
             (ref_event_id, *types),
         ).scalar_one()
     )
+
+
+def money_movements_after(connection: Connection, after_seq: int, types: tuple[str, ...]) -> list[EventRecord]:
+    """Every stored event of the money `types` after `after_seq`, in server order.
+
+    One handover's cash window is exactly "the money events appended after it started": the flow
+    froze its reference at that point, so what arrived later is what the settle has to place. The
+    types are the caller's, because which event moves the box is the event registry's knowledge.
+    """
+    if not types:
+        return []
+    placeholders = ", ".join("?" for _ in types)
+    result = connection.exec_driver_sql(
+        f"{_SELECT} WHERE seq > ? AND type IN ({placeholders}) ORDER BY seq", (after_seq, *types)
+    )
+    return [_record(row) for row in result.mappings()]
+
+
+def cash_settle_seq(connection: Connection, handover_id: str) -> int | None:
+    """The sequence of a flow's cash settlement, or None while its box is not settled yet (H-13)."""
+    row = connection.exec_driver_sql(
+        "SELECT seq FROM events WHERE handover_id = ? AND type = ? "
+        "AND json_extract(payload, '$.scope') = 'cash' ORDER BY seq LIMIT 1",
+        (handover_id, "handover.count_settled"),
+    ).first()
+    return None if row is None else int(row[0])

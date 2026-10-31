@@ -3,8 +3,9 @@
 The owner's rule: the item, the quantity, the kind of damage (broken / expired / damaged), the culprit,
 and a second person to confirm it who is **not** the culprit. The recorder already counts as one
 signature, so the recorder cannot be that second person either, and an item the catalog does not hold
-on that shelf is a typo, not a loss. The projection subtracts the quantity from the shelf (H-01,
-`stock_delta(SUBTRACT)`).
+on that shelf is a typo, not a loss. The projection subtracts the quantity from the shelf at once — the
+goods have already left — and the named person confirms the record afterwards: `confirmer_field` makes
+them the one decider of this kind (H-01, `stock_delta(SUBTRACT)`).
 
 A row stored before SHF-3 carries only the item, the shelf and the quantity, so the payload model keeps
 `waste_kind`, `culprit_id` and `confirmer_id` optional and every old row still replays. The three
@@ -110,6 +111,7 @@ KIND = KindSpec(
     sample=sample,
     summarize=summarize,
     validate=validate,
+    confirmer_field="confirmer_id",
     card_fields=("quantity", "item_id", "waste_kind", "confirmer_id"),
 )
 

@@ -91,6 +91,9 @@ class ShiftEventContext:
     shift_work_date: date
     shift_text: str
     withdrawal_cap: int
+    # Every withdrawal this shift has already recorded, by its own occurred shift: the cap is a
+    # running total, not a per-record limit (ADR-019).
+    withdrawn_in_shift: Callable[[], int]
     item_at: Callable[[str, str], bool]
     staff_roles: Callable[[str], frozenset[str] | None]
     campaign_active: Callable[[str], bool]
@@ -104,7 +107,13 @@ class ShiftEventContext:
 
 @dataclass(frozen=True, slots=True)
 class KindSpec:
-    """One button: its payload model, its effect, its questions and its approval rule."""
+    """One button: its payload model, its effect, its questions and its confirmation rule.
+
+    Who may close a record is the kind's own business: `approvable_by` names the roles, and
+    `confirmer_field` names the payload key of the one person the clinic asked to confirm it (the
+    «تأییدکننده» of waste, the «گیرنده» of a withdrawal). A kind that declares either waits for a
+    decision; one that declares neither is never an open item.
+    """
 
     event_type: str
     code: str
@@ -118,11 +127,25 @@ class KindSpec:
     summarize: Callable[[BaseModel], dict[str, Any]]
     validate: Callable[[BaseModel, ShiftEventContext], None] | None = None
     approvable_by: tuple[Role, ...] = ()
-    requires_approval: bool = False
+    confirmer_field: str | None = None
     needs_reference: bool = False
     reference_types: tuple[str, ...] = ()
     unique_reference: bool = False
+    cross_shift: bool = False
     card_fields: tuple[str, ...] = ()
+    # Some records change who may decide them from their own payload: an above-cap withdrawal is the
+    # manager's decision, a below-cap one is the recipient's (ADR-019, owner rule 3).
+    manager_only_when: Callable[[Mapping[str, Any]], bool] | None = None
+
+    @property
+    def requires_approval(self) -> bool:
+        """Whether the record waits for a second person's decision.
+
+        Derived from the two ways the clinic names a decider — a role or a person — so the manager's
+        card cannot show a pending row that nobody is allowed to close, and a kind cannot silently ask
+        for a confirmation it has no way to receive.
+        """
+        return bool(self.approvable_by or self.confirmer_field)
 
 
 class ShiftEventError(ValueError):
@@ -137,8 +160,10 @@ def register(*kinds: KindSpec) -> None:
     for kind in kinds:
         if kind.event_type in _REGISTRY:
             raise ShiftEventError(f"shift event type registered twice: {kind.event_type!r}")
-        if kind.event_type in DECISION_TYPES and kind.approvable_by:
+        if kind.event_type in DECISION_TYPES and kind.requires_approval:
             raise ShiftEventError("a decision event is never itself approvable")
+        if kind.confirmer_field is not None and kind.confirmer_field not in {field.key for field in kind.fields}:
+            raise ShiftEventError(f"{kind.event_type!r} confirms on a question it never asks: {kind.confirmer_field!r}")
         _REGISTRY[kind.event_type] = kind
 
 
