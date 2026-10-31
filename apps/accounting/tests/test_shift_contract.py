@@ -8,7 +8,12 @@ import pytest
 from src.adapters.sqlite.core import ensure_database_ready
 from src.adapters.sqlite.migrations import m0004_shift_contract as m4
 from src.adapters.sqlite.migrations import m0007_shift_contract_voids as m7
+from src.adapters.sqlite.migrations import m0008_shift_registration_first_for_phone as m8
 from src.services.backup import ro_uri
+
+# Views the shift app may read that are not part of the `_v1` contract: v2 keeps every v1 column and
+# adds `first_for_phone`, and the call sample deliberately exposes name and mobile to a manager card.
+EXTRA_VIEWS = {"v_shift_patient_registrations_v2", "v_shift_call_sample_v1"}
 
 EXPECTED_COLUMNS = {
     "v_shift_open_invoices_v1": ["invoice_id", "opened_at", "opened_by", "shift", "work_date"],
@@ -117,7 +122,7 @@ def test_views_are_readable_read_only_and_cannot_be_written_through(path):
 
 def test_the_migrations_can_run_twice(path):
     conn = sqlite3.connect(path)
-    for up in (m4.up, m4.up, m7.up, m7.up):
+    for up in (m4.up, m4.up, m7.up, m7.up, m8.up, m8.up):
         up(conn)
     conn.commit()
     assert [
@@ -125,7 +130,7 @@ def test_the_migrations_can_run_twice(path):
         for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='view' AND name LIKE 'v_shift_%' ORDER BY name"
         )
-    ] == sorted(EXPECTED_COLUMNS)
+    ] == sorted(set(EXPECTED_COLUMNS) | EXTRA_VIEWS)
     conn.close()
 
 
