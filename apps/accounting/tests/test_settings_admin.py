@@ -4,7 +4,9 @@ Everything runs on the isolated temp DB from `webapp_db`; backups live in a temp
 `tmp_path`. The real `clinic_new.db` and the real `backups/` folder are never touched.
 """
 
+import re
 import sqlite3
+from datetime import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +21,19 @@ MANAGER = "settings-manager"
 PASSWORD = "t3st-pass"
 
 WRONG_PASSWORD_FLASH = "رمز عبور مدیر نادرست است"
+
+SHIFT_TIME_ERROR = "ساعت شروع شیفت‌ها نامعتبر است"
+SHIFT_ORDER_ERROR = "ترتیب ساعت شروع شیفت‌ها"
+STALE_THRESHOLD_ERROR = "ساعت فاکتورهای باز باید عددی بین ۱ تا ۷۲ باشد"
+ANOMALY_THRESHOLD_ERROR = "آستانهٔ حذف غیرعادی باید عددی بین ۱ تا ۵۰۰ باشد"
+
+VALID_SCHEDULE = {
+    "shift_start_morning": "08:00",
+    "shift_start_evening": "14:00",
+    "shift_start_night": "20:00",
+    "stale_open_hours": "8",
+    "anomaly_delete_threshold": "30",
+}
 
 
 def _seed_manager(db, username=MANAGER, password=PASSWORD):
@@ -57,6 +72,33 @@ def _count(db_path, table="patients"):
 
 def _make_backup(admin):
     return bk.create_backup(admin.db_path, admin.backup_dir, bk.KIND_MANUAL)
+
+
+def _settings(db_path):
+    conn = sqlite3.connect(db_path)
+    try:
+        return {row[0]: row[1] for row in conn.execute("SELECT key, value FROM settings")}
+    finally:
+        conn.close()
+
+
+def _put_settings(db_path, **values):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executemany("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", list(values.items()))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _form_value(page, name):
+    match = re.search(rf'name="{name}"[^>]*\bvalue="([^"]*)"', page)
+    assert match, f"no input named {name} with a value"
+    return match.group(1)
+
+
+def _post_settings(admin, **data):
+    return admin.client.post("/manager/settings", data={"action": "save_settings", **data})
 
 
 def _page(admin):
@@ -152,3 +194,173 @@ def test_restore_and_delete_forms_ask_for_the_manager_password(admin):
 
     assert page.count('name="password"') >= 2
     assert "رمز عبور مدیر" in page
+
+
+# --------------------------------------------------------------------------- #5 schedule + thresholds
+
+
+def test_settings_page_shows_the_effective_defaults_when_nothing_is_stored(admin):
+    page = _page(admin)
+
+    expected = {
+        "shift_start_morning": "07:30",
+        "shift_start_evening": "13:30",
+        "shift_start_night": "19:30",
+        "stale_open_hours": "6",
+        "anomaly_delete_threshold": "20",
+    }
+    for key, value in expected.items():
+        assert _form_value(page, key) == value
+
+
+def test_settings_page_shows_stored_values_and_defaults_for_the_rest(admin):
+    _put_settings(admin.db_path, shift_start_morning="08:15", stale_open_hours="9")
+
+    page = _page(admin)
+
+    assert _form_value(page, "shift_start_morning") == "08:15"
+    assert _form_value(page, "shift_start_evening") == "13:30"
+    assert _form_value(page, "shift_start_night") == "19:30"
+    assert _form_value(page, "stale_open_hours") == "9"
+    assert _form_value(page, "anomaly_delete_threshold") == "20"
+
+
+def test_settings_page_ignores_a_broken_stored_value(admin):
+    _put_settings(admin.db_path, shift_start_evening="25:99", stale_open_hours="abc")
+
+    page = _page(admin)
+
+    assert _form_value(page, "shift_start_evening") == "13:30"
+    assert _form_value(page, "stale_open_hours") == "6"
+
+
+def test_save_settings_persists_shift_starts_and_thresholds(admin):
+    resp = _post_settings(admin, section="schedule", **VALID_SCHEDULE)
+
+    assert resp.status_code == 302
+    stored = _settings(admin.db_path)
+    for key, value in VALID_SCHEDULE.items():
+        assert stored[key] == value
+    page = _page(admin)
+    assert "تنظیمات ذخیره شد" in page
+    for key, value in VALID_SCHEDULE.items():
+        assert _form_value(page, key) == value
+
+    conn = sqlite3.connect(admin.db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        from src.services.manager_insights import get_threshold
+        from src.services.shift_handover import load_schedule
+
+        assert load_schedule(conn) == {"morning": time(8, 0), "evening": time(14, 0), "night": time(20, 0)}
+        assert get_threshold(conn, "stale_open_hours") == 8
+        assert get_threshold(conn, "anomaly_delete_threshold") == 30
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("shift_start_morning", "7:30"),
+        ("shift_start_morning", "07:3"),
+        ("shift_start_morning", ""),
+        ("shift_start_evening", "24:00"),
+        ("shift_start_night", "12:60"),
+        ("shift_start_night", "abc"),
+    ],
+)
+def test_invalid_shift_time_is_rejected_and_nothing_is_saved(admin, field, value):
+    _put_settings(admin.db_path, **VALID_SCHEDULE)
+
+    _post_settings(admin, section="schedule", **{**VALID_SCHEDULE, field: value})
+
+    assert _settings(admin.db_path)[field] == VALID_SCHEDULE[field]
+    assert SHIFT_TIME_ERROR in _page(admin)
+
+
+def test_shift_starts_must_be_in_clock_order(admin):
+    _put_settings(admin.db_path, **VALID_SCHEDULE)
+
+    _post_settings(admin, section="schedule", **{**VALID_SCHEDULE, "shift_start_morning": "21:00"})
+
+    assert _settings(admin.db_path)["shift_start_morning"] == "08:00"
+    assert SHIFT_ORDER_ERROR in _page(admin)
+
+
+@pytest.mark.parametrize(
+    "field,value,message",
+    [
+        ("stale_open_hours", "0", STALE_THRESHOLD_ERROR),
+        ("stale_open_hours", "73", STALE_THRESHOLD_ERROR),
+        ("stale_open_hours", "abc", STALE_THRESHOLD_ERROR),
+        ("stale_open_hours", "1.5", STALE_THRESHOLD_ERROR),
+        ("stale_open_hours", "", STALE_THRESHOLD_ERROR),
+        ("anomaly_delete_threshold", "0", ANOMALY_THRESHOLD_ERROR),
+        ("anomaly_delete_threshold", "501", ANOMALY_THRESHOLD_ERROR),
+        ("anomaly_delete_threshold", "abc", ANOMALY_THRESHOLD_ERROR),
+    ],
+)
+def test_invalid_threshold_is_rejected_and_nothing_is_saved(admin, field, value, message):
+    _put_settings(admin.db_path, **VALID_SCHEDULE)
+
+    _post_settings(admin, section="schedule", **{**VALID_SCHEDULE, field: value})
+
+    assert _settings(admin.db_path)[field] == VALID_SCHEDULE[field]
+    assert message in _page(admin)
+
+
+@pytest.mark.parametrize(("stale", "anomaly"), [("1", "1"), ("72", "500")])
+def test_threshold_bounds_are_accepted(admin, stale, anomaly):
+    _post_settings(
+        admin,
+        section="schedule",
+        **{**VALID_SCHEDULE, "stale_open_hours": stale, "anomaly_delete_threshold": anomaly},
+    )
+
+    stored = _settings(admin.db_path)
+    assert stored["stale_open_hours"] == stale
+    assert stored["anomaly_delete_threshold"] == anomaly
+
+
+def test_saving_clinic_info_keeps_the_schedule_thresholds_and_backup_toggle(admin):
+    _put_settings(admin.db_path, **VALID_SCHEDULE, auto_backup="0")
+
+    _post_settings(
+        admin,
+        section="clinic",
+        clinic_name="درمانگاه سیب",
+        clinic_phone="021-12345678",
+        clinic_address="تهران",
+    )
+
+    stored = _settings(admin.db_path)
+    for key, value in VALID_SCHEDULE.items():
+        assert stored[key] == value
+    assert stored["auto_backup"] == "0"
+    assert stored["clinic_name"] == "درمانگاه سیب"
+
+
+def test_saving_the_backup_toggle_keeps_the_schedule_thresholds_and_clinic_info(admin):
+    _put_settings(admin.db_path, **VALID_SCHEDULE, clinic_name="درمانگاه سیب")
+
+    _post_settings(admin, section="backup")  # unchecked toggle posts nothing
+
+    stored = _settings(admin.db_path)
+    assert stored["auto_backup"] == "0"
+    assert stored["clinic_name"] == "درمانگاه سیب"
+    for key, value in VALID_SCHEDULE.items():
+        assert stored[key] == value
+
+    _post_settings(admin, section="backup", auto_backup="1")
+    assert _settings(admin.db_path)["auto_backup"] == "1"
+
+
+def test_saving_the_schedule_keeps_clinic_info_and_the_backup_toggle(admin):
+    _put_settings(admin.db_path, clinic_name="درمانگاه سیب", auto_backup="0")
+
+    _post_settings(admin, section="schedule", **VALID_SCHEDULE)
+
+    stored = _settings(admin.db_path)
+    assert stored["clinic_name"] == "درمانگاه سیب"
+    assert stored["auto_backup"] == "0"

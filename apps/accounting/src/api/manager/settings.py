@@ -1,4 +1,5 @@
 import logging
+import re
 
 from flask import (
     current_app,
@@ -17,11 +18,64 @@ from src.api.auth import login_required
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
+from src.services.manager_insights import get_threshold
+from src.services.shift_handover import load_schedule
 
 from . import bp
 from ._common import manager_api_required, manager_required
 
 logger = logging.getLogger(__name__)
+
+# The settings form owns three groups, each saved independently (one transaction, one commit):
+# the clinic identity, the automatic-backup toggle, and the schedule/attention thresholds.
+SHIFT_START_KEYS = ("shift_start_morning", "shift_start_evening", "shift_start_night")
+THRESHOLD_LIMITS = {"stale_open_hours": (1, 72), "anomaly_delete_threshold": (1, 500)}
+CLINIC_KEYS = ("clinic_name", "clinic_phone", "clinic_address")
+HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def _fa_number(number) -> str:
+    return str(number).translate(PERSIAN_DIGITS)
+
+
+def _settings_updates(form):
+    """Validate a `save_settings` POST -> ({key: value}, error). Pure: no database access.
+
+    Only keys present in the form are written, so each tab saves its own group and never
+    wipes the others (the old DELETE+INSERT reset every key it knew). Anything invalid is
+    refused before the first write, so an invalid form saves nothing at all.
+    """
+    updates = {}
+    if any(key in form for key in SHIFT_START_KEYS):
+        for key in SHIFT_START_KEYS:
+            value = (form.get(key) or "").strip()
+            if not HHMM_PATTERN.match(value):
+                return None, "ساعت شروع شیفت‌ها نامعتبر است؛ قالب درست HH:MM با ساعت واقعی است (مثلاً ۰۷:۳۰)."
+            updates[key] = value
+        if not updates[SHIFT_START_KEYS[0]] < updates[SHIFT_START_KEYS[1]] < updates[SHIFT_START_KEYS[2]]:
+            # load_schedule ignores an out-of-order schedule, so refuse it here instead.
+            return None, "ترتیب ساعت شروع شیفت‌ها باید صبح، عصر و شب باشد."
+    for key, (low, high) in THRESHOLD_LIMITS.items():
+        if key not in form:
+            continue
+        label = "ساعت فاکتورهای باز" if key == "stale_open_hours" else "آستانهٔ حذف غیرعادی"
+        message = f"{label} باید عددی بین {_fa_number(low)} تا {_fa_number(high)} باشد."
+        try:
+            number = int((form.get(key) or "").strip())
+        except ValueError:
+            return None, message
+        if not low <= number <= high:
+            return None, message
+        updates[key] = str(number)
+    for key in CLINIC_KEYS:
+        if key in form:
+            updates[key] = form.get(key, "")
+    if "auto_backup" in form:
+        updates["auto_backup"] = "1" if form.get("auto_backup") else "0"
+    elif form.get("section") == "backup":
+        updates["auto_backup"] = "0"  # an unchecked toggle posts no field at all
+    return updates, None
 
 
 def get_network_info():
@@ -143,20 +197,20 @@ def settings():
                 log_activity(ActionType.BACKUP_DELETE, ActionCategory.SYSTEM, target_name=backup_name)
                 flash(f"بکاپ حذف شد: {backup_name}", "success")
             elif action == "save_settings":
-                clinic_name = request.form.get("clinic_name", "")
-                clinic_phone = request.form.get("clinic_phone", "")
-                clinic_address = request.form.get("clinic_address", "")
-                auto_backup = request.form.get("auto_backup", "0")
-                db.execute(
-                    "DELETE FROM settings WHERE key IN ('clinic_name', 'clinic_phone', 'clinic_address', 'auto_backup')"
-                )
-                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("clinic_name", clinic_name))
-                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("clinic_phone", clinic_phone))
-                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("clinic_address", clinic_address))
-                db.execute("INSERT INTO settings (key, value) VALUES (?, ?)", ("auto_backup", auto_backup))
-                db.commit()
-                log_activity(ActionType.SETTINGS_CHANGE, ActionCategory.SYSTEM, new_value=f"auto_backup={auto_backup}")
-                flash("تنظیمات ذخیره شد", "success")
+                updates, error = _settings_updates(request.form)
+                if error:
+                    flash(error, "error")
+                else:
+                    for key, value in updates.items():
+                        # Additive: rows the form did not mention stay exactly as they were.
+                        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+                    db.commit()
+                    log_activity(
+                        ActionType.SETTINGS_CHANGE,
+                        ActionCategory.SYSTEM,
+                        new_value=", ".join(f"{key}={value}" for key, value in sorted(updates.items())),
+                    )
+                    flash("تنظیمات ذخیره شد", "success")
         except bk.BackupError as e:
             flash(str(e), "error")
         return redirect(url_for("manager.settings"))
@@ -173,6 +227,18 @@ def settings():
         )
 
     settings_data = {row["key"]: row["value"] for row in db.execute("SELECT key, value FROM settings").fetchall()}
+
+    # What the app actually uses right now: the stored row, or the code default when the key is
+    # absent or broken. load_schedule/get_threshold own those fallbacks, so the form never shows
+    # a value the shift and attention calculations would ignore.
+    schedule = load_schedule(db)
+    effective = {
+        "shift_start_morning": schedule["morning"].strftime("%H:%M"),
+        "shift_start_evening": schedule["evening"].strftime("%H:%M"),
+        "shift_start_night": schedule["night"].strftime("%H:%M"),
+        "stale_open_hours": get_threshold(db, "stale_open_hours"),
+        "anomaly_delete_threshold": get_threshold(db, "anomaly_delete_threshold"),
+    }
 
     db_stats = {
         "patients": db.execute("SELECT COUNT(*) FROM patients").fetchone()[0],
@@ -192,6 +258,7 @@ def settings():
         "manager/settings.html",
         backups=backups,
         settings=settings_data,
+        effective=effective,
         db_stats=db_stats,
         db_size=db_size,
         schema_version=db.execute("PRAGMA user_version").fetchone()[0],
