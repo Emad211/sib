@@ -34,6 +34,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.FAULT_FIX,
                 _P.CLEANING_CONFIRM,
                 _P.REWARD_VIEW,
+                # ADR-021: the second receptionist of a shift says «حضور در شیفت» to come on shift.
+                _P.SHIFT_PRESENCE_DECLARE,
                 # The owner's document: the parcel arrives in whatever shift it arrives in, so the
                 # counter takes it in and flags a problem instead of waiting for the storekeeper.
                 _P.PURCHASE_DELIVERY_RECEIVE,
@@ -121,6 +123,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
                 _P.VITALS_RECORD,
                 _P.SHIFT_EVENT_APPROVE,
                 _P.REWARD_VIEW,
+                # ADR-021: the shift doctor declares «حضور در شیفت» and is on shift from then.
+                _P.SHIFT_PRESENCE_DECLARE,
             }
         ),
         Role.MANAGER: frozenset(Permission),

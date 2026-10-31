@@ -16,6 +16,7 @@ from shift.api import deps
 from shift.api.errors import BadRequest
 from shift.api.templating import templates
 from shift.common.clock import utc_iso
+from shift.domain.on_shift import off_shift_notice
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import PolicyError
 from shift.services.auth import SESSION_COOKIE, SESSION_TTL, Principal, StaffNotFound, StaffSummary
@@ -105,6 +106,9 @@ def _session_payload(principal: Principal) -> dict[str, object]:
         "staff": {"id": principal.staff_id, "name": principal.full_name},
         "roles": list(principal.roles),
         "permissions": sorted(permission.value for permission in principal.permissions),
+        # ADR-021: which bound roles are on shift now, and the line an off-shift person reads.
+        "on_shift": list(principal.on_shift_roles),
+        "shift_notice": off_shift_notice(principal.roles, principal.on_shift_roles),
         "device": {"id": principal.device_id, "label": principal.device_label},
         "csrf_token": principal.csrf_token,
         "expires_at": utc_iso(principal.expires_at),

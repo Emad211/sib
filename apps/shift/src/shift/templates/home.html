@@ -5,6 +5,12 @@
 {% block content %}
 <div id="submission-feedback" class="badge hidden feedback-badge" role="status"></div>
 
+{% if shift_notice %}
+<section class="card" aria-live="polite">
+  <p class="card-subtitle">{{ shift_notice }}</p>
+</section>
+{% endif %}
+
 {% if tiles %}
 <h1 class="home-title">کارهای من</h1>
 <nav class="home-tiles" aria-label="کارهای من">

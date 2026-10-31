@@ -61,6 +61,9 @@ class Permission(StrEnum):
     STAFF_UNLOCK = "staff.unlock"
     DEVICE_ENROLL = "device.enroll"
     DEVICE_REVOKE = "device.revoke"
+    # ADR-021: a second receptionist or the shift doctor says «حضور در شیفت» and is on shift from then
+    # until that shift ends. Declaring presence must work while off shift, so it is always allowed.
+    SHIFT_PRESENCE_DECLARE = "shift.presence.declare"
 
 
 class UnknownRole(ValueError):

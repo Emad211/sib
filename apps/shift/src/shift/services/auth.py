@@ -27,7 +27,8 @@ from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran, utc_iso
 from shift.common.hashing import sha256_hex
 from shift.common.ids import new_ulid
 from shift.config.logging import get_audit_logger
-from shift.domain.permissions import Permission, Role, UnknownRole, parse_role, permissions_for
+from shift.domain.on_shift import effective_permissions
+from shift.domain.permissions import Permission, Role, UnknownRole, parse_role
 from shift.domain.pin_policy import (
     LOCKOUT_MINUTES,
     MAX_FAILED_ATTEMPTS,
@@ -36,6 +37,7 @@ from shift.domain.pin_policy import (
 )
 from shift.domain.shift_clock import covering
 from shift.services.audit import AuditOutcome, AuditService, record_action
+from shift.services.on_shift import on_shift_roles
 
 SESSION_TTL = timedelta(hours=12)
 SESSION_COOKIE = "shift_session"
@@ -110,6 +112,9 @@ class Principal:
     session_hash: str
     csrf_token: str
     expires_at: datetime
+    # ADR-021: the bound roles the person is on shift for right now; everything else they hold is
+    # waiting for a handover. The permission dependency reads the effective set already.
+    on_shift_roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,7 +630,10 @@ class AuthService:
         # One source of truth (ADR-022): the roles the clinic clock's running shift sees.
         roles = staff_repo.roles_for(connection, staff.staff_id, covering(to_tehran(now)).text)
         try:
-            permissions = permissions_for(roles)
+            # ADR-021: handing over is the key to access. The effective set — free roles always,
+            # bound roles only on shift, plus the always-allowed few — is what every guard reads.
+            working = on_shift_roles(connection, staff_id=staff.staff_id, roles=roles, instant=now)
+            permissions = effective_permissions(roles, working)
         except UnknownRole as exc:
             raise SessionInvalid(f"unknown_role:{exc}") from exc
         return Principal(
@@ -638,4 +646,5 @@ class AuthService:
             session_hash=session.token_hash,
             csrf_token=session.csrf_token,
             expires_at=parse_iso(session.expires_at),
+            on_shift_roles=working,
         )

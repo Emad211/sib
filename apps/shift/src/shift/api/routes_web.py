@@ -11,6 +11,7 @@ from shift.__version__ import __version__
 from shift.api import deps
 from shift.api.principal import CSRF_COOKIE_NAME, CSRF_MAX_AGE_SECONDS, csrf_cookie_token
 from shift.api.templating import templates
+from shift.domain.on_shift import off_shift_notice
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
 from shift.services.purchase import PURCHASE_PERMISSIONS
@@ -198,10 +199,12 @@ def get_home(request: Request) -> HTMLResponse:
     # A visitor with no session keeps no tile; the sections inside each screen are cut down by the API.
     granted = principal.permissions if principal is not None else frozenset()
     tiles = [tile for tile in HOME_TILES if granted & tile["needs"]]
+    # ADR-021: an off-shift person reads that their shift is not open and keeps the handover tile.
+    notice = None if principal is None else off_shift_notice(principal.roles, principal.on_shift_roles)
     return _shell_page(
         request,
         "home.html",
-        {"tiles": tiles},
+        {"tiles": tiles, "shift_notice": notice},
     )
 
 

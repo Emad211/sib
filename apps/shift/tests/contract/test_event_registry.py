@@ -55,6 +55,8 @@ EXPECTED_EFFECTS = {
     EventType.EVENT_RELEASED: ((), None),
     EventType.EVENT_HOLD_REJECTED: ((), None),
     EventType.EVENT_REJECTED: ((), None),
+    # ADR-021: «حضور در شیفت» is a record of who declared presence, never a movement.
+    EventType.SHIFT_PRESENCE_DECLARED: ((), None),
     # SHF-5's three reward records: the ledger is derived from them on every read, so a rebuild is
     # still exactly the two projections the clinic keeps (stock, cash).
     EventType.REWARD_EARNED: ((), None),
@@ -291,6 +293,7 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.EVENT_HELD,
         EventType.EVENT_RELEASED,
         EventType.EVENT_HOLD_REJECTED,
+        EventType.SHIFT_PRESENCE_DECLARED,
         EventType.REWARD_EARNED,
         EventType.REWARD_CONFIRMED,
         EventType.REWARD_REVOKED,
