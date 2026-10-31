@@ -94,6 +94,7 @@ class ActionType:
     DATABASE_RESET = 'database_reset'
     SETTINGS_CHANGE = 'settings_change'
     USER_UNLOCK = 'user_unlock'
+    USER_DEACTIVATE = 'user_deactivate'
     EXPENSE_ADD = 'expense_add'
     EXPENSE_VOID = 'expense_void'
     INVOICE_VOID = 'invoice_void'
@@ -126,6 +127,7 @@ ACTION_DESCRIPTIONS = {
     ActionType.DATABASE_RESET: 'ریست کامل دیتابیس',
     ActionType.SETTINGS_CHANGE: 'تغییر تنظیمات',
     ActionType.USER_UNLOCK: 'باز کردن قفل حساب',
+    ActionType.USER_DEACTIVATE: 'غیرفعال‌سازی کاربر',
     ActionType.EXPENSE_ADD: 'ثبت هزینه',
     ActionType.EXPENSE_VOID: 'ابطال هزینه',
     ActionType.INVOICE_VOID: 'ابطال/بازپرداخت فاکتور',

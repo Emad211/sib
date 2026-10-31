@@ -130,14 +130,27 @@ def users_management():
                         flash("کاربر با موفقیت بروزرسانی شد.", "success")
 
             elif action == "delete":
-                user_id = request.form.get("user_id")
-                # نباید کاربر فعلی را حذف کند
-                if user_id and int(user_id) != g.user["id"]:
-                    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
-                    db.commit()
-                    flash("کاربر با موفقیت حذف شد.", "success")
-                else:
+                # #17: «حذف» is a deactivation. The users row is never erased — activity_logs
+                # joins it by username, so a DELETE took the person's history with it.
+                user_id = request.form.get("user_id", type=int)
+                # نباید کاربر فعلی را حذف/غیرفعال کند
+                if not user_id or user_id == g.user["id"]:
                     flash("نمی‌توانید حساب کاربری خودتان را حذف کنید.", "error")
+                else:
+                    target = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+                    if target:
+                        db.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
+                        db.commit()
+                        log_activity(
+                            ActionType.USER_DEACTIVATE,
+                            ActionCategory.SYSTEM,
+                            target_type="user",
+                            target_id=user_id,
+                            target_name=target["username"],
+                        )
+                        flash(f"کاربر «{target['username']}» غیرفعال شد.", "success")
+                    else:
+                        flash("کاربر یافت نشد.", "error")
 
         elif entity_type == "staff":
             if action == "add":
