@@ -204,6 +204,19 @@
   </section>
   {% endif %}
 
+  {% if presence %}
+  <section class="mg-section" aria-labelledby="mg-presence-title">
+    <h2 id="mg-presence-title" class="mg-section-title">حضور در شیفت</h2>
+    <p class="mg-note">پذیرش دوم و پزشک شیفت با این دکمه حاضر می‌شوند و با پایان همان شیفت تمام می‌شود.</p>
+    {% for row in presence %}
+    <article class="mg-row" data-presence-row>
+      <p class="mg-line mg-strong">{{ row.name }}</p>
+      <p class="mg-line mg-muted">{{ row.role }} · {{ row.at }}</p>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if "held_events" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-held-title">
     <h2 id="mg-held-title" class="mg-section-title">رویدادهای نگه‌داشته‌شده</h2>

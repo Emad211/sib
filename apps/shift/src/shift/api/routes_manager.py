@@ -23,8 +23,9 @@ from shift.adapters.db import handover_repo, staff_repo
 from shift.api import deps
 from shift.api.routes_web import _SECURITY_HEADERS, _shell_page
 from shift.api.templating import templates
-from shift.common.clock import TEHRAN, parse_iso, to_tehran
+from shift.common.clock import TEHRAN, parse_iso, to_tehran, utc_iso
 from shift.common.jalali import format_jalali
+from shift.domain.event_types import EventType
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.permissions import Permission
 from shift.domain.policy import SETTING_SPECS, PolicyError, SettingKey, SettingKind, ShiftKey
@@ -373,7 +374,51 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
 
 def _card_page(request: Request, card: Card) -> HTMLResponse:
     """One card, formatted once here so the template carries Persian text and no figures logic."""
-    return _shell_page(request, "manager_card.html", {"card": _card_view(card)}, cache_control=NO_STORE)
+    return _shell_page(
+        request,
+        "manager_card.html",
+        {"card": _card_view(card), "presence": _presence_rows(request, card)},
+        cache_control=NO_STORE,
+    )
+
+
+PRESENCE_ROLE_LABELS = {"reception": "پذیرش", "shift_doctor": "پزشک شیفت"}
+
+
+def _presence_rows(request: Request, card: Card) -> list[dict[str, str]]:
+    """ADR-021: who said «حضور در شیفت» on the covered day, in which role and when.
+
+    A declaration is an event, not a flag, so the card reads the log for the day it covers rather than
+    a table that carries "now". Read here and not stored in the card document, so a card built before
+    the button existed needs no rebuild.
+    """
+    database = getattr(request.app.state, "database", None)
+    if database is None:
+        return []
+    with database.read() as connection:
+        rows = (
+            connection.exec_driver_sql(
+                "SELECT actor_id, client_at, json_extract(payload, '$.role') AS role FROM events "
+                "WHERE type = ? AND julianday(client_at) >= julianday(?) AND julianday(client_at) < julianday(?) "
+                "ORDER BY julianday(client_at), seq",
+                (
+                    EventType.SHIFT_PRESENCE_DECLARED.value,
+                    utc_iso(datetime.combine(card.covered_from, time.min, tzinfo=TEHRAN)),
+                    utc_iso(datetime.combine(card.covered_to + timedelta(days=1), time.min, tzinfo=TEHRAN)),
+                ),
+            )
+            .mappings()
+            .all()
+        )
+        names = {person.staff.staff_id: person.staff.full_name for person in staff_repo.list_with_roles(connection)}
+    return [
+        {
+            "name": names.get(str(row["actor_id"]), str(row["actor_id"])),
+            "role": PRESENCE_ROLE_LABELS.get(str(row["role"]), str(row["role"])),
+            "at": _stamp_fa(str(row["client_at"])),
+        }
+        for row in rows
+    ]
 
 
 def _not_found() -> HTMLResponse:

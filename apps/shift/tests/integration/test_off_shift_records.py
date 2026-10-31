@@ -20,6 +20,7 @@ from shift.app import create_app
 from shift.common.clock import to_tehran
 from shift.common.ids import new_ulid
 from shift.config.settings import Settings
+from shift.domain.daily_card import window_for
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.shift_clock import covering
 
@@ -102,6 +103,30 @@ def test_a_record_made_on_shift_is_accepted_after_she_signed_over(client: TestCl
     body = made_while_on_shift.json()
     assert body["held"] is False, "her own shift's record is applied, not kept for the manager"
     assert body["status"] == "recorded"
+
+
+def test_the_manager_card_shows_the_presence_and_the_kept_record(tmp_path: Path) -> None:
+    """ADR-021 on the manager's card: who said «حضور در شیفت», and the off-shift record it kept."""
+    with _app(tmp_path / "card", on_shift=False) as client:
+        headers = _headers(client, "multi_role")
+        declared = client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
+        assert declared.status_code == 201, declared.text
+        kept = _post(client, headers, client_at=NOW - timedelta(minutes=5))
+        assert kept.json()["held"] is True
+
+        # The card that covers today is built tomorrow (it reports the day that just ended).
+        today = to_tehran(NOW).date()
+        run_day = today + timedelta(days=1)
+        while window_for(run_day) is None:
+            run_day += timedelta(days=1)
+        assert client.app.state.daily_card.regenerate(run_day) is not None
+
+        page = client.get(f"/manager/card/{run_day.isoformat()}", headers=_headers(client, "manager"))
+
+    assert page.status_code == 200, page.text
+    assert "حضور در شیفت" in page.text
+    assert ROLES["multi_role"].full_name in page.text, "the card names who declared presence"
+    assert "رویدادهای نگه‌داشته‌شده" in page.text, "the kept off-shift record waits on the same card"
 
 
 def test_a_record_made_while_off_shift_is_held_for_the_manager_with_a_persian_reason(
