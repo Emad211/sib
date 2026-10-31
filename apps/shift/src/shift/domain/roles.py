@@ -21,6 +21,9 @@ class Permission(StrEnum):
     HANDOVER_CASH_SUBMIT = "handover.cash.submit"
     HANDOVER_SIGN = "handover.sign"
     HANDOVER_BASELINE = "handover.baseline"
+    # Owner decision 9 (ADR-022 item 5): the person whose role owns a flow records that flow's initial
+    # count on their own phone, before they hold any custody. The manager's tool is the fallback path.
+    HANDOVER_BASELINE_OWN = "handover.baseline.own"
     CASH_WITHDRAW_REQUEST = "cash.withdraw.request"
     CASH_WITHDRAW_APPROVE = "cash.withdraw.approve"
     CASH_DEPOSIT_RECORD = "cash.deposit.record"

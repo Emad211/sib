@@ -33,6 +33,7 @@ const PRECACHE_URLS = [
   "/static/jalali-datepicker.js",
   "/static/handover.css",
   "/static/handover.js",
+  "/static/handover-baseline.js",
   "/static/manager.css",
   "/static/manager.js",
   "/static/manager-baseline.js",

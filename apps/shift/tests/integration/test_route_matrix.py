@@ -120,6 +120,12 @@ BODIES = {
     },
     "POST /api/v1/handover/{handover_id}/parcels": {"parcel_id": "parcel-01", "packages": 1},
     "POST /api/v1/handover/{handover_id}/emergency-start": {"manager_id": SPARE.staff_id},
+    # A flow the vocabulary cannot accept, so probing this cell never records a real first count.
+    "POST /api/v1/handover/baseline": {
+        "flow": "not-a-flow",
+        "opening_cash": 1,
+        "items": [{"item_id": "para_500_amp", "location_id": "shelf_reception", "quantity": 1}],
+    },
     # A flow the vocabulary cannot accept, so probing this cell never records a real baseline.
     "POST /api/v1/manager/baseline": {
         "flow": "not-a-flow",
@@ -138,6 +144,7 @@ PAGES = {
     "GET /manager/baseline",
     "GET /manager/items",
     "GET /events",
+    "GET /handover/baseline",
     "GET /purchase",
 }
 

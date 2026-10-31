@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}شمارش اولیه{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/handover.css">
+{% endblock %}
+
+{% block content %}
+<div id="baseline-app" class="handover">
+  <!-- Owner decision 9: the flow's first count is the flow's own person's job, on their own phone. -->
+  <section id="baseline-none" class="ho-screen hidden" aria-labelledby="baseline-none-title">
+    <h1 id="baseline-none-title" class="ho-title">شمارش اولیه‌ای نمانده است</h1>
+    <p class="ho-text">شمارش اولیهٔ جریان شما قبلاً ثبت شده است.</p>
+    <p class="ho-hint">اگر شمارش اولیه را مدیر ثبت کرده است، همان عدد مبنای شمارش کور شماست.</p>
+    <a class="ho-action" href="/">بازگشت به خانه</a>
+  </section>
+
+  <section id="baseline-pick" class="ho-screen hidden" aria-labelledby="baseline-pick-title">
+    <h1 id="baseline-pick-title" class="ho-title">شمارش اولیه</h1>
+    <p class="ho-text">کدام جریان را می‌شمارید؟</p>
+    <div id="baseline-pick-buttons"></div>
+  </section>
+
+  <section id="baseline-wizard" class="ho-screen hidden">
+    <div class="ho-progress">
+      <p id="baseline-progress" class="ho-kicker"></p>
+    </div>
+    <p id="baseline-message" class="ho-message hidden" role="status"></p>
+    <div id="baseline-step" class="ho-step"></div>
+  </section>
+
+  <section id="baseline-done" class="ho-screen hidden" aria-labelledby="baseline-done-title">
+    <h1 id="baseline-done-title" class="ho-title">شمارش اولیه ثبت شد</h1>
+    <p class="ho-text">این شمارش زیر نام خودتان ثبت شد و شما نگه‌دارندهٔ این جریان هستید.</p>
+    <p class="ho-hint">از این به بعد شیفت را تحویل بگیرید؛ شمارش‌های بعدی با همین عدد مقایسه می‌شوند.</p>
+    <a class="ho-action ho-action-primary" href="/handover">شروع تحویل شیفت</a>
+    <a class="ho-link" href="/">بازگشت به خانه</a>
+  </section>
+</div>
+
+{# The flows this person may start from scratch, with no expected figure anywhere in it. #}
+<script id="baseline-data" type="application/json">{{ baseline_json | safe }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/item-icons.js"></script>
+<script src="/static/handover-baseline.js"></script>
+{% endblock %}

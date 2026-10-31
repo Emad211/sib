@@ -439,6 +439,21 @@
    "storekeeper": 200
   }
  },
+ "GET /handover/baseline [get_own_baseline_page]": {
+  "guard": "permission:handover.baseline.own",
+  "note": "owner decision 9: the flow's own person counts it first, on their own phone; the manager's /manager/baseline stays the fallback (the manager holds every permission but owns no flow, so the page has nothing to offer)",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 403,
+   "reception": 200,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /healthz [healthz]": {
   "guard": "public",
   "roles": {
@@ -686,6 +701,21 @@
  },
  "POST /api/v1/handover/start [start_handover]": {
   "guard": "permission:handover.start",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 403,
+   "reception": 422,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/handover/baseline [record_own_baseline]": {
+  "guard": "permission:handover.baseline.own",
+  "note": "owner decision 9: the person whose role owns the flow records its first count and becomes its custodian",
   "roles": {
    "accountant": 403,
    "anon": 401,

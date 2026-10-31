@@ -13,11 +13,14 @@ DOMAIN_DIR = Path(__file__).resolve().parents[2] / "src" / "shift" / "domain"
 # that documentation on top of its ~90 lines of arithmetic and gets its own cap.
 # SHF-4's two new files are each one document of the purchasing chain (S03 §3's payload vocabulary and
 # S03 §4's parcel states), so splitting either would hide the chain instead of shortening it.
+# permission_grants.py is one role × permission row per role, and owner decision 9 gave two shift roles
+# a new line each (the flow's own first count): the rows are the file, so it carries its own cap.
 LINE_CAPS = {
     "permissions.py": 180,
     "rewards.py": 200,
     "purchase_payloads.py": 200,
     "purchase_deliveries.py": 200,
+    "permission_grants.py": 160,
 }
 DEFAULT_LINE_CAP = 150
 FORBIDDEN_ROOTS = {
