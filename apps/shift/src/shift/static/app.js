@@ -302,6 +302,20 @@
   };
 
   // Who is signed in and how to leave: shown on every page, and simply absent offline or logged out.
+  // A signed-out phone keeps the app shell but none of the pages the last person saw.
+  async function forgetCachedPages() {
+    if (!("caches" in window)) return;
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys()) {
+        const path = new URL(request.url).pathname;
+        if (!path.startsWith("/static/") && path !== "/offline.html" && path !== "/manifest.webmanifest") {
+          await cache.delete(request);
+        }
+      }
+    }
+  }
+
   async function showWhoAmI() {
     const who = document.getElementById("who-am-i");
     const logout = document.getElementById("logout-btn");
@@ -314,12 +328,20 @@
     } catch {
       return;
     }
+    // The session cookie is SameSite=Strict, so opening the installed app from the launcher sends the
+    // first request without it and the server answers with the guest page. Same-origin reload sends it.
+    if (document.getElementById("shift-overview-title") && !sessionStorage.getItem("shift:guest-reloaded")) {
+      sessionStorage.setItem("shift:guest-reloaded", "1");
+      location.reload();
+      return;
+    }
     const roles = (me.roles || []).map((role) => ROLE_NAMES[role] || role).join("، ");
     who.textContent = `${me.staff.name} · ${roles}`;
     who.classList.remove("hidden");
     logout.classList.remove("hidden");
     logout.addEventListener("click", async () => {
       await fetch("/api/v1/auth/logout", { method: "POST", headers: { "X-CSRFToken": me.csrf_token } });
+      await forgetCachedPages();
       location.assign("/login");
     });
   }
