@@ -751,7 +751,15 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
     document = json.loads(stored)
 
     assert document["schema"] == CARD_SCHEMA_VERSION
-    assert set(document) == {"schema", "card_date", "covered_from", "covered_to", "generated_at", "cash_float", "sections"}
+    assert set(document) == {
+        "schema",
+        "card_date",
+        "covered_from",
+        "covered_to",
+        "generated_at",
+        "cash_float",
+        "sections",
+    }
     # Stored as canonical JSON, so the keys arrive sorted and the same day always stores the same text.
     assert set(document["sections"]) == {
         "emergency_starts",
