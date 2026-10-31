@@ -6,7 +6,7 @@ import webbrowser
 from flask import Flask
 from datetime import datetime, timedelta
 
-from src.config.settings import Config
+from src.config.settings import Config, resolve_listen_host
 from src.adapters.sqlite.core import close_connection
 from src.services.auth_service import USER_ROLES
 
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     application.run(
         debug=False,
-        host=("127.0.0.1" if application.config.get("PRODUCTION") else "0.0.0.0"),
+        host=resolve_listen_host(application.config.get("PRODUCTION")),
         port=port,
         use_reloader=False,
     )

@@ -57,6 +57,8 @@ include = [
     "src/api/manager/users.py",
     "src/services/auth_service.py",
     "tests/test_users_deactivation.py",
+    # SIB_HOST listen-address rule (opt-in LAN listening)
+    "tests/test_listen_host.py",
 ]
 
 [lint]

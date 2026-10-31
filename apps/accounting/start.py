@@ -19,6 +19,7 @@ import logging
 import threading
 
 from src.app import create_app, open_browser
+from src.config.settings import resolve_listen_host
 
 APP_TITLE = "حسابداری درمانگاه سیب"
 
@@ -62,7 +63,7 @@ def main() -> int:
     # use_reloader=False: a single process (a reloader would open the browser twice)
     app.run(
         debug=False,
-        host=("127.0.0.1" if app.config.get("PRODUCTION") else "0.0.0.0"),
+        host=resolve_listen_host(app.config.get("PRODUCTION")),
         port=8080,
         use_reloader=False,
         threaded=True,
