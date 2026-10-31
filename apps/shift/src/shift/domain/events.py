@@ -32,6 +32,7 @@ from shift.domain.handover_payloads import (
     OutgoingCounted,
     ParcelHanded,
     RecountRequested,
+    StepAdvanced,
 )
 from shift.domain.payloads import (
     CashCounted,
@@ -54,6 +55,7 @@ class EventType(StrEnum):
     HANDOVER_CASH_COUNTED = "handover.cash_counted"
     HANDOVER_ITEM_COUNTED = "handover.item_counted"
     HANDOVER_RECOUNT_REQUESTED = "handover.recount_requested"
+    HANDOVER_STEP_ADVANCED = "handover.step_advanced"
     HANDOVER_OUTGOING_COUNTED = "handover.outgoing_counted"
     HANDOVER_JOINT_COUNTED = "handover.joint_counted"
     HANDOVER_COUNT_SETTLED = "handover.count_settled"
@@ -91,6 +93,7 @@ EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.HANDOVER_CASH_COUNTED: EventSpec(CashCounted, cash_count, requires_shift=True),
     EventType.HANDOVER_ITEM_COUNTED: EventSpec(ItemCounted, stock_set, requires_shift=True),
     EventType.HANDOVER_RECOUNT_REQUESTED: EventSpec(RecountRequested, no_effects, requires_shift=True),
+    EventType.HANDOVER_STEP_ADVANCED: EventSpec(StepAdvanced, no_effects, requires_shift=True),
     # Setting the stock here is sound only because a matched outgoing count equals the reference
     # (Q-09); a mismatched one is provisional and belongs to the joint count. See `OutgoingCounted`.
     EventType.HANDOVER_OUTGOING_COUNTED: EventSpec(OutgoingCounted, stock_set, requires_shift=True),

@@ -19,6 +19,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"counted": 1_000_000}
     if event_type == "handover.recount_requested":
         return {"scope": "item", "item_id": "item-1", "location_id": "location-1"}
+    if event_type == "handover.step_advanced":
+        return {"step": "shelf"}
     if event_type == "handover.outgoing_counted":
         return {"item_id": "item-1", "location_id": "location-1", "counted": 10}
     if event_type == "handover.joint_counted":

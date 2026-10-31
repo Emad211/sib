@@ -1,13 +1,29 @@
-"""SHF-1.2 acceptance: 10 000 random events rebuild to the live projection state."""
+"""SHF-1.2 acceptance: 10 000 random events rebuild to the live projection state.
 
+The handover slice adds a second acceptance: a finished flow — blind counts, a joint count, its
+discrepancies and both signatures — rebuilds to exactly the live stock and cash projections.
+"""
+
+from datetime import datetime
+
+from clocks import FixedClock
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
+from seed_reference_data import seed
 
-from event_fixtures import random_events
+from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo
 from shift.adapters.db.core import Database
+from shift.common.clock import TEHRAN
+from shift.domain.handover_fsm import HandoverFlow, Signer
+from shift.domain.handover_payloads import CountTarget
+from shift.services.audit import AuditService
+from shift.services.catalog import CatalogService
 from shift.services.event_store import EventStore
+from shift.services.handover import Caller, HandoverService
 from shift.services.projections import ProjectionEngine
+
+MOMENT = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
 
 
 @given(seed=st.integers(min_value=0, max_value=10_000))
@@ -52,3 +68,71 @@ def test_rebuild_equals_live_over_10_000_random_events(
         assert {
             name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS
         } == live_checksums
+
+
+def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database) -> None:
+    """Counts, a joint count, a discrepancy and both signatures replay to the same two tables."""
+    seed(database)
+    clock = FixedClock(MOMENT)
+    store = EventStore(database, clock=clock)
+    projections = ProjectionEngine(database, clock=clock)
+    service = HandoverService(
+        database,
+        store,
+        projections=projections,
+        catalog=CatalogService(database, clock=clock),
+        audit=AuditService(database, clock=clock),
+        clock=clock,
+    )
+    store.append(
+        build_event(
+            "stock.weekly_count",
+            payload={"item_id": "para_500_amp", "location_id": "shelf_reception", "counted": 10},
+            shift_id=None,
+        )
+    )
+    caller = Caller(actor_id="staff-in", device_id="device-1")
+    cash = CountTarget(scope="cash")
+    shelf = CountTarget(scope="item", item_id="para_500_amp", location_id="shelf_reception")
+    diclo = CountTarget(scope="item", item_id="diclofenac_75_amp", location_id="shelf_reception")
+    handover_id = service.start(
+        HandoverFlow.RECEPTION,
+        outgoing_id="staff-out",
+        incoming_id="staff-in",
+        caller=caller,
+        opening_cash=1_000_000,
+    ).handover_id
+
+    service.count(handover_id, cash, 990_000, caller=caller)
+    service.count(handover_id, cash, 995_000, caller=caller)
+    service.joint(handover_id, cash, 997_000, caller=caller)
+    service.advance(handover_id, caller=caller)
+    service.count(handover_id, shelf, 8, caller=caller)
+    service.count(handover_id, shelf, 12, caller=caller)
+    service.count(handover_id, shelf, 9, caller=caller)
+    service.joint(handover_id, shelf, 9, caller=caller)
+    service.count(handover_id, diclo, 0, caller=caller)
+    service.advance(handover_id, caller=caller)
+    service.answer_checklist(handover_id, "store_lock_ok", ok=True, caller=caller)
+    service.advance(handover_id, caller=caller)
+    service.hand_parcel(handover_id, "parcel-1", 2, caller=caller)
+    service.advance(handover_id, caller=caller)
+    service.sign(handover_id, Signer.INCOMING, caller=caller)
+    assert service.sign(handover_id, Signer.OUTGOING, caller=caller).closed is True
+
+    with database.read() as connection:
+        live = (
+            projections_repo.stock_rows(connection),
+            projections_repo.cash_rows(connection),
+            {name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS},
+        )
+
+    assert projections.rebuild(dry_run=True).drift == ()
+    assert projections.rebuild().drift == ()
+    with database.read() as connection:
+        assert (
+            projections_repo.stock_rows(connection),
+            projections_repo.cash_rows(connection),
+            {name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS},
+        ) == live
+    assert live[1] == [{"cash_box_id": "reception", "expected": 997_000, "counted": 997_000, "variance": 0}]

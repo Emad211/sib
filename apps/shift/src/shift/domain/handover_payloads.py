@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
+from shift.domain.handover_fsm import HandoverStep
 from shift.domain.payloads import AmountRaw, Identifier, ItemCounted, Payload, Quantity
 
 CountScope = Literal["cash", "item"]
@@ -30,6 +31,12 @@ class CountTarget(Payload):
 
 class RecountRequested(CountTarget):
     """Another blind count of the cash box or one item is needed (H-05, H-13)."""
+
+
+class StepAdvanced(Payload):
+    """The flow entered the next step of its ordered walk (H-04); the log never skips one."""
+
+    step: HandoverStep
 
 
 class OutgoingCounted(ItemCounted):

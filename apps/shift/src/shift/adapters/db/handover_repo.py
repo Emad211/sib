@@ -106,6 +106,16 @@ def get(connection: Connection, handover_id: str) -> FlowRow | None:
     return None if row is None else _row(row)
 
 
+def find_shift_flow(connection: Connection, shift_id: str, flow: HandoverFlow) -> FlowRow | None:
+    """The flow of one kind that already belongs to `shift_id`, signed or not (H-12)."""
+    row = (
+        connection.exec_driver_sql(f"{_SELECT} WHERE shift_id = ? AND flow = ?", (shift_id, flow.value))
+        .mappings()
+        .first()
+    )
+    return None if row is None else _row(row)
+
+
 def mark_signed(connection: Connection, handover_id: str, signed_at: datetime) -> None:
     """Stamp the moment the flow closed; the cutoff stays `opened_at` and never moves (H-11)."""
     connection.exec_driver_sql(
