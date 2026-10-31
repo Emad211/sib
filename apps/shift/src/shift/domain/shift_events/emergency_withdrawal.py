@@ -6,8 +6,12 @@ quantity and the reason, and names the other. The shelf drops at once — the go
 confirmation changes a status and never the projection: the withdrawal is on the shelf in H-01 `U`
 from the moment it was recorded, which is exactly why the confirmation is asked for at all.
 
+The envelope is sealed again the same moment it is opened, so the recorder writes the serial of the
+new seal (S01 line 151) and the storekeeper reads it on the card row before confirming.
+
 A row stored before SHF-3 carries only item, location and quantity, so the payload model keeps
-`reason` and `second_person_id` optional and every old row still replays. The missing pair is refused
+`reason` and `second_person_id` optional and every old row still replays; the seal serial was added
+after those first rows, so it is optional in the model for the same reason. What is missing is refused
 here instead, and this rule runs for a new record only: the service resolves a replay first.
 """
 
@@ -35,6 +39,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("quantity", "تعداد", FieldKind.QUANTITY, minimum=1),
     FieldSpec("reason", "دلیل", FieldKind.TEXT, max_length=500),
     FieldSpec("second_person_id", "نفر دوم (≠ ثبت‌کننده)", FieldKind.STAFF),
+    FieldSpec("new_seal_number", "شماره پلمب جدید پاکت کلید", FieldKind.TEXT, max_length=100),
 )
 
 # What the phone shows the person whose withdrawal was refused.
@@ -44,6 +49,7 @@ MISSING_REASON = "دلیل برداشت اضطراری را ثبت کنید."
 MISSING_SECOND_PERSON = "نفر دوم را انتخاب کنید؛ برداشت اضطراری دونفره انجام می‌شود."
 SAME_AS_ACTOR = "نفر دوم نمی‌تواند همان ثبت‌کننده باشد."
 UNKNOWN_SECOND_PERSON = "نفر دوم باید از پرسنل فعال درمانگاه باشد."
+MISSING_SEAL = "شماره پلمب جدید پاکت کلید را ثبت کنید؛ پاکت بی‌پلمب به انبار برنمی‌گردد."
 
 
 def validate(payload: EmergencyWithdrawal, context: ShiftEventContext) -> None:
@@ -61,6 +67,8 @@ def validate(payload: EmergencyWithdrawal, context: ShiftEventContext) -> None:
         raise ShiftEventError(SAME_AS_ACTOR)
     if context.staff_roles(second_person) is None:
         raise ShiftEventError(UNKNOWN_SECOND_PERSON)
+    if not (payload.new_seal_number or "").strip():
+        raise ShiftEventError(MISSING_SEAL)
 
 
 def sample() -> dict[str, Any]:
@@ -71,6 +79,7 @@ def sample() -> dict[str, Any]:
         "quantity": 2,
         "reason": "قفسه خالی",
         "second_person_id": "staff-2",
+        "new_seal_number": "پلمب ۱۴۲۰",
     }
 
 
@@ -81,6 +90,7 @@ def summarize(payload: EmergencyWithdrawal) -> dict[str, Any]:
         "item_id": payload.item_id,
         "second_person_id": payload.second_person_id,
         "reason": payload.reason,
+        "new_seal_number": payload.new_seal_number,
     }
 
 
@@ -97,7 +107,7 @@ KIND = KindSpec(
     summarize=summarize,
     validate=validate,
     approvable_by=(Role.STOREKEEPER,),
-    card_fields=("quantity", "item_id", "second_person_id", "reason"),
+    card_fields=("quantity", "item_id", "second_person_id", "reason", "new_seal_number"),
 )
 
 register(KIND)

@@ -95,6 +95,8 @@ class EmergencyWithdrawal(StockDelta):
 
     reason: Note | None = None
     second_person_id: Identifier | None = None
+    # The serial of the fresh seal put on the key pouch after it was opened (S01 line 151).
+    new_seal_number: Annotated[str, Field(max_length=100)] | None = None
 
 
 class WasteReported(StockDelta):

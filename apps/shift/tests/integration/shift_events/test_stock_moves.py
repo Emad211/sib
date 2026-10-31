@@ -161,6 +161,7 @@ def _withdrawal(**overrides: Any) -> dict[str, Any]:
         "quantity": 2,
         "reason": "قفسه خالی شد",
         "second_person_id": SPARE.staff_id,
+        "new_seal_number": "پلمب ۱۴۲۰",
     }
     payload.update(overrides)
     return payload
@@ -263,6 +264,17 @@ def test_a_withdrawal_without_a_reason_is_refused(desk: Desk) -> None:
     assert _written(desk) == 1
 
 
+def test_a_withdrawal_without_the_new_seal_number_is_refused(desk: Desk) -> None:
+    """S01 line 151: the pouch is sealed again at once, so a row with no serial is an unsealed pouch."""
+    with pytest.raises(ShiftEventRuleError):
+        _record(desk, desk.nurse, WITHDRAWN, _withdrawal(new_seal_number="   "))
+    with pytest.raises(ShiftEventRuleError):
+        _record(desk, desk.nurse, WITHDRAWN, _withdrawal(new_seal_number=None))
+
+    assert _shelf(desk) == SHELF_BEFORE
+    assert _written(desk) == 1
+
+
 def test_the_storekeeper_confirms_an_emergency_withdrawal_afterwards(desk: Desk) -> None:
     """The shelf already dropped; the confirmation is the storekeeper's signature on it (H-01 `U`)."""
     recorded = _record(desk, desk.nurse, WITHDRAWN, _withdrawal())
@@ -273,6 +285,7 @@ def test_the_storekeeper_confirms_an_emergency_withdrawal_afterwards(desk: Desk)
     assert (entry.type, entry.code) == (WITHDRAWN, "اض")
     assert entry.actor["id"] == desk.nurse.staff_id
     assert entry.summary["quantity"] == 2
+    assert entry.summary["new_seal_number"] == "پلمب ۱۴۲۰", "the storekeeper reads the new seal before confirming"
 
     decision = _record(desk, desk.storekeeper, APPROVED, {}, ref_event_id=recorded.event_id)
 
