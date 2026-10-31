@@ -209,7 +209,9 @@ def test_manager_can_create_list_download_and_delete_a_backup(synthetic_app):
     r = c.get(f"/manager/settings/download/{files[0].name}")
     assert r.status_code == 200 and r.data[:16] == b"SQLite format 3\x00"
     r.close()  # release the file handle (Windows) before deleting
-    c.post("/manager/settings", data={"action": "delete_backup", "backup_name": files[0].name, "password": TEST_PASSWORD})
+    c.post(
+        "/manager/settings", data={"action": "delete_backup", "backup_name": files[0].name, "password": TEST_PASSWORD}
+    )
     assert not files[0].exists()
 
 
