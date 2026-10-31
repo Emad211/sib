@@ -38,6 +38,7 @@ from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
 from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
+from shift.services.purchase import PurchaseService
 
 log = logging.getLogger(__name__)
 
@@ -271,13 +272,23 @@ def current_handovers(
 @router.get("/{handover_id}")
 def get_handover_state(
     handover_id: str,
+    request: Request,
     response: Response,
     _principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
-    """The flow as its own log rebuilt it: step, statuses and signatures only."""
+    """The flow as its own log rebuilt it: step, statuses, signatures and the parcels in transit.
+
+    The parcels are the purchasing chain's own deliveries (SHF-4, P-12): the screen hands over a real
+    parcel id instead of a number somebody typed, and only when the store has not taken it yet.
+    """
     _no_store(response)
-    return _state(_run(service.state, handover_id))
+    purchase: PurchaseService = request.app.state.purchase
+    parcels = [
+        {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
+        for parcel in purchase.in_transit(deps.running_shift(request))
+    ]
+    return {**_state(_run(service.state, handover_id)), "parcels_in_transit": parcels}
 
 
 @router.get("/{handover_id}/targets")

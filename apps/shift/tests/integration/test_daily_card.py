@@ -609,6 +609,11 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
         "open_events",
         "late_cash",
         "held_events",
+        "purchase_orders",
+        "flagged_deliveries",
+        "parcels_in_transit",
+        "weekly_count",
+        "below_minimum",
     }
     assert document["card_date"] == "2026-10-27"
     assert document["generated_at"] == "2026-10-27T04:01:00+00:00"

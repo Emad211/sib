@@ -771,3 +771,52 @@ def test_the_manager_card_sees_the_open_items_and_no_figure(desk: Desk) -> None:
     assert pending.locked_deliveries == ()
     assert {row.item_id for row in pending.below_minimum} >= {ITEM}
     assert pending.weekly.state in {"due", "overdue"}
+
+
+def test_the_card_carries_the_waiting_order_the_locked_parcel_and_the_warehouse_work(desk: Desk) -> None:
+    """M-14..M-16: the manager's stored card is where the chain's decisions and gaps actually land."""
+    from shift.services.daily_card import DailyCardService
+
+    order_id = _act(
+        desk,
+        desk.storekeeper,
+        "order.draft",
+        lines=[{"item_id": ITEM, "location_id": LOCATION, "quantity": 4}],
+        note="کمبود قفسه",
+    )["order_id"]
+    delivery_id = _received_delivery(desk, _placed_order(desk))
+    _act(desk, desk.reception, "delivery.flag", delivery_id=delivery_id, reason="short", note=None)
+
+    card = DailyCardService(desk.database, clock=desk.clock).build(date(2026, 10, 28))
+
+    assert card is not None
+    assert [row.order_id for row in card.purchase_orders] == [order_id]
+    assert card.purchase_orders[0].lines[0].endswith(" × 4"), "the line names the item and its quantity, never a price"
+    assert [row.delivery_id for row in card.flagged_deliveries] == [delivery_id]
+    assert card.flagged_deliveries[0].reason_fa == "کم"
+    assert delivery_id in {row.delivery_id for row in card.parcels_in_transit}
+    assert card.weekly_count[0].state in {"due", "overdue", "done"}
+    below = {row.item_id: row for row in card.below_minimum}
+    assert below[ITEM].quantity == SHELF_BEFORE and below[ITEM].minimum == 10
+    assert all(row.quantity < row.minimum for row in card.below_minimum)
+    # The stored document round-trips the new sections, and none of them carries a figure of the box.
+    assert card.to_payload()["sections"]["purchase_orders"][0]["order_id"] == order_id
+    assert "amount" not in card.to_payload()["sections"]["purchase_orders"][0]
+
+
+def test_the_handover_hands_a_real_parcel_and_stops_listing_it_once_the_store_takes_it(desk: Desk) -> None:
+    """P-12: the parcel the handover offers is the delivery itself, not an id somebody typed."""
+    delivery_id = _received_delivery(desk, _placed_order(desk))
+    assert delivery_id in {parcel.delivery_id for parcel in desk.service.in_transit(desk.shift)}
+
+    _act(
+        desk,
+        desk.reception,
+        "delivery.transfer",
+        delivery_id=delivery_id,
+        to_staff_id=desk.storekeeper.staff_id,
+        to_kind="storekeeper",
+        packages=1,
+    )
+
+    assert desk.service.in_transit(desk.shift) == ()

@@ -288,6 +288,18 @@ class PurchaseService:
             weekly=self._weekly(shift, log),
         )
 
+    def in_transit(self, shift: ShiftKey) -> tuple[DeliveryState, ...]:
+        """The received parcels the storekeeper has not taken yet: the handover's real parcel list (P-12).
+
+        The handover screen hands one of these to the next shift, so it needs the parcel's own id and
+        the invoice number the reception wrote, and nothing that belongs to the accountant.
+        """
+        return tuple(
+            parcel
+            for parcel in delivery_states(self._log()).values()
+            if not parcel.returned and parcel.custody != "storekeeper" and parcel.status != "paid"
+        )
+
     # --- writing ---------------------------------------------------------------------------
 
     def perform(self, principal: Principal, shift: ShiftKey, action: str, data: Mapping[str, Any]) -> dict[str, Any]:

@@ -189,6 +189,83 @@
     {% endfor %}
   </section>
   {% endif %}
+
+  {% if "purchase_orders" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-orders-title">
+    <h2 id="mg-orders-title" class="mg-section-title">سفارش‌های خرید در انتظار تصمیم</h2>
+    {% for row in card.sections.purchase_orders %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.line_count }} قلم — {{ row.age_hours }} ساعت در انتظار</p>
+      <p class="mg-line">{{ row.lines }}</p>
+      {% if row.note %}<p class="mg-line mg-muted">یادداشت: {{ row.note }}</p>{% endif %}
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-muted">شناسهٔ سفارش <span class="mg-id" dir="ltr">{{ row.order_id }}</span></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "flagged_deliveries" in card.sections %}
+  <section class="mg-section mg-emergency{% if not card.sections.flagged_deliveries %} mg-clear{% endif %}" aria-labelledby="mg-flagged-title">
+    <h2 id="mg-flagged-title" class="mg-section-title">بار مشکل‌دار (پرداخت قفل)</h2>
+    {% for row in card.sections.flagged_deliveries %}
+    <article class="mg-alert-row">
+      <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }} — {{ row.reason }}</p>
+      <p class="mg-line">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      <p class="mg-line mg-muted">{{ row.age_hours }} ساعت در انتظار تصمیم شما؛ پرداخت تا آن زمان قفل است.</p>
+      <p class="mg-line mg-muted">شناسهٔ دریافت <span class="mg-id" dir="ltr">{{ row.delivery_id }}</span></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "parcels_in_transit" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-parcels-title">
+    <h2 id="mg-parcels-title" class="mg-section-title">بار در راه انبار</h2>
+    {% for row in card.sections.parcels_in_transit %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">فاکتور {{ row.invoice_reference }}{% if row.packages %} — {{ row.packages }} بسته{% endif %}</p>
+      <p class="mg-line">{{ row.age_hours }} ساعت در راه · ثبت‌کننده: {{ row.actor }}</p>
+      <p class="mg-line mg-muted">دریافت: {{ row.at }} · شناسه <span class="mg-id" dir="ltr">{{ row.delivery_id }}</span></p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "weekly_count" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-weekly-title">
+    <h2 id="mg-weekly-title" class="mg-section-title">شمارش هفتگی انبار</h2>
+    {% for row in card.sections.weekly_count %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.state }}</p>
+      <p class="mg-line">بازهٔ شمارش: {{ row.window }}</p>
+      {% if row.last_count %}<p class="mg-line mg-muted">آخرین شمارش: {{ row.last_count }}</p>{% endif %}
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "below_minimum" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-minimum-title">
+    <h2 id="mg-minimum-title" class="mg-section-title">اقلام زیر حداقل</h2>
+    {% for row in card.sections.below_minimum %}
+    <article class="mg-row">
+      <p class="mg-line mg-strong">{{ row.name }}</p>
+      <p class="mg-line">{{ row.location }} · موجودی {{ row.quantity }} از حداقل {{ row.minimum }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
   {% else %}
   <section class="mg-section" aria-labelledby="mg-empty-title">
     <h1 id="mg-empty-title" class="mg-title">کارت روزانهٔ مدیر</h1>

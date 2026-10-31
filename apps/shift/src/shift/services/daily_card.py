@@ -30,7 +30,15 @@ from typing import Any
 
 from sqlalchemy import Connection
 
-from shift.adapters.db import audit_repo, card_repo, catalog_repo, events_repo, handover_repo, staff_repo
+from shift.adapters.db import (
+    audit_repo,
+    card_repo,
+    catalog_repo,
+    events_repo,
+    handover_repo,
+    projections_repo,
+    staff_repo,
+)
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso, to_tehran, to_utc, utc_iso
@@ -38,6 +46,10 @@ from shift.common.hashing import canonical_json
 from shift.domain.daily_card import CARD_SCHEMA_VERSION, CardWindow, due_card_days, window_for
 from shift.domain.events import EventType
 from shift.domain.occurred_time import HELD_MESSAGES
+from shift.domain.policy import SettingKey
+from shift.domain.purchase import UNDECIDED, order_states
+from shift.domain.purchase_deliveries import delivery_states
+from shift.domain.shift_clock import covering
 from shift.domain.shift_events import (
     APPROVED,
     DECISION_TYPES,
@@ -47,8 +59,10 @@ from shift.domain.shift_events import (
     kind_for,
     summary_for,
 )
+from shift.domain.stock_checks import weekly_status
 from shift.services.audit import AuditEntry, AuditService
 from shift.services.handover import EXCEPTION_ACTION
+from shift.services.settings import SettingsService
 from shift.services.shift_events import waits_for_decision
 
 # The background runtime produces the cards, exactly as it produces the snapshots; runtime.RUNTIME_ACTOR
@@ -94,8 +108,14 @@ SECTION_NAMES = (
     "open_events",
     "late_cash",
     "held_events",
+    # SHF-4: what the purchasing chain waits to decide and what the warehouse still owes (M-14..M-16).
+    "purchase_orders",
+    "flagged_deliveries",
+    "parcels_in_transit",
+    "weekly_count",
+    "below_minimum",
 )
-LEGACY_SCHEMA_VERSIONS = frozenset({2, 3})
+LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4})
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,6 +488,172 @@ class HeldLine:
 
 
 @dataclass(frozen=True, slots=True)
+class PurchaseOrderLine:
+    """An order the storekeeper sent and the manager has not decided yet (P-02, M-14).
+
+    The row carries the lines' names and quantities and never a price: the manager decides what to buy,
+    the accountant prices what arrived. It stays on the card whatever shift drafted it.
+    """
+
+    order_id: str
+    at_tehran: str
+    age_hours: int
+    actor: Person
+    line_count: int
+    lines: tuple[str, ...]
+    note: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "order_id": self.order_id,
+            "at_tehran": self.at_tehran,
+            "age_hours": self.age_hours,
+            "actor": self.actor.to_payload(),
+            "line_count": self.line_count,
+            "lines": list(self.lines),
+            "note": self.note,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "PurchaseOrderLine":
+        note = payload.get("note")
+        return cls(
+            order_id=str(payload["order_id"]),
+            at_tehran=str(payload["at_tehran"]),
+            age_hours=int(payload["age_hours"]),
+            actor=Person.from_payload(payload["actor"]),
+            line_count=int(payload["line_count"]),
+            lines=tuple(str(line) for line in payload.get("lines", ())),
+            note=None if note is None else str(note),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FlaggedDeliveryLine:
+    """A parcel received with a problem label whose payment still waits for the manager (P-06, M-14)."""
+
+    delivery_id: str
+    invoice_reference: str
+    reason_fa: str
+    at_tehran: str
+    age_hours: int
+    actor: Person
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "delivery_id": self.delivery_id,
+            "invoice_reference": self.invoice_reference,
+            "reason_fa": self.reason_fa,
+            "at_tehran": self.at_tehran,
+            "age_hours": self.age_hours,
+            "actor": self.actor.to_payload(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "FlaggedDeliveryLine":
+        return cls(
+            delivery_id=str(payload["delivery_id"]),
+            invoice_reference=str(payload["invoice_reference"]),
+            reason_fa=str(payload["reason_fa"]),
+            at_tehran=str(payload["at_tehran"]),
+            age_hours=int(payload["age_hours"]),
+            actor=Person.from_payload(payload["actor"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ParcelLine:
+    """A received parcel the storekeeper has not taken custody of yet, with its age (P-12, M-15)."""
+
+    delivery_id: str
+    invoice_reference: str
+    packages: int | None
+    at_tehran: str
+    age_hours: int
+    actor: Person
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "delivery_id": self.delivery_id,
+            "invoice_reference": self.invoice_reference,
+            "packages": self.packages,
+            "at_tehran": self.at_tehran,
+            "age_hours": self.age_hours,
+            "actor": self.actor.to_payload(),
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "ParcelLine":
+        packages = payload.get("packages")
+        return cls(
+            delivery_id=str(payload["delivery_id"]),
+            invoice_reference=str(payload["invoice_reference"]),
+            packages=None if packages is None else int(packages),
+            at_tehran=str(payload["at_tehran"]),
+            age_hours=int(payload["age_hours"]),
+            actor=Person.from_payload(payload["actor"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class WeeklyCountLine:
+    """The main store's count for this week: done, still due, or past its deadline (P-11, M-15)."""
+
+    state: str
+    window_from: str
+    window_to: str
+    last_count_on: str | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "state": self.state,
+            "window_from": self.window_from,
+            "window_to": self.window_to,
+            "last_count_on": self.last_count_on,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "WeeklyCountLine":
+        last = payload.get("last_count_on")
+        return cls(
+            state=str(payload["state"]),
+            window_from=str(payload["window_from"]),
+            window_to=str(payload["window_to"]),
+            last_count_on=None if last is None else str(last),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BelowMinimumLine:
+    """A counted item under its catalog minimum, with the figure it stands at now (P-01, M-16)."""
+
+    item_id: str
+    name: str
+    location: str
+    minimum: int
+    quantity: int
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "item_id": self.item_id,
+            "name": self.name,
+            "location": self.location,
+            "minimum": self.minimum,
+            "quantity": self.quantity,
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> "BelowMinimumLine":
+        return cls(
+            item_id=str(payload["item_id"]),
+            name=str(payload["name"]),
+            location=str(payload["location"]),
+            minimum=int(payload["minimum"]),
+            quantity=int(payload["quantity"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class Card:
     """One day's manager card: the window it covers, when it was built, and its seven sections.
 
@@ -491,6 +677,11 @@ class Card:
     over_cap_withdrawals: tuple[WithdrawalLine, ...] = ()
     late_cash: tuple[LateCashLine, ...] = ()
     held_events: tuple[HeldLine, ...] = ()
+    purchase_orders: tuple[PurchaseOrderLine, ...] = ()
+    flagged_deliveries: tuple[FlaggedDeliveryLine, ...] = ()
+    parcels_in_transit: tuple[ParcelLine, ...] = ()
+    weekly_count: tuple[WeeklyCountLine, ...] = ()
+    below_minimum: tuple[BelowMinimumLine, ...] = ()
     present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
@@ -517,6 +708,11 @@ class Card:
                 "over_cap_withdrawals": [entry.to_payload() for entry in self.over_cap_withdrawals],
                 "late_cash": [entry.to_payload() for entry in self.late_cash],
                 "held_events": [entry.to_payload() for entry in self.held_events],
+                "purchase_orders": [entry.to_payload() for entry in self.purchase_orders],
+                "flagged_deliveries": [entry.to_payload() for entry in self.flagged_deliveries],
+                "parcels_in_transit": [entry.to_payload() for entry in self.parcels_in_transit],
+                "weekly_count": [entry.to_payload() for entry in self.weekly_count],
+                "below_minimum": [entry.to_payload() for entry in self.below_minimum],
             },
         }
 
@@ -546,6 +742,17 @@ class Card:
             ),
             late_cash=tuple(LateCashLine.from_payload(entry) for entry in sections.get("late_cash", ())),
             held_events=tuple(HeldLine.from_payload(entry) for entry in sections.get("held_events", ())),
+            purchase_orders=tuple(
+                PurchaseOrderLine.from_payload(entry) for entry in sections.get("purchase_orders", ())
+            ),
+            flagged_deliveries=tuple(
+                FlaggedDeliveryLine.from_payload(entry) for entry in sections.get("flagged_deliveries", ())
+            ),
+            parcels_in_transit=tuple(
+                ParcelLine.from_payload(entry) for entry in sections.get("parcels_in_transit", ())
+            ),
+            weekly_count=tuple(WeeklyCountLine.from_payload(entry) for entry in sections.get("weekly_count", ())),
+            below_minimum=tuple(BelowMinimumLine.from_payload(entry) for entry in sections.get("below_minimum", ())),
             present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
@@ -553,10 +760,26 @@ class Card:
 class DailyCardService:
     """Builds, stores and reads the manager's daily card (S01 §6, SHF-6.1)."""
 
-    def __init__(self, database: Database, *, clock: Clock | None = None, audit: AuditService | None = None) -> None:
+    def __init__(
+        self,
+        database: Database,
+        *,
+        clock: Clock | None = None,
+        audit: AuditService | None = None,
+        settings: SettingsService | None = None,
+    ) -> None:
         self._database = database
         self._clock = clock or SystemClock()
         self._audit = audit or AuditService(database, clock=self._clock)
+        # The warehouse count's deadline is a versioned setting (R-09). The card reads it through the
+        # same service the manager's settings page writes, built here when the app did not hand one in.
+        self._settings_service = settings
+
+    def _settings(self) -> SettingsService:
+        """The settings reader this card uses; built once on first use (R-09)."""
+        if self._settings_service is None:
+            self._settings_service = SettingsService(self._database, clock=self._clock)
+        return self._settings_service
 
     def build(self, run_day: date) -> Card | None:
         """The card for `run_day` as the log, the flows and the rosters describe it now; None on Friday."""
@@ -583,6 +806,11 @@ class DailyCardService:
                 over_cap_withdrawals=_over_cap_withdrawals(connection, window, names),
                 late_cash=_late_cash(connection, window, names),
                 held_events=_held_events(connection, window, names),
+                purchase_orders=_purchase_orders(connection, moment, names, catalog),
+                flagged_deliveries=_flagged_deliveries(connection, moment, names),
+                parcels_in_transit=_parcels_in_transit(connection, moment, names),
+                weekly_count=(_weekly_count(connection, moment, self._settings()),),
+                below_minimum=_below_minimum(connection, moment, catalog),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -1000,4 +1228,120 @@ def _held_events(connection: Connection, window: CardWindow, names: _Names) -> t
                 actor=names.person(event.actor_id),
             )
         )
+    return tuple(rows)
+
+
+# --- the purchasing chain and the warehouse (SHF-4, S01 §4, M-14..M-16) ----------------------
+
+_REASON_FA = {"short": "کم", "extra": "زیاد", "wrong": "اشتباه", "broken": "شکسته"}
+_STORE_CUSTODY = "storekeeper"
+
+
+def _purchase_orders(
+    connection: Connection, moment: datetime, names: _Names, catalog: _CatalogNames
+) -> tuple[PurchaseOrderLine, ...]:
+    """Every order still waiting for the manager, whatever shift drafted it (P-02, M-14).
+
+    The lines carry the item's name and the quantity the storekeeper asked for; a price is never part
+    of an order, because the accountant prices what actually arrived.
+    """
+    rows: list[PurchaseOrderLine] = []
+    for order in order_states(events_repo.iter_events(connection)).values():
+        if order.status not in UNDECIDED:
+            continue
+        rows.append(
+            PurchaseOrderLine(
+                order_id=order.order_id,
+                at_tehran=order.at_tehran,
+                age_hours=_age_hours(moment, parse_iso(order.at_tehran)),
+                actor=names.person(order.actor_id),
+                line_count=len(order.lines),
+                lines=tuple(f"{catalog.item(line.item_id)} × {line.quantity}" for line in order.lines),
+                note=order.note,
+            )
+        )
+    return tuple(rows)
+
+
+def _flagged_deliveries(connection: Connection, moment: datetime, names: _Names) -> tuple[FlaggedDeliveryLine, ...]:
+    """A parcel with a problem label and no manager decision: its payment is locked (P-06, M-14)."""
+    rows: list[FlaggedDeliveryLine] = []
+    for parcel in delivery_states(events_repo.iter_events(connection)).values():
+        if not parcel.payment_locked or parcel.returned:
+            continue
+        rows.append(
+            FlaggedDeliveryLine(
+                delivery_id=parcel.delivery_id,
+                invoice_reference=parcel.invoice_reference,
+                reason_fa=_REASON_FA.get(parcel.flagged_reason or "", parcel.flagged_reason or ""),
+                at_tehran=parcel.at_tehran,
+                age_hours=_age_hours(moment, parse_iso(parcel.at_tehran)),
+                actor=names.person(parcel.actor_id),
+            )
+        )
+    return tuple(rows)
+
+
+def _parcels_in_transit(connection: Connection, moment: datetime, names: _Names) -> tuple[ParcelLine, ...]:
+    """A received parcel the storekeeper has not taken yet, with how long it has been on its way (P-12)."""
+    rows: list[ParcelLine] = []
+    for parcel in delivery_states(events_repo.iter_events(connection)).values():
+        if parcel.returned or parcel.custody == _STORE_CUSTODY or parcel.status == "paid":
+            continue
+        rows.append(
+            ParcelLine(
+                delivery_id=parcel.delivery_id,
+                invoice_reference=parcel.invoice_reference,
+                packages=parcel.packages,
+                at_tehran=parcel.at_tehran,
+                age_hours=_age_hours(moment, parse_iso(parcel.at_tehran)),
+                actor=names.person(parcel.actor_id),
+            )
+        )
+    return tuple(rows)
+
+
+def _weekly_count(connection: Connection, moment: datetime, settings: SettingsService) -> WeeklyCountLine:
+    """This week's answer for the main store: done, still due, or past its deadline (P-11, M-15).
+
+    The deadline is the versioned setting (R-09), read as the shift of the moment the card is built.
+    """
+    shift = covering(to_tehran(moment))
+    last: datetime | None = None
+    for event in events_repo.iter_events(connection):
+        if event.type == EventType.STOCK_WEEKLY_COUNT.value:
+            last = parse_iso(event.at_tehran)
+    status = weekly_status(
+        last,
+        moment,
+        due_weekday=settings.number(SettingKey.WEEKLY_COUNT_WEEKDAY, shift),
+        due_time=settings.clock_time(SettingKey.WEEKLY_COUNT_TIME, shift),
+    )
+    return WeeklyCountLine(
+        state=status.state,
+        window_from=status.window_start.isoformat(),
+        window_to=status.window_end.isoformat(),
+        last_count_on=None if status.last_count_at is None else status.last_count_at.date().isoformat(),
+    )
+
+
+def _below_minimum(connection: Connection, moment: datetime, catalog: _CatalogNames) -> tuple[BelowMinimumLine, ...]:
+    """Counted items under their catalog minimum, with the figure the projection holds now (P-01, M-16)."""
+    shift = covering(to_tehran(moment))
+    stock = {(row["item_id"], row["location_id"]): int(row["qty"]) for row in projections_repo.stock_rows(connection)}
+    rows: list[BelowMinimumLine] = []
+    for item in catalog_repo.list_items_effective(connection, shift.text):
+        if item.kind != "counted" or item.retired:
+            continue
+        quantity = stock.get((item.item_id, item.location_id), 0)
+        if quantity < item.minimum:
+            rows.append(
+                BelowMinimumLine(
+                    item_id=item.item_id,
+                    name=item.name,
+                    location=catalog.location(item.location_id),
+                    minimum=item.minimum,
+                    quantity=quantity,
+                )
+            )
     return tuple(rows)
