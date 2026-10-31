@@ -56,9 +56,29 @@
     {% endfor %}
   </section>
   {% endif %}
+  {% if "checklist_answers" in card.sections %}
+  {% set answers = card.sections.checklist_answers %}
+  <section class="mg-section{% if answers %} mg-emergency{% endif %}" aria-labelledby="mg-checklist-title">
+    <h2 id="mg-checklist-title" class="mg-section-title">پاسخ چک‌لیست‌ها: خیر و عددهای خوانده‌شده</h2>
+    {% for row in answers %}
+    <article class="mg-row">
+      <p class="mg-line"><strong>{{ row.name }}</strong> — پاسخ: {{ row.answer }}</p>
+      {% if row.reading %}<p class="mg-amount">{{ row.reading }} <span class="mg-unit">عدد خوانده‌شده</span></p>{% endif %}
+      <p class="mg-line mg-muted">{{ row.person }} · {{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">امروز «خیر» یا عددی در چک‌لیست‌ها ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
   {% if "cash_exceptions" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-cash-title">
     <h2 id="mg-cash-title" class="mg-section-title">نقد ثبت‌شده در تحویل</h2>
+    {% if card.cash_float %}
+    <p class="mg-line mg-amount">تنخواه صندوق: {{ card.cash_float }} <span class="mg-unit">تومان</span></p>
+    <p class="mg-note">فقط یادآور است؛ در هیچ محاسبه‌ای نمی‌آید.</p>
+    {% endif %}
     <p class="mg-note">این نقد داخل تحویل ثبت شده و مال شیفت بعد است.</p>
     {% for row in card.sections.cash_exceptions %}
     <article class="mg-row">

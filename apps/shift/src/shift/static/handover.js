@@ -68,6 +68,8 @@ const managerMessage = $("handover-manager-message");
 
 let state = null;
 let targets = null;
+// G2: the picture that stands for an item, so a tired person knows the row before reading its name.
+const iconFor = (name) => (window.itemIcons ? window.itemIcons.for(name) : "");
 let lastStep = null;
 let busy = false;
 // Which checklist items this phone has answered for the open flow; the step leaves only when
@@ -380,7 +382,7 @@ function renderItems() {
     return;
   }
   numberJob(target, {
-    title: info.name,
+    title: `${iconFor(info.icon)} ${info.name}`,
     kicker: kicker,
     hint: `واحد: ${info.unit}`,
     inputId: "handover-count-input",
@@ -393,7 +395,7 @@ function renderItems() {
 function checklistRow(row) {
   const item = element("li", "ho-checklist-item");
   item.dataset.itemId = row.item_id;
-  item.appendChild(element("p", "ho-checklist-name", row.name));
+  item.appendChild(element("p", "ho-checklist-name", `${iconFor(row.icon)} ${row.name}`));
   if (answeredChecklists.has(row.item_id)) {
     item.appendChild(element("p", "ho-answered", "پاسخ ثبت شد."));
     return item;

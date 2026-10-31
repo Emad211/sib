@@ -65,11 +65,13 @@
     <input class="form-control mg-input" id="campaign-amount" name="amount_toman" type="number" step="1"
            inputmode="numeric" dir="ltr" min="0" max="{{ max_amount }}" required>
 
-    <label class="mg-meta" for="campaign-starts">روز شروع (YYYY-MM-DD)</label>
-    <input class="form-control mg-input" id="campaign-starts" name="starts_on" type="date" dir="ltr" required>
+    <label class="mg-meta" for="campaign-starts">روز شروع (تاریخ جلالی)</label>
+    <input class="form-control mg-input" id="campaign-starts" name="starts_on" data-jalali-date
+           dir="rtl" autocomplete="off" required>
 
-    <label class="mg-meta" for="campaign-ends">روز پایان (YYYY-MM-DD)</label>
-    <input class="form-control mg-input" id="campaign-ends" name="ends_on" type="date" dir="ltr" required>
+    <label class="mg-meta" for="campaign-ends">روز پایان (تاریخ جلالی)</label>
+    <input class="form-control mg-input" id="campaign-ends" name="ends_on" data-jalali-date
+           dir="rtl" autocomplete="off" required>
 
     <button class="btn btn-primary mg-save" type="submit">ذخیره</button>
     <p class="mg-status" role="status"></p>

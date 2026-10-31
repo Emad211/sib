@@ -17,6 +17,9 @@ _ITEM_COLUMNS = (
     "acc_code",
     "stock_factor",
     "retired",
+    "responsible_role",
+    "frequency",
+    "sort_order",
     "version",
     "effective_from_shift",
 )
@@ -49,6 +52,9 @@ class ItemRow:
     retired: bool
     version: int
     effective_from_shift: str
+    responsible_role: str | None = None
+    frequency: str = "every_shift"
+    sort_order: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +91,9 @@ def _item(row: Mapping[str, Any]) -> ItemRow:
         retired=bool(row["retired"]),
         version=int(row["version"]),
         effective_from_shift=str(row["effective_from_shift"]),
+        responsible_role=row["responsible_role"],
+        frequency=str(row["frequency"]),
+        sort_order=int(row["sort_order"]),
     )
 
 
@@ -221,11 +230,15 @@ def insert_item_version(
     effective_from_shift: str,
     changed_at: str,
     changed_by: str,
+    responsible_role: str | None = None,
+    frequency: str = "every_shift",
+    sort_order: int = 0,
 ) -> None:
     connection.exec_driver_sql(
         "INSERT INTO catalog_item_versions (item_id, name, kind, location_id, unit, minimum, acc_code, "
-        "stock_factor, retired, version, effective_from_shift, changed_at, changed_by) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "stock_factor, retired, version, effective_from_shift, changed_at, changed_by, "
+        "responsible_role, frequency, sort_order) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             item_id,
             name,
@@ -240,8 +253,17 @@ def insert_item_version(
             effective_from_shift,
             changed_at,
             changed_by,
+            responsible_role,
+            frequency,
+            sort_order,
         ),
     )
+
+
+def next_sort_order(connection: Connection) -> int:
+    """Where a new item lands: ten places after the last item of the whole list (the end of the shelf order)."""
+    highest = connection.exec_driver_sql("SELECT COALESCE(MAX(sort_order), 0) FROM catalog_item_versions").scalar_one()
+    return int(highest) + 10
 
 
 def find_item_latest(connection: Connection, item_id: str) -> ItemRow | None:

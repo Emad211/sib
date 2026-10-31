@@ -29,14 +29,17 @@ from shift.api import deps
 from shift.api.deps import NO_PERMISSION
 from shift.api.errors import ApiError, Conflict, Forbidden, NotFound
 from shift.common.clock import utc_iso
+from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow
 from shift.domain.handover_payloads import CountTarget
 from shift.domain.handover_steps import STEP_LOCATIONS
+from shift.domain.item_icons import icon_for
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
+from shift.services.checklists import ChecklistAsker
 from shift.services.handover import NO_ACCOUNTING, NO_BASELINE, Caller, HandoverService, HandoverState, NotASigner
 from shift.services.purchase import PurchaseService
 
@@ -76,6 +79,7 @@ _REFUSALS: tuple[tuple[str, str], ...] = (
     ("already settled", "این قلم قبلاً تسویه شده است."),
     ("signatures belong", "امضا فقط در مرحلهٔ امضای دوطرفه ثبت می‌شود."),
     ("checklists work belongs", "پاسخ چک‌لیست فقط در مرحلهٔ چک‌لیست ثبت می‌شود."),
+    ("not on this flow's checklist", "این مورد در چک‌لیست این تحویل نیست."),
     ("parcels work belongs", "ثبت بسته فقط در مرحلهٔ بسته‌های در راه انجام می‌شود."),
     ("cannot be skipped", "ثبت امضا پایان تحویل است؛ این مرحله رد نمی‌شود."),
     ("already signed", "این نفر قبلاً امضا کرده است."),
@@ -310,16 +314,23 @@ def handover_targets(
         if location is None:
             continue
         for item in catalog.items(at_shift, location_id=location):
-            if item.kind is not ItemKind.COUNTED or (item.item_id, location) in seen:
+            if item.kind is not ItemKind.COUNTED or item.frequency is not Frequency.EVERY_SHIFT:
+                continue
+            if (item.item_id, location) in seen:
                 continue
             seen.add((item.item_id, location))
             items.append(
-                {"item_id": item.item_id, "name": item.name, "unit": item.unit, "location_id": item.location_id}
+                {
+                    "item_id": item.item_id,
+                    "name": item.name,
+                    "unit": item.unit,
+                    "location_id": item.location_id,
+                    "icon": icon_for(item),
+                }
             )
     checklists = [
-        {"item_id": item.item_id, "name": item.name, "kind": item.kind.value}
-        for item in catalog.items(at_shift)
-        if item.kind is not ItemKind.COUNTED
+        {"item_id": item.item_id, "name": item.name, "kind": item.kind.value, "icon": icon_for(item)}
+        for item in ChecklistAsker(catalog, request.app.state.database).due(state.flow, at_shift)
     ]
     _no_store(response)
     return {"handover_id": state.handover_id, "flow": state.flow.value, "items": items, "checklists": checklists}

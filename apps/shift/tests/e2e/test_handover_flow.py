@@ -288,19 +288,30 @@ def _advance(page: Page, step: str) -> None:
     page.wait_for_timeout(100)
 
 
-def _answer_checklists(page: Page) -> None:
-    """Answer every checklist item; the step offers its advance only after the last answer."""
+def _answer_checklists(
+    page: Page,
+    *,
+    yes_id: str = "store_lock_ok",
+    yes_name: str = "قفل انبار سالم است",
+    reading_id: str = "fridge_temperature",
+    reading_name: str = "دمای یخچال دارو",
+    reading: str = FRIDGE_READING,
+) -> None:
+    """Answer the flow's own checklist; the step offers its advance only after the last answer.
+
+    Each flow asks only its lines (A3): reception answers the store's two, nursing the trolley's two.
+    """
     page.wait_for_selector("#handover-checklist-list", timeout=15000)
-    assert "دمای یخچال دارو" in page.inner_text("#handover-step")
+    assert reading_name in page.inner_text("#handover-step")
     assert page.locator("#handover-advance").count() == 0, "the checklist step leaves only when answered"
 
-    page.click("#handover-checklist-store_lock_ok-yes")
-    page.wait_for_selector("#handover-checklist-store_lock_ok-yes", state="detached", timeout=15000)
+    page.click(f"#handover-checklist-{yes_id}-yes")
+    page.wait_for_selector(f"#handover-checklist-{yes_id}-yes", state="detached", timeout=15000)
     page.wait_for_timeout(100)
     assert page.locator("#handover-advance").count() == 0, "one answer is not the whole checklist"
 
-    page.fill("#handover-reading-fridge_temperature", FRIDGE_READING)
-    page.click("#handover-checklist-fridge_temperature-submit")
+    page.fill(f"#handover-reading-{reading_id}", reading)
+    page.click(f"#handover-checklist-{reading_id}-submit")
     page.wait_for_selector("#handover-advance", timeout=15000)
     page.wait_for_timeout(100)
 
@@ -467,7 +478,14 @@ def test_nursing_handover_counts_the_cpr_room_and_the_trolley_with_no_cash_step(
         _advance(incoming, "trolley")
         _count_until_advance(incoming, TROLLEY_COUNTS)
         _advance(incoming, "checklists")
-        _answer_checklists(incoming)
+        _answer_checklists(
+            incoming,
+            yes_id="trolley_seal_ok",
+            yes_name="پلمب ترالی سالم است",
+            reading_id="oxygen_pressure_trolley",
+            reading_name="فشار کپسول اکسیژن ترالی",
+            reading="180",
+        )
         _advance(incoming, "parcels")
 
         # Nothing in transit: the step says so and advances without inventing a parcel id.

@@ -27,6 +27,11 @@ def test_setting_keys_are_the_stored_names() -> None:
         "session_ttl_hours",
         "weekly_count_time",
         "weekly_count_weekday",
+        "sugar_threshold",
+        "systolic_threshold",
+        "diastolic_threshold",
+        "oxygen_pressure_threshold",
+        "cash_float_toman",
     }
 
 

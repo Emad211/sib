@@ -553,6 +553,12 @@ class ShiftEventService:
                 for item in items
             ],
             "counted_items": [item.item_id for item in items if item.kind is ItemKind.COUNTED],
+            # E1 (owner decision 11): the manager's own numbers; a None never suggests anything.
+            "thresholds": {
+                "sugar": self._settings.optional_number(SettingKey.SUGAR_THRESHOLD, shift),
+                "systolic": self._settings.optional_number(SettingKey.SYSTOLIC_THRESHOLD, shift),
+                "diastolic": self._settings.optional_number(SettingKey.DIASTOLIC_THRESHOLD, shift),
+            },
             "locations": [{"id": place.location_id, "name": place.name} for place in locations],
             "staff": [
                 {"id": person.staff.staff_id, "name": person.staff.full_name, "roles": list(person.roles)}

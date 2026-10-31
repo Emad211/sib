@@ -11,15 +11,29 @@ from shift.adapters.db import catalog_repo
 from shift.adapters.db.catalog_repo import ItemRow, LocationRow, RoleRow
 from shift.adapters.db.core import Database
 from shift.common.clock import Clock, SystemClock, to_tehran, utc_iso
+from shift.domain.checklist_rules import LIST_ROLES, Frequency, default_role
 from shift.domain.policy import PolicyError, Role, ShiftKey
 from shift.domain.shift_clock import covering, effective_from, require_monotonic
 
+_FA_ID = "شناسه معتبر نیست."
+_FA_FIELDS = {
+    "name": "نام",
+    "unit": "واحد شمارش",
+    "acc_code": "کد کالا",
+    "minimum": "حداقل",
+    "stock_factor": "ضریب انبار",
+    "sort_order": "ترتیب",
+}
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_-]{0,47}")
 _STAFF_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 class CatalogError(ValueError):
-    """The requested catalog change is not allowed."""
+    """The requested catalog change is not allowed; `fa` is the sentence a manager reads (no raw text)."""
+
+    def __init__(self, message: str, fa: str = "این تغییر انجام نشد؛ مقدارها را بررسی کنید.") -> None:
+        super().__init__(message)
+        self.fa = fa
 
 
 class ItemKind(StrEnum):
@@ -57,6 +71,9 @@ class Item:
     retired: bool
     version: int
     effective_from_shift: ShiftKey
+    responsible_role: Role = Role.RECEPTION
+    frequency: Frequency = Frequency.EVERY_SHIFT
+    sort_order: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,33 +98,36 @@ class CatalogChange:
 def _identifier(value: object, field: str) -> str:
     text = str(value).strip()
     if _IDENTIFIER.fullmatch(text) is None:
-        raise CatalogError(f"{field} must be a lower-case slug of letters, digits, '_' or '-': {value!r}")
+        raise CatalogError(f"{field} must be a lower-case slug of letters, digits, '_' or '-': {value!r}", _FA_ID)
     return text
 
 
 def _staff_id(value: object) -> str:
     text = str(value).strip()
     if _STAFF_ID.fullmatch(text) is None:
-        raise CatalogError(f"staff_id must be 1..64 letters, digits, '_' or '-': {value!r}")
+        raise CatalogError(f"staff_id must be 1..64 letters, digits, '_' or '-': {value!r}", _FA_ID)
     return text
 
 
 def _label(value: object, field: str, maximum: int) -> str:
     text = str(value).strip()
     if not 1 <= len(text) <= maximum:
-        raise CatalogError(f"{field} must be 1..{maximum} characters")
+        word = _FA_FIELDS.get(field, "مقدار")
+        raise CatalogError(f"{field} must be 1..{maximum} characters", f"{word} را وارد کنید (حداکثر {maximum} نویسه).")
     return text
 
 
 def _quantity(value: object, field: str, *, least: int) -> int:
+    word = _FA_FIELDS.get(field, "مقدار")
+    fa = f"{word} باید عدد صحیح و دست‌کم {least} باشد."
     if isinstance(value, bool) or isinstance(value, float):
-        raise CatalogError(f"{field} must be a whole number, got {value!r}")
+        raise CatalogError(f"{field} must be a whole number, got {value!r}", fa)
     try:
         number = int(str(value).strip())
     except ValueError as exc:
-        raise CatalogError(f"{field} must be a whole number, got {value!r}") from exc
+        raise CatalogError(f"{field} must be a whole number, got {value!r}", fa) from exc
     if number < least:
-        raise CatalogError(f"{field} must be at least {least}, got {number}")
+        raise CatalogError(f"{field} must be at least {least}, got {number}", fa)
     return number
 
 
@@ -142,6 +162,9 @@ def _item(row: ItemRow) -> Item:
         retired=row.retired,
         version=row.version,
         effective_from_shift=ShiftKey.parse(row.effective_from_shift),
+        responsible_role=Role(row.responsible_role) if row.responsible_role else default_role(row.location_id),
+        frequency=Frequency(row.frequency),
+        sort_order=row.sort_order,
     )
 
 
@@ -165,6 +188,9 @@ def _content(row: ItemRow) -> tuple[object, ...]:
         row.acc_code,
         row.stock_factor,
         row.retired,
+        row.responsible_role or default_role(row.location_id).value,
+        row.frequency,
+        row.sort_order,
     )
 
 
@@ -216,7 +242,7 @@ class CatalogService:
             if (include_retired or (not item.retired and item.location_id not in retired_places))
             and (wanted is None or item.location_id == wanted)
         )
-        return sorted(items, key=lambda item: item.item_id)
+        return sorted(items, key=lambda item: (item.sort_order, item.item_id))
 
     def staff_roles(self, staff_id: object, shift: ShiftKey | None = None) -> list[StaffRole]:
         """The grant decision per role of one person as `shift` sees it, in role name order."""
@@ -281,30 +307,41 @@ class CatalogService:
         acc_code: object | None = None,
         stock_factor: object = 1,
         retired: bool = False,
+        responsible_role: Role | str | None = None,
+        frequency: Frequency | str | None = None,
+        sort_order: object | None = None,
         running_shift: ShiftKey | None = None,
     ) -> CatalogChange:
         """Create or update an item from the shift after `running_shift` (R-09).
 
         With no running shift the target comes from the Tehran clock, and a change can never
-        start before the newest version. Repeating what is stored appends nothing.
+        start before the newest version. Repeating what is stored appends nothing. A role, frequency or
+        shelf position left out keeps the stored one; a new item takes the role of its place, asks every
+        shift and goes to the end of the shelf order.
         """
         resolved_id = _identifier(item_id, "item_id")
         label = _label(name, "name", 80)
         try:
             resolved_kind = ItemKind(kind)
         except ValueError as exc:
-            raise CatalogError(f"unknown item kind: {kind!r}") from exc
+            raise CatalogError(f"unknown item kind: {kind!r}", "نوع قلم معتبر نیست.") from exc
         place = _identifier(location_id, "location_id")
         resolved_unit = _label(unit, "unit", 16)
         floor = _quantity(minimum, "minimum", least=0)
         factor = _quantity(stock_factor, "stock_factor", least=1)
-        code = None if acc_code is None else _label(acc_code, "acc_code", 32)
+        code = None if acc_code is None or not str(acc_code).strip() else _label(acc_code, "acc_code", 32)
         if resolved_kind is ItemKind.COUNTED and code is None:
-            raise CatalogError("a counted item needs an accounting code (acc_code), S03 §1")
+            raise CatalogError(
+                "a counted item needs an accounting code (acc_code), S03 §1", "قلم شمارشی بدون کد کالا ذخیره نمی‌شود."
+            )
         actor = _actor(actor_id)
-        requested = (label, resolved_kind.value, place, resolved_unit, floor, code, factor, retired)
         with self._database.write() as connection:
             latest = catalog_repo.find_item_latest(connection, resolved_id)
+            role = self._list_role(responsible_role, latest, place)
+            repeat = self._frequency(frequency, latest)
+            order = self._sort_order(connection, sort_order, latest)
+            requested = (label, resolved_kind.value, place, resolved_unit, floor, code, factor, retired)
+            requested += (role.value, repeat.value, order)
             if latest is not None and _content(latest) == requested:
                 return CatalogChange(_item(latest), created=False)
             now = self._clock.now_utc()
@@ -331,6 +368,9 @@ class CatalogService:
                 effective_from_shift=target.text,
                 changed_at=utc_iso(now),
                 changed_by=actor,
+                responsible_role=role.value,
+                frequency=repeat.value,
+                sort_order=order,
             )
         changed = Item(
             item_id=resolved_id,
@@ -344,8 +384,41 @@ class CatalogService:
             retired=retired,
             version=version,
             effective_from_shift=target,
+            responsible_role=role,
+            frequency=repeat,
+            sort_order=order,
         )
         return CatalogChange(changed, created=True)
+
+    @staticmethod
+    def _list_role(requested: Role | str | None, latest: ItemRow | None, place: str) -> Role:
+        """The role that answers for the item: the one asked for, else the stored one, else its place's."""
+        if requested is None:
+            if latest is not None and latest.responsible_role:
+                return Role(latest.responsible_role)
+            return default_role(place)
+        try:
+            role = Role(requested)
+        except ValueError as exc:
+            raise CatalogError(f"unknown role: {requested!r}", "نقش مسئول معتبر نیست.") from exc
+        if role not in LIST_ROLES:
+            raise CatalogError(f"{role} cannot own a list item", "نقش مسئول باید پذیرش، پرستار یا انباردار باشد.")
+        return role
+
+    @staticmethod
+    def _frequency(requested: Frequency | str | None, latest: ItemRow | None) -> Frequency:
+        if requested is None:
+            return Frequency.EVERY_SHIFT if latest is None else Frequency(latest.frequency)
+        try:
+            return Frequency(requested)
+        except ValueError as exc:
+            raise CatalogError(f"unknown frequency: {requested!r}", "تناوب معتبر نیست.") from exc
+
+    @staticmethod
+    def _sort_order(connection: Connection, requested: object | None, latest: ItemRow | None) -> int:
+        if requested is not None:
+            return _quantity(requested, "sort_order", least=0)
+        return catalog_repo.next_sort_order(connection) if latest is None else latest.sort_order
 
     def set_role(
         self,
@@ -365,7 +438,7 @@ class CatalogService:
         try:
             resolved_role = Role(role)
         except ValueError as exc:
-            raise CatalogError(f"unknown role: {role!r}") from exc
+            raise CatalogError(f"unknown role: {role!r}", "نقش معتبر نیست.") from exc
         actor = _actor(actor_id)
         with self._database.write() as connection:
             latest = catalog_repo.find_role_latest(connection, resolved_staff, resolved_role.value)
@@ -393,7 +466,10 @@ class CatalogService:
     def _require_active_location(connection: Connection, location_id: str, target: ShiftKey) -> None:
         location = catalog_repo.find_location_effective(connection, location_id, target.text)
         if location is None or location.retired:
-            raise CatalogError(f"location {location_id!r} is not in use from {target.text}")
+            raise CatalogError(
+                f"location {location_id!r} is not in use from {target.text}",
+                "این محل برای شیفت‌های بعد در دسترس نیست؛ محل دیگری انتخاب کنید.",
+            )
 
     @staticmethod
     def _require_free_acc_code(connection: Connection, item_id: str, acc_code: str | None) -> None:
@@ -407,4 +483,7 @@ class CatalogService:
             return
         owner = catalog_repo.find_item_with_acc_code(connection, acc_code, exclude_item_id=item_id)
         if owner is not None:
-            raise CatalogError(f"acc_code {acc_code!r} already belongs to item {owner!r}")
+            raise CatalogError(
+                f"acc_code {acc_code!r} already belongs to item {owner!r}",
+                "این کد کالا برای قلم دیگری ثبت شده است؛ هر کد فقط یک قلم دارد.",
+            )

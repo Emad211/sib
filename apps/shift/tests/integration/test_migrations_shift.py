@@ -233,7 +233,7 @@ def test_a_fresh_database_gets_the_handover_schema(tmp_path: Path) -> None:
     database = Database(tmp_path / "fresh.db")
     try:
         database.migrate()
-        assert _version(database) == migrations.LATEST == 13
+        assert _version(database) == migrations.LATEST == 20
         assert {"handover", "handover_custody", "daily_cards", "campaigns", "reward_rates"} <= _tables(database)
         assert _columns(database, "proj_cash") == ("cash_box_id", "expected", "counted", "variance")
         assert _columns(database, "handover_custody") == ("flow", "custodian_id", "updated_at", "updated_by")

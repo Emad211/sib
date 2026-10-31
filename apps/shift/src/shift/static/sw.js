@@ -38,6 +38,7 @@ const PRECACHE_URLS = [
   "/static/manager-baseline.js",
   "/static/manager-campaigns.js",
   "/static/manager-items.js",
+  "/static/item-icons.js",
   "/static/offline.js",
   "/static/outbox-idb.js",
   "/static/purchase.css",

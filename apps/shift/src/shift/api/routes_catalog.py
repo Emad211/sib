@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from shift.domain.checklist_rules import Frequency
 from shift.domain.policy import PolicyError, Role, ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogError, CatalogService, Item, ItemKind, Location, StaffRole
@@ -13,6 +14,13 @@ from shift.services.catalog import CatalogError, CatalogService, Item, ItemKind,
 # The guard is `deps.require(Permission.CATALOG_MANAGE)` in `create_app`: it resolves the
 # acting manager's session or raises 403 before any handler runs.
 ManagerGuard = Callable[..., Principal]
+STALE = "تغییر دیگری برای شیفت‌های بعد ثبت شده است؛ صفحه را تازه کنید و دوباره امتحان کنید."
+
+
+def _refusal(error: CatalogError | PolicyError) -> HTTPException:
+    """A 400 whose text is Persian: a manager never reads the service's English reason (A4)."""
+    text = error.fa if isinstance(error, CatalogError) else STALE
+    return HTTPException(status.HTTP_400_BAD_REQUEST, text)
 
 
 class LocationUpdate(BaseModel):
@@ -47,6 +55,9 @@ class ItemUpdate(BaseModel):
     acc_code: str | None = Field(default=None, max_length=32)
     stock_factor: int = Field(default=1, ge=1)
     retired: bool = False
+    responsible_role: Role | None = None
+    frequency: Frequency | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=10_000_000)
 
 
 class ItemOut(BaseModel):
@@ -63,6 +74,9 @@ class ItemOut(BaseModel):
     retired: bool
     version: int
     effective_from_shift: str
+    responsible_role: Role
+    frequency: Frequency
+    sort_order: int
 
 
 class RoleUpdate(BaseModel):
@@ -105,6 +119,9 @@ def _item(value: Item) -> ItemOut:
         retired=value.retired,
         version=value.version,
         effective_from_shift=value.effective_from_shift.text,
+        responsible_role=value.responsible_role,
+        frequency=value.frequency,
+        sort_order=value.sort_order,
     )
 
 
@@ -155,7 +172,7 @@ def build_catalog_router(
                 location_id, name=body.name, retired=body.retired, actor_id=manager.staff_id, running_shift=shift
             )
         except (CatalogError, PolicyError) as error:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+            raise _refusal(error) from error
         return _location(saved.value)
 
     @router.get("/items", response_model=list[ItemOut])
@@ -170,7 +187,7 @@ def build_catalog_router(
         try:
             items = service.items(shift, location_id=location_id, include_retired=include_retired)
         except CatalogError as error:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+            raise _refusal(error) from error
         return [_item(value) for value in items]
 
     @router.put("/items/{item_id}", response_model=ItemOut)
@@ -193,11 +210,14 @@ def build_catalog_router(
                 acc_code=body.acc_code,
                 stock_factor=body.stock_factor,
                 retired=body.retired,
+                responsible_role=body.responsible_role,
+                frequency=body.frequency,
+                sort_order=body.sort_order,
                 actor_id=manager.staff_id,
                 running_shift=shift,
             )
         except (CatalogError, PolicyError) as error:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+            raise _refusal(error) from error
         return _item(saved.value)
 
     @router.get("/staff/{staff_id}/roles", response_model=list[StaffRoleOut])
@@ -211,7 +231,7 @@ def build_catalog_router(
         try:
             roles = service.staff_roles(staff_id, shift)
         except CatalogError as error:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+            raise _refusal(error) from error
         return [_role(value) for value in roles]
 
     @router.put("/staff/{staff_id}/roles/{role}", response_model=StaffRoleOut)
@@ -229,7 +249,7 @@ def build_catalog_router(
                 staff_id, role, granted=body.granted, actor_id=manager.staff_id, running_shift=shift
             )
         except (CatalogError, PolicyError) as error:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+            raise _refusal(error) from error
         return _role(saved.value)
 
     return router

@@ -41,6 +41,7 @@ from shift.services.daily_card import (
     SECTION_NAMES,
     BelowMinimumLine,
     Card,
+    ChecklistAnswerLine,
     DailyCardService,
     FlaggedDeliveryLine,
     ParcelLine,
@@ -750,12 +751,21 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
     document = json.loads(stored)
 
     assert document["schema"] == CARD_SCHEMA_VERSION
-    assert set(document) == {"schema", "card_date", "covered_from", "covered_to", "generated_at", "sections"}
+    assert set(document) == {
+        "schema",
+        "card_date",
+        "covered_from",
+        "covered_to",
+        "generated_at",
+        "cash_float",
+        "sections",
+    }
     # Stored as canonical JSON, so the keys arrive sorted and the same day always stores the same text.
     assert set(document["sections"]) == {
         "emergency_starts",
         "over_cap_withdrawals",
         "cash_exceptions",
+        "checklist_answers",
         "discrepancies",
         "flows",
         "open_flows",
@@ -799,7 +809,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
     card = service.regenerate(CARD_DAY)
     assert card is not None
     document = json.loads(_stored_payload(database, CARD_DAY))
-    assert document["schema"] == CARD_SCHEMA_VERSION == 6
+    assert document["schema"] == CARD_SCHEMA_VERSION == 7
 
     # Schema 2 has the five original sections; 3 added the shift-event pair, 4 the three money and
     # offline ones, and 5 the reward and campaign pair. A card of any of them reads, and its page grows no block it never stored.
@@ -854,7 +864,7 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
 
     # A document with a version this code does not know is not guessed at.
     legacy = {**document, "schema": 2, "sections": _only(document, ("emergency_starts",))}
-    for schema in (1, 7):
+    for schema in (1, 8):
         with pytest.raises(ValueError):
             Card.from_payload({**legacy, "schema": schema})
 
@@ -1061,6 +1071,18 @@ def test_a_built_card_survives_the_stored_payload_unchanged(
         parcels_in_transit=(ParcelLine("del-2", "INV-2", 3, "2026-10-27T08:00:00+03:30", 9, person),),
         weekly_count=(WeeklyCountLine("due", "2026-10-24", "2026-10-26", None),),
         below_minimum=(BelowMinimumLine("item-1", "name", "shelf", 10, 3),),
+        # B3: the section the fixture cannot produce on its own, laid over the card for the round trip.
+        checklist_answers=(
+            ChecklistAnswerLine(
+                "event-checklist-1",
+                "trolley_seal_ok",
+                "پلمب ترالی سالم است",
+                False,
+                None,
+                "2026-10-26T09:00:00+03:30",
+                person,
+            ),
+        ),
     )
     for name in SECTION_NAMES:
         assert getattr(card, name), f"the fixture left {name} empty, so the round trip would prove nothing"
@@ -1240,3 +1262,48 @@ def test_the_reward_and_campaign_sections_are_one_muted_line_on_a_day_with_nothi
         section = _section_html(text, anchor)
         assert section.count("mg-empty") == 1, anchor
         assert "mg-row" not in section and "mg-amount" not in section, anchor
+
+
+def test_a_checklist_no_and_a_reading_reach_the_card(
+    database: Database, clock: FixedClock, service: DailyCardService
+) -> None:
+    """B3: a «no» and a number read off a device land on the manager's card; a quiet yes stays off it."""
+    _staff(database)
+    store = EventStore(database, clock=clock)
+    shift_id = ShiftKey(MONDAY, 1).text
+    at = _monday(9, 0)
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "trolley_seal_ok", "ok": False, "reading": None, "photo_id": None},
+    )
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "oxygen_pressure_trolley", "ok": True, "reading": 120, "photo_id": None},
+    )
+    _event(
+        store,
+        clock,
+        at,
+        "handover.checklist_answered",
+        shift_id=shift_id,
+        actor_id="nurse-in",
+        payload={"item_id": "store_lock_ok", "ok": True, "reading": None, "photo_id": None},
+    )
+
+    card = service.regenerate(CARD_DAY)
+
+    assert card is not None
+    assert [(row.name, row.ok, row.reading) for row in card.checklist_answers] == [
+        ("trolley_seal_ok", False, None),
+        ("oxygen_pressure_trolley", True, 120.0),
+    ]

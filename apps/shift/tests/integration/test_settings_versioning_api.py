@@ -55,10 +55,15 @@ def test_listing_returns_the_seeded_defaults(database: Database) -> None:
         "session_ttl_hours",
         "weekly_count_time",
         "weekly_count_weekday",
+        "sugar_threshold",
+        "systolic_threshold",
+        "diastolic_threshold",
+        "oxygen_pressure_threshold",
+        "cash_float_toman",
     ]
-    assert [item["value"] for item in body] == ["07:30", "30", "300000", "12", "07:30", "0"]
+    assert [item["value"] for item in body] == ["07:30", "30", "300000", "12", "07:30", "0", "", "", "", "", ""]
     assert {item["effective_from_shift"] for item in body} == {"0001-01-01#1"}
-    assert {item["changed_by"] for item in body} == {"migration:m0004", "migration:m0008"}
+    assert {item["changed_by"] for item in body} == {"migration:m0004", "migration:m0008", "migration:m0020"}
 
 
 def test_a_put_changes_the_next_shift_not_the_running_one(database: Database) -> None:
