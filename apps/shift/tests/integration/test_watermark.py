@@ -286,7 +286,9 @@ def test_a_page_size_that_could_livelock_is_refused(database: Database, store: E
 
 def test_every_paged_view_has_exactly_one_feed_and_only_cash_produces_events() -> None:
     """The registry decision from the bridge docstring, pinned: one feed per view, events only for cash."""
-    assert set(FEEDS) == set(views.PAGED_READS)
+    # v2 is the same mirror read through a newer view, so it has no feed of its own: `_feeds` swaps
+    # the registrations read to it and keeps the v1 watermark.
+    assert set(FEEDS) == set(views.PAGED_READS) - {views.ViewName.PATIENT_REGISTRATIONS_V2}
     assert FEEDS[views.ViewName.CASH_RECEIPTS].event_type is EventType.ACC_CASH_RECEIPT
     assert [view for view, feed in FEEDS.items() if feed.event_type is not None] == [views.ViewName.CASH_RECEIPTS]
 

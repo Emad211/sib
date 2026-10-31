@@ -1114,7 +1114,7 @@ def test_a_built_card_survives_the_stored_payload_unchanged(
         ),
         event_counts=(EventCountLine("ق", "قند", 2),),
         overdue_faults=(OverdueFaultLine("دستگاه", "پرستار", "2026-10-20", 7),),
-        call_sample=(CallSampleLine("1234", "2026-10-26", "پذیرش"),),
+        call_sample=(CallSampleLine("1234"),),
     )
     for name in SECTION_NAMES:
         assert getattr(card, name), f"the fixture left {name} empty, so the round trip would prove nothing"

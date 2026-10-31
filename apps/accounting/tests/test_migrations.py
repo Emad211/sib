@@ -86,11 +86,13 @@ def test_production_shaped_database_is_migrated_additively(v0_db, tmp_path, monk
             "table added: invoice_payment_lines",
             "table added: invoice_voids",
             "table added: tariff_changes",
+            "view added: v_shift_call_sample_v1",
             "view added: v_shift_cash_receipts_v1",
             "view added: v_shift_consumption_v1",
             "view added: v_shift_invoice_lookup_v1",
             "view added: v_shift_open_invoices_v1",
             "view added: v_shift_patient_registrations_v1",
+            "view added: v_shift_patient_registrations_v2",
             "view added: v_shift_payment_lines_v1",
             "view added: v_shift_vitals_services_v1",
             "view added: v_shift_voids_v1",
@@ -196,3 +198,36 @@ def test_locked_database_gives_a_clear_migration_error(v0_db):
         blocker.rollback()
         blocker.close()
         conn.close()
+
+
+def test_registration_v2_flags_the_first_patient_for_a_mobile_and_call_sample_keeps_valid_phones(tmp_path):
+    path = str(tmp_path / "v8.db")
+    core.ensure_database_ready(path)
+    conn = _open(path)
+    conn.executemany(
+        "INSERT INTO patients (name, family_name, phone_number, created_by) VALUES (?, ?, ?, ?)",
+        [
+            ("سارا", "یکی", "09121234567", "reception1"),
+            ("مینا", "دو", "09121234567", "reception2"),
+            ("رضا", "سه", "09121234567", "reception1"),
+            ("نگار", "چهار", "021", "reception2"),
+            ("کوروش", "پنج", None, "reception1"),
+            ("لیلا", "شش", "09350001122", "reception2"),
+        ],
+    )
+    first = {
+        r["patient_id"]: r["first_for_phone"] for r in conn.execute("SELECT * FROM v_shift_patient_registrations_v2")
+    }
+    assert first == {1: 1, 2: 0, 3: 0, 4: 1, 5: 1, 6: 1}
+    # v1 is untouched and still every registration, without the new column.
+    v1_columns = [r[1] for r in conn.execute("PRAGMA table_info(v_shift_patient_registrations_v1)")]
+    assert v1_columns == ["patient_id", "created_by", "created_at", "has_valid_nid", "has_valid_phone", "is_foreign"]
+    assert conn.execute("SELECT COUNT(*) FROM v_shift_patient_registrations_v1").fetchone()[0] == 6
+    sample = conn.execute("SELECT patient_id, phone_number FROM v_shift_call_sample_v1 ORDER BY patient_id").fetchall()
+    assert [(r["patient_id"], r["phone_number"]) for r in sample] == [
+        (1, "09121234567"),
+        (2, "09121234567"),
+        (3, "09121234567"),
+        (6, "09350001122"),
+    ]
+    conn.close()

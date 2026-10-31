@@ -30,7 +30,7 @@ from sqlalchemy import Connection
 from shift.adapters.accounting import views
 from shift.adapters.db import reward_repo, staff_repo
 from shift.adapters.db.core import Database
-from shift.adapters.db.reward_repo import RewardEventRow, RewardRateRow, WorkRow
+from shift.adapters.db.reward_repo import RewardEventRow, RewardRateRow, TeamGoalRow, WorkRow
 from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran, utc_iso
 from shift.common.ids import new_ulid
 from shift.domain.policy import PERSIAN_DIGITS, ShiftKey
@@ -68,6 +68,9 @@ NO_RATE_WORK_TYPE = "نرخ پاداش فقط برای کار خودکار (قن
 BAD_MONTH = "ماه باید به شکل ۱۴۰۵-۰۸ نوشته شود."
 NOT_POSITIVE = "مبلغ پاداش باید بیشتر از صفر باشد."
 TOO_LARGE = f"مبلغ پاداش بیشتر از {MAX_AMOUNT_TOMAN:,} تومان است؛ این عدد اشتباه است."
+BAD_GOAL = "هدف تیمی باید یک عدد درست و بیشتر از صفر باشد."
+GOAL_TOO_LARGE = "هدف تیمی بیشتر از ۱۰۰٬۰۰۰ کار است؛ این عدد اشتباه است."
+MAX_GOAL_WORKS = 100_000
 UNKNOWN_STAFF = "این کارمند پیدا نشد."
 ACCOUNT_TAKEN = "این شناسهٔ حسابداری پیش‌تر به کارمند دیگری وصل شده است."
 
@@ -87,6 +90,16 @@ class RewardRate:
     work_type: str
     month: str
     amount_toman: int
+    set_by: str
+    set_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeamGoal:
+    """One month's team goal as the screens read it: the number and who set it when."""
+
+    month: str
+    goal_works: int
     set_by: str
     set_at: str
 
@@ -269,6 +282,37 @@ class RewardsService:
         )
         return _rate(row)
 
+    # --- the monthly team goal (decision 7) --------------------------------------------------
+
+    def team_goal(self, month: object) -> TeamGoal | None:
+        """The team goal the manager set for one month, or None while the month has none."""
+        key = _month(month)
+        with self._database.read() as connection:
+            row = reward_repo.team_goal(connection, key)
+        return None if row is None else _goal(row)
+
+    def set_team_goal(self, month: object, goal_works: object, *, principal: Principal) -> TeamGoal:
+        """Set (or fix) the one monthly team-goal number the competition shows; display only."""
+        key = _month(month)
+        goal = _goal_number(goal_works)
+        values = {
+            "month": key,
+            "goal_works": goal,
+            "set_by": principal.staff_id,
+            "set_at": utc_iso(self._clock.now_utc()),
+        }
+        with self._database.write() as connection:
+            row = reward_repo.set_team_goal(connection, values)
+        self._note(
+            "reward.goal_set",
+            "reward.goal_set %s goal=%d",
+            (key, goal),
+            actor=principal.staff_id,
+            subject=key,
+            detail={"month": key, "goal_works": goal},
+        )
+        return _goal(row)
+
     # --- the automatic works ----------------------------------------------------------------
 
     def accrue(self, month: object) -> AccrualReport:
@@ -397,7 +441,15 @@ class RewardsService:
         ]
         with self._database.read() as connection:
             names = reward_repo.names(connection)
-        return standing_of(staff_id, names.get(staff_id, staff_id), key, confirmed, revoked)
+            goal = reward_repo.team_goal(connection, key)
+        return standing_of(
+            staff_id,
+            names.get(staff_id, staff_id),
+            key,
+            confirmed,
+            revoked,
+            None if goal is None else goal.goal_works,
+        )
 
     # --- the accounting identity -------------------------------------------------------------
 
@@ -464,6 +516,23 @@ class RewardsService:
             message=message,
             message_args=message_args,
         )
+
+
+def _goal_number(value: object) -> int:
+    """A whole, positive number of works, no larger than a month could ever hold (Persian digits ok)."""
+    if isinstance(value, bool) or isinstance(value, float):
+        raise RewardError(BAD_GOAL)
+    text = str(value).strip().translate(PERSIAN_DIGITS).translate(_SEPARATORS)
+    if not text.isdigit() or int(text) <= 0:
+        raise RewardError(BAD_GOAL)
+    if int(text) > MAX_GOAL_WORKS:
+        raise RewardError(GOAL_TOO_LARGE)
+    return int(text)
+
+
+def _goal(row: TeamGoalRow) -> TeamGoal:
+    """One stored team goal as the screens read it."""
+    return TeamGoal(month=row.month, goal_works=row.goal_works, set_by=row.set_by, set_at=row.set_at)
 
 
 def _rate(row: RewardRateRow) -> RewardRate:

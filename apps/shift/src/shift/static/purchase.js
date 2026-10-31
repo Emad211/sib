@@ -77,6 +77,7 @@
     confirm: "تأیید ثبت شد.",
     parcelCount: "شمارش بار ثبت شد.",
     count: "شمارش هفتگی ثبت شد.",
+    sample: "شمارش نمونه ثبت شد.",
     unreadable: "وضعیت خرید و انبار خوانده نشد؛ صفحه را تازه کنید.",
   };
   var EMPTY = {
@@ -1007,6 +1008,13 @@
     var receipt = textInput("شمارهٔ رسید (اختیاری)");
     receipt.dataset.receipt = "";
     box.appendChild(field("شمارهٔ رسید", receipt));
+    // Decision 6: the payment receipt's photo is optional; a phone without a camera records the rest.
+    var receiptPhoto = document.createElement("input");
+    receiptPhoto.type = "file";
+    receiptPhoto.accept = "image/jpeg";
+    receiptPhoto.capture = "environment";
+    receiptPhoto.dataset.receiptPhoto = "";
+    box.appendChild(field("عکس رسید (اختیاری)", receiptPhoto));
     box.appendChild(
       actionButton("ثبت پرداخت", function () {
         if (!method.value) return fail(new Error(NO_METHOD));
@@ -1017,7 +1025,18 @@
         if (paidIso) data.paid_on = paidIso;
         var text = receipt.value.trim();
         if (text) data.receipt_reference = text;
-        return run({ action: "payment.record", data: data }, MESSAGES.payment);
+        var file = receiptPhoto.files[0];
+        return run(
+          [
+            function () {
+              return uploadPhoto(file, false).then(function (hash) {
+                if (hash) data.receipt_photo_sha256 = hash;
+              });
+            },
+            { action: "payment.record", data: data },
+          ],
+          MESSAGES.payment
+        );
       }, null, "payment.record")
     );
     return box;
@@ -1367,6 +1386,44 @@
     return entries;
   }
 
+  /** B1 (decision 2): the accountant's five sampled items a month, blind — names and units only. */
+  function renderSample() {
+    var sample = clinic.sample;
+    showSection("purchase-sample", sample !== null);
+    if (sample === null) return;
+    var box = sectionBody("purchase-sample");
+    box.textContent = "";
+    box.appendChild(el("p", "pu-meta", "نمونهٔ ماه " + sample.month + " — پنج قلم تصادفی، بدون عدد فعلی انبار."));
+    if (sample.items.length === 0) {
+      box.appendChild(emptyLine(EMPTY.sample));
+      return;
+    }
+    sample.items.forEach(function (item) {
+      if (item.done) {
+        box.appendChild(el("p", "pu-paid", item.name + " (" + item.unit + ") — شمرده شد."));
+        return;
+      }
+      var row = el("div", "pu-form");
+      var quantity = numberInput(0);
+      quantity.dataset.sample = "";
+      row.appendChild(field(item.name + " (" + item.unit + ")", quantity));
+      row.appendChild(
+        actionButton("ثبت شمارش", function () {
+          var counted = Number(quantity.value);
+          if (!Number.isInteger(counted) || counted < 0) return fail(new Error(NO_NUMBER));
+          return run(
+            {
+              action: "sample.count",
+              data: { item_id: item.item_id, location_id: STORE, counted: counted },
+            },
+            MESSAGES.sample
+          );
+        }, null, "sample.count")
+      );
+      box.appendChild(row);
+    });
+  }
+
   // ---------------------------------------------------------------- the page
 
   function render() {
@@ -1382,6 +1439,7 @@
     renderInbox();
     renderRestock();
     renderCount();
+    renderSample();
   }
 
   document.addEventListener("DOMContentLoaded", function () {

@@ -120,6 +120,13 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
         "hint": "کارت‌به‌کارت، برداشت‌ها، مرجوعی و پاداش ماه",
     },
     {
+        "needs": frozenset({Permission.ACCOUNTANT_QUEUE_VIEW}),
+        "href": "/accountant/prices",
+        "icon": "💹",
+        "title": "تاریخچهٔ قیمت",
+        "hint": "قیمت هر قلم به تفکیک فروشنده، از فاکتورها",
+    },
+    {
         "needs": frozenset({Permission.CAMPAIGN_REPORT_VIEW}),
         "href": "/accountant/campaigns",
         "icon": "🏷️",

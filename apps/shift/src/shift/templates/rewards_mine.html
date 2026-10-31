@@ -33,7 +33,11 @@
   <section class="mg-section" aria-label="رقابت تیمی">
     <h2 class="mg-section-title">رقابت تیمی</h2>
     <p class="mg-line">رتبهٔ شما: {{ rank }} از {{ headcount }}</p>
-    <p class="mg-line">هدف تیمی این ماه: {{ team_works }} کار تأییدشده</p>
+    {% if goal.set %}
+    <p class="mg-line">پیشرفت تیم: {{ goal.works }} از {{ goal.goal }} کار ({{ goal.percent }}٪)</p>
+    {% else %}
+    <p class="mg-line">هدف تیمی این ماه تعیین نشده است؛ کارهای تأییدشدهٔ تیم: {{ team_works }}</p>
+    {% endif %}
     <p class="mg-meta">شما فقط اعداد خودتان و هدف تیمی را می‌بینید؛ نام و مبلغ بقیه پنهان است.</p>
   </section>
 </div>

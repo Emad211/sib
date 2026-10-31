@@ -40,12 +40,14 @@ _VITAL_WORKS = (
     "ORDER BY v.closed_at, v.injection_id"
 )
 # The registration reward needs both checks the owner asks for; a foreign patient with both counts.
+# One mobile earns once (owner decision 5), so only the first registration for a mobile is a work;
+# accounting answers which one that is, and a mirror built from _v1 marks every row as the first.
 _REGISTRATION_WORKS = (
     "SELECT r.patient_id AS source_ref, r.created_at AS done_at, r.created_by AS acc_user, "
     "s.staff_id AS staff_id, s.full_name AS staff_name "
     f"FROM {mirror_repo.REGISTRATION} AS r "
     "LEFT JOIN staff AS s ON s.acc_user = r.created_by "
-    "WHERE r.has_valid_nid = 1 AND r.has_valid_phone = 1 "
+    "WHERE r.has_valid_nid = 1 AND r.has_valid_phone = 1 AND r.first_for_phone = 1 "
     "ORDER BY r.created_at, r.patient_id"
 )
 _TIMELINE = (
@@ -62,6 +64,16 @@ class RewardRateRow:
     work_type: str
     month: str
     amount_toman: int
+    set_by: str
+    set_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class TeamGoalRow:
+    """One month's team goal: the number the manager set and who set it when."""
+
+    month: str
+    goal_works: int
     set_by: str
     set_at: str
 
@@ -142,6 +154,48 @@ def upsert_rate(connection: Connection, values: Mapping[str, Any]) -> RewardRate
         .one()
     )
     return _rate(row)
+
+
+def team_goal(connection: Connection, month: str) -> TeamGoalRow | None:
+    """The team goal of one month, or None while the manager has not set one."""
+    row = (
+        connection.exec_driver_sql(
+            "SELECT month, goal_works, set_by, set_at FROM reward_team_goals WHERE month = ?", (month,)
+        )
+        .mappings()
+        .first()
+    )
+    return (
+        None
+        if row is None
+        else TeamGoalRow(
+            month=str(row["month"]),
+            goal_works=int(row["goal_works"]),
+            set_by=str(row["set_by"]),
+            set_at=str(row["set_at"]),
+        )
+    )
+
+
+def set_team_goal(connection: Connection, values: Mapping[str, Any]) -> TeamGoalRow:
+    """Store one month's team goal, replacing an earlier number for the same month."""
+    row = (
+        connection.exec_driver_sql(
+            "INSERT INTO reward_team_goals (month, goal_works, set_by, set_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (month) DO UPDATE SET goal_works = excluded.goal_works, "
+            "set_by = excluded.set_by, set_at = excluded.set_at "
+            "RETURNING month, goal_works, set_by, set_at",
+            (values["month"], values["goal_works"], values["set_by"], values["set_at"]),
+        )
+        .mappings()
+        .one()
+    )
+    return TeamGoalRow(
+        month=str(row["month"]),
+        goal_works=int(row["goal_works"]),
+        set_by=str(row["set_by"]),
+        set_at=str(row["set_at"]),
+    )
 
 
 def acc_users(connection: Connection) -> dict[str, str | None]:

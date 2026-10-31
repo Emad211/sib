@@ -41,6 +41,17 @@ EXPECTED_COLUMNS: dict[str, tuple[str, ...]] = {
         "work_date",
         "shift",
     ),
+    # Accounting migration 8 (owner decision 5): the duplicate-mobile flag and the call sample.
+    "v_shift_patient_registrations_v2": (
+        "patient_id",
+        "created_by",
+        "created_at",
+        "has_valid_nid",
+        "has_valid_phone",
+        "is_foreign",
+        "first_for_phone",
+    ),
+    "v_shift_call_sample_v1": ("patient_id", "full_name", "phone_number", "created_at", "created_by"),
 }
 
 # Declared types as SQLite reports them for a view; '' is a computed column with no affinity.
@@ -64,6 +75,8 @@ EXPECTED_DECLARED_TYPES: dict[str, tuple[str, ...]] = {
         "TEXT",
         "TEXT",
     ),
+    "v_shift_patient_registrations_v2": ("INTEGER", "TEXT", "TIMESTAMP", "", "", "", ""),
+    "v_shift_call_sample_v1": ("INTEGER", "TEXT", "TEXT", "TIMESTAMP", "TEXT"),
 }
 
 # What the bridge parses out of each row: money is REAL Toman, times are local text, ids are integers.
@@ -73,9 +86,22 @@ EXPECTED_VALUE_TYPES: dict[str, tuple[str, ...]] = {
     "v_shift_vitals_services_v1": ("integer", "integer", "integer", "text", "text"),
     "v_shift_patient_registrations_v1": ("integer", "text", "text", "integer", "integer", "integer"),
     "v_shift_voids_v1": ("integer", "integer", "text", "real", "text", "text", "text", "text", "text", "text"),
+    "v_shift_patient_registrations_v2": (
+        "integer",
+        "text",
+        "text",
+        "integer",
+        "integer",
+        "integer",
+        "integer",
+    ),
+    "v_shift_call_sample_v1": ("integer", "text", "text", "text", "text"),
 }
 
 FORBIDDEN_COLUMNS = {"national_id", "phone", "phone_number", "name", "family_name", "full_name", "address"}
+# The call sample is the one view that carries a name and a mobile, and it is read by the manager's
+# card page at render time only: the bridge never mirrors it, so it reaches no shift table (S04).
+NAME_BEARING_VIEWS = {"v_shift_call_sample_v1"}
 
 
 @pytest.fixture()
@@ -135,14 +161,16 @@ def test_values_really_have_the_types_the_bridge_parses(accounting: AccountingDa
             assert tuple(row) == expected, name
 
 
-def test_no_view_exposes_identity_values(accounting: AccountingDatabase) -> None:
+def test_no_mirrored_view_exposes_identity_values(accounting: AccountingDatabase) -> None:
     with accounting.connect() as connection:
         for name in EXPECTED_COLUMNS:
+            if name in NAME_BEARING_VIEWS:
+                continue
             columns = {row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({name})")}
             assert not columns & FORBIDDEN_COLUMNS, name
 
 
-def test_introspection_sees_all_eight_views(accounting: AccountingDatabase) -> None:
+def test_introspection_sees_every_contract_view(accounting: AccountingDatabase) -> None:
     with accounting.connect() as connection:
         report = views.introspect(connection)
 
@@ -182,9 +210,12 @@ def test_the_contract_selects_columns_by_name_so_a_rename_cannot_pass_silently()
 
 
 def test_every_paged_read_is_a_keyset_query_on_pinned_columns() -> None:
+    """Every mirrored view is read in pages; the lookup, the payment lines and the call sample are not."""
     assert set(views.PAGED_READS) | {views.ViewName.OPEN_INVOICES} == set(views.ViewName) - {
         views.ViewName.INVOICE_LOOKUP,
         views.ViewName.PAYMENT_LINES,
+        # The call sample is asked for by patient id at render time, never mirrored (owner decision 5).
+        views.ViewName.CALL_SAMPLE,
     }
     for view, page_read in views.PAGED_READS.items():
         assert page_read.view is view

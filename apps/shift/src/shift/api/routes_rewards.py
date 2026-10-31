@@ -26,13 +26,14 @@ from shift.common.clock import parse_iso, to_tehran
 from shift.common.ids import new_ulid
 from shift.common.jalali import format_jalali
 from shift.domain.permissions import Permission
-from shift.domain.rewards import WORK_TYPE_LABELS, month_of, next_month, previous_month
-from shift.domain.shift_events.rewards import REWARD_REVOKED
+from shift.domain.rewards import CREDIT_WORK_TYPES, WORK_TYPE_LABELS, month_of, next_month, previous_month
+from shift.domain.shift_events.rewards import REWARD_CONFIRMED, REWARD_REVOKED
 from shift.services.auth import Principal
 from shift.services.campaigns import MAX_AMOUNT_TOMAN
 from shift.services.outbox import EventSubmission, OutboxValidationError
 from shift.services.rewards import (
     CONFIRMED,
+    MAX_GOAL_WORKS,
     PENDING,
     RATE_WORK_TYPES,
     REJECTED,
@@ -42,6 +43,7 @@ from shift.services.rewards import (
     RewardRate,
     RewardRecord,
     RewardsService,
+    TeamGoal,
     UnmappedEarner,
     UnratedWork,
     month_key,
@@ -69,6 +71,8 @@ MONTH_NAMES = (
     "اسفند",
 )
 STATUS_LABELS = {PENDING: "در انتظار تأیید", CONFIRMED: "تأییدشده", REJECTED: "ردشده", REVOKED: "ابطال‌شده"}
+BAD_FORM_AMOUNT = "مبلغ پاداش را درست وارد کنید."
+BAD_FORM_WORK = "این نوع کار را نمی‌توان دستی ثبت کرد."
 _MONTH = re.compile(r"[0-9]{4}-(?:0[1-9]|1[0-2])")
 
 # One page guard each: a signed-out browser is sent to the login screen, a non-holder gets a 403.
@@ -117,6 +121,11 @@ def build_rewards_router(*, rewards: RewardsSource, shift_events: ShiftEventsSou
                 ],
                 "accounting": _copy_view(service.copied(key)),
                 "max_amount": MAX_AMOUNT_TOMAN,
+                "goal": _goal_view(service.team_goal(key)),
+                "max_goal": MAX_GOAL_WORKS,
+                "credit_work_types": [
+                    {"value": work_type.value, "label": WORK_TYPE_LABELS[work_type]} for work_type in CREDIT_WORK_TYPES
+                ],
             },
             cache_control=NO_STORE,
         )
@@ -180,6 +189,61 @@ def build_rewards_router(*, rewards: RewardsSource, shift_events: ShiftEventsSou
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
         return _back_to(month)
 
+    @pages.post(f"{MANAGER_PATH}/credit", summary="Credit an assigned task or the follow-up path")
+    def post_credit(
+        request: Request,
+        manager: ManagerViewer,
+        writer: WriterDep,
+        month: Annotated[str, Form()],
+        staff_id: Annotated[str, Form()],
+        work_type: Annotated[str, Form()],
+        amount_toman: Annotated[str, Form()],
+        note: Annotated[str, Form()] = "",
+    ) -> RedirectResponse:
+        """D2: the manager's own closing confirmation; a follow-up credit lands once a month per person."""
+        kind = work_type.strip()
+        if kind not in {work_type.value for work_type in CREDIT_WORK_TYPES}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, BAD_FORM_WORK)
+        amount = _form_amount(amount_toman)
+        shift = deps.running_shift(request)
+        moment = request.app.state.clock.now_utc()
+        event_key = new_ulid(moment)
+        # A manager task is credited per task; the follow-up path is confirmed by hand once a month.
+        idempotency_key = f"reward:follow_up:{month.strip()}:{staff_id.strip()}" if kind == "follow_up" else event_key
+        payload: dict[str, object] = {"staff_id": staff_id.strip(), "work_type": kind, "amount_toman": amount}
+        if note.strip():
+            payload["note"] = note.strip()
+        submission = EventSubmission(
+            type=REWARD_CONFIRMED,
+            payload=payload,
+            actor_id=manager.staff_id,
+            device_id=manager.device_id,
+            client_at=moment,
+            client_event_id=event_key,
+            shift_id=shift.text,
+            idempotency_key=idempotency_key,
+            shift_work_date=shift.work_date,
+        )
+        try:
+            writer.record(submission, principal=manager, shift=shift)
+        except OutboxValidationError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+        return _back_to(month)
+
+    @pages.post(f"{MANAGER_PATH}/goal", summary="Set the month's team goal")
+    def post_goal(
+        manager: ManagerViewer,
+        service: RewardsDep,
+        month: Annotated[str, Form()],
+        goal_works: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        """D2: one monthly number beside the rates; it is a display target and pays nothing by itself."""
+        try:
+            service.set_team_goal(month, goal_works, principal=manager)
+        except RewardError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+        return _back_to(month)
+
     @pages.post(f"{MANAGER_PATH}/staff-map", summary="Map a staff row to an accounting user")
     def post_staff_map(
         manager: ManagerViewer,
@@ -215,6 +279,7 @@ def build_rewards_router(*, rewards: RewardsSource, shift_events: ShiftEventsSou
                 "rank": _number_fa(standing.rank),
                 "headcount": _number_fa(standing.headcount),
                 "team_works": _number_fa(standing.team_works),
+                "goal": _progress_view(standing.team_works, standing.goal_works),
             },
             cache_control=NO_STORE,
         )
@@ -237,6 +302,38 @@ def _back_to(month: str) -> RedirectResponse:
 def _number_fa(value: int) -> str:
     """A whole number in the clinic's own digits; a deduction keeps its minus sign."""
     return f"{value:,}".translate(PERSIAN_DIGITS).replace(",", THOUSANDS)
+
+
+def _form_amount(text: str) -> int:
+    """The manager's typed amount: whole, positive Toman, Persian digits accepted, never a raw error."""
+    cleaned = text.strip().translate(PERSIAN_DIGITS).translate(str.maketrans("", "", "،,٬ "))
+    if not cleaned.isdigit() or int(cleaned) <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, BAD_FORM_AMOUNT)
+    return int(cleaned)
+
+
+def _goal_view(goal: TeamGoal | None) -> dict[str, str | bool | None]:
+    """The month's team goal as the form shows it: the number to fix, or the empty month."""
+    return {
+        "set": goal is not None,
+        "amount": "" if goal is None else str(goal.goal_works),
+        "amount_fa": None if goal is None else _number_fa(goal.goal_works),
+        "set_by": None if goal is None else goal.set_by,
+        "set_at": None if goal is None else _stamp_fa(goal.set_at),
+    }
+
+
+def _progress_view(team_works: int, goal_works: int | None) -> dict[str, str | int | None]:
+    """D2: how far the team is towards the manager's number, as a count and a rounded percentage."""
+    if goal_works is None:
+        return {"set": False, "goal": None, "percent": None, "works": _number_fa(team_works)}
+    percent = min(100, round(team_works * 100 / goal_works))
+    return {
+        "set": True,
+        "goal": _number_fa(goal_works),
+        "percent": _number_fa(percent),
+        "works": _number_fa(team_works),
+    }
 
 
 def _stamp_fa(iso_text: str) -> str:
