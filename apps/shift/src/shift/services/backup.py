@@ -93,7 +93,12 @@ class BackupService:
         if self._photos_dir is not None:
             photos_copied += copy_missing_photos(self._photos_dir, self._backup_dir / "photos")
             if self._mirror_dir is not None:
-                photos_copied += copy_missing_photos(self._photos_dir, self._mirror_dir / "photos")
+                # The second location is a copy, never a condition of a good backup: an unreachable
+                # mirror must not stop the primary's photos or the snapshot (review F1).
+                try:
+                    photos_copied += copy_missing_photos(self._photos_dir, self._mirror_dir / "photos")
+                except OSError as exc:
+                    log.warning("second location refused the photos; the primary copy stands: %s", exc)
         # Retention runs before the second copy: an unreachable mirror must not spool the primary.
         pruned = prune_snapshots(self._backup_dir, keep=self._keep)
         mirror = None

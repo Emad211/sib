@@ -669,6 +669,15 @@
     byId("shift-review-title").textContent = "بازبینی رویداد — " + state.kind.label;
     var list = byId("shift-review-list");
     list.textContent = "";
+    if (state.ref) {
+      // The record this event closes is the one fact the person cannot re-read on the phone.
+      var refRow = el("div", "se-review-row");
+      refRow.appendChild(el("dt", "se-review-label", "مورد باز"));
+      refRow.appendChild(
+        el("dd", "se-review-value", (state.ref.label || state.ref.type) + " · " + faTime(state.ref.at_tehran))
+      );
+      list.appendChild(refRow);
+    }
     state.fields.forEach(function (field) {
       var value = state.values[field.key];
       var empty = value === undefined || value === "" || (Array.isArray(value) && value.length === 0);
