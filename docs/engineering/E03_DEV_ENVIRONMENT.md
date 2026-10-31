@@ -1,6 +1,6 @@
 # محیط توسعه
 
-> نسخه 1.1 · ۱۴۰۵/۰۸/۰۴
+> نسخه 1.2 · ۱۴۰۵/۰۸/۱۰
 
 ## ۱. پیش‌نیازها
 
@@ -19,7 +19,7 @@ cd apps/accounting
 ./dev.ps1 build      # ساخت dist/HesabdariSib.exe
 ```
 
-- ورود روی دیتابیس مصنوعی: کاربرها `manager1`، `reception1`، `reception2` و `doctor1` با رمز `synthetic-pass` (فقط دیتابیس مصنوعی).
+- ورود روی دیتابیس مصنوعی: `manager1` (نقش `manager`) و `reception1`/`reception2` (نقش `reception`) با رمز `synthetic-pass` (فقط دیتابیس مصنوعی). `reception_old` غیرفعال است و `doctor1` فقط برای اثبات رد شدن نقش بازنشستهٔ `doctor` ساخته می‌شود، پس هیچ‌کدام نمی‌توانند وارد شوند (ADR-013؛ `USER_ROLES` در `apps/accounting/src/services/auth_service.py` و `apps/accounting/tools/make_synthetic_db.py`).
 - `requirements.lock` دقیقاً نسخه‌های داخل exe ساخته‌شده از `origin/main` ریپوی قدیمی را دارد: Flask 3.1.2، Werkzeug 3.1.3، Jinja2 3.1.6، bcrypt 5.0.0 و jdatetime 5.2.0.
 - تست‌های `prod_snapshot` به‌طور پیش‌فرض اجرا نمی‌شوند (`pytest.ini`) و در CI هرگز اجرا نمی‌شوند.
 - ثبت دوبارهٔ ماتریس مسیرها پس از تغییر آگاهانهٔ دسترسی: `UPDATE_ROUTE_MATRIX=1 pytest tests/test_route_matrix.py`
@@ -39,3 +39,4 @@ cd apps/accounting
 
 - 1.0، ۱۴۰۵/۰۸/۰۴: نسخهٔ اول.
 - 1.1، ۱۴۰۵/۰۸/۰۴: دستورهای واقعی پس از فاز ۰.
+- 1.2، ۱۴۰۵/۰۸/۱۰: تصحیح کاربرهای نمونهٔ دیتابیس مصنوعی؛ نقش ورود `doctor` بازنشسته شده است (ADR-013) و `doctor1` فقط برای تست رد شدن آن می‌ماند.

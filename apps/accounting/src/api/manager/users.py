@@ -14,7 +14,7 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.utils import format_jalali_datetime, iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
-from src.services.auth_service import USER_ROLES
+from src.services.auth_service import USER_ROLES, password_length_error
 
 from . import bp
 from ._common import manager_required
@@ -49,8 +49,13 @@ def users_management():
                 full_name = request.form.get("full_name", "").strip()
                 role = request.form.get("role", "reception")
 
+                # SEC-07: a password that is being SET must reach the minimum length
+                problem = password_length_error(password) if password else None
+
                 if role not in USER_ROLES:
                     flash("نقش کاربر نامعتبر است.", "error")
+                elif problem:
+                    flash(problem, "error")
                 elif username and password and full_name:
                     # چک کردن تکراری نبودن نام کاربری
                     existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
@@ -93,9 +98,13 @@ def users_management():
                 role = request.form.get("role", "reception")
                 is_active = request.form.get("is_active") == "1"
                 new_password = request.form.get("new_password", "").strip()
+                # SEC-07: a password that is being CHANGED must reach the minimum length
+                problem = password_length_error(new_password) if new_password else None
 
                 if role not in USER_ROLES:
                     flash("نقش کاربر نامعتبر است.", "error")
+                elif problem:
+                    flash(problem, "error")
                 elif user_id and username and full_name:
                     # چک کردن تکراری نبودن نام کاربری برای کاربر دیگر
                     existing = db.execute(
@@ -121,14 +130,27 @@ def users_management():
                         flash("کاربر با موفقیت بروزرسانی شد.", "success")
 
             elif action == "delete":
-                user_id = request.form.get("user_id")
-                # نباید کاربر فعلی را حذف کند
-                if user_id and int(user_id) != g.user["id"]:
-                    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
-                    db.commit()
-                    flash("کاربر با موفقیت حذف شد.", "success")
-                else:
+                # #17: «حذف» is a deactivation. The users row is never erased — activity_logs
+                # joins it by username, so a DELETE took the person's history with it.
+                user_id = request.form.get("user_id", type=int)
+                # نباید کاربر فعلی را حذف/غیرفعال کند
+                if not user_id or user_id == g.user["id"]:
                     flash("نمی‌توانید حساب کاربری خودتان را حذف کنید.", "error")
+                else:
+                    target = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+                    if target:
+                        db.execute("UPDATE users SET is_active = 0 WHERE id = ?", (user_id,))
+                        db.commit()
+                        log_activity(
+                            ActionType.USER_DEACTIVATE,
+                            ActionCategory.SYSTEM,
+                            target_type="user",
+                            target_id=user_id,
+                            target_name=target["username"],
+                        )
+                        flash(f"کاربر «{target['username']}» غیرفعال شد.", "success")
+                    else:
+                        flash("کاربر یافت نشد.", "error")
 
         elif entity_type == "staff":
             if action == "add":

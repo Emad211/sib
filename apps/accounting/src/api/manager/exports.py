@@ -8,11 +8,12 @@ from flask import (
 from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.utils import iran_now
+from src.services.activity_logger import ActionType
 from src.services.exports import table_response
 
 from . import bp
 from ._common import jalali_to_start_end, manager_api_required
-from .reports import _patients_report_rows
+from .reports import _patients_report_rows, log_report_access
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 @manager_api_required
 def export_invoices_csv():
 
+    log_report_access(ActionType.REPORT_EXPORT, "invoices")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -108,6 +110,7 @@ def make_csv_response(data, headers, filename, plain_cols=()):
 def export_users_csv():
     """خروجی CSV گزارش عملکرد کاربران."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "users")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -288,6 +291,7 @@ def export_users_csv():
 def export_visits_csv():
     """خروجی CSV گزارش ویزیت‌ها."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "visits")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -357,6 +361,7 @@ def export_visits_csv():
 def export_nursing_csv():
     """خروجی CSV گزارش خدمات پرستاری."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "nursing")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -430,6 +435,7 @@ def export_nursing_csv():
 def export_procedures_csv():
     """خروجی CSV گزارش کارهای عملی."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "procedures")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -510,6 +516,7 @@ def export_procedures_csv():
 def export_consumables_csv():
     """خروجی CSV گزارش مصرفی‌ها."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "consumables")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")
@@ -589,6 +596,7 @@ def export_consumables_csv():
 def export_patients_csv():
     """خروجی CSV گزارش بیماران."""
 
+    log_report_access(ActionType.REPORT_EXPORT, "patients")
     db = get_db()
     date_from = request.args.get("from", "")
     date_to = request.args.get("to", "")

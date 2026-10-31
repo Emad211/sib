@@ -9,9 +9,9 @@
 | L1 | واحد (domain و service) | محاسبات پول، سهم بیمه، شیفت و work_date، کد ملی، تاریخ جلالی | pytest | CI |
 | L2 | ویژگی (property-based) | ناوردایی‌های مالی برای هر ورودی تصادفی | hypothesis | CI |
 | L3 | repository | هر کوئری روی دیتابیس مصنوعی کوچک با جواب دستی‌محاسبه‌شده | pytest | CI |
-| L4 | مسیر (HTTP) | هر ۶۸ مسیر × هر نقش ← کد وضعیت، redirect، اعداد کلیدی صفحه | Flask test client | CI |
+| L4 | مسیر (HTTP) | هر مسیر × هر نقش ← کد وضعیت، redirect، اعداد کلیدی صفحه (امروز: ۷۳ قاعدهٔ URL، ۸۶ سلول route×method، ۴ نقش) | Flask test client | CI |
 | L5 | جریان (سناریو) | جریان‌های کامل کاری: پذیرش ← آیتم‌ها ← پرداخت ← بستن ← گزارش | Flask test client | CI |
-| L6 | مهاجرت و سازگاری | A03 بخش ۴ | pytest | CI + محلی |
+| L6 | مهاجرت و سازگاری | A03 بخش ۴ | pytest | CI (`tests/test_migrations.py`) + محلی (`tests/test_prod_snapshot.py`، marker `prod_snapshot`؛ `pytest.ini` به‌طور پیش‌فرض آن را اجرا نمی‌کند) |
 | L7 | گولدن مستر | همهٔ اعداد همهٔ گزارش‌ها برای بازه‌های ثابت | pytest + فایل baseline | **فقط محلی** روی کپی پروداکشن |
 | L8 | مرورگر (E2E) | ۶ جریان حیاتی در مرورگر واقعی، RTL، تاریخ‌پیکر جلالی | Playwright | CI (هر شب) |
 | L9 | معماری | قاعدهٔ وابستگی لایه‌ها؛ هیچ مسیر بدون `@require_role` | pytest | CI |
@@ -30,7 +30,7 @@
 
 ### L4: ماتریس مسیر × نقش
 
-یک جدول داده‌محور (`tests/authz_matrix.yaml`) برای هر مسیر و نقش (`anon`، `reception`، `doctor`، `manager`) نتیجهٔ مورد انتظار را دارد. یک تست پارامتری همه را اجرا می‌کند. اگر مسیر جدیدی اضافه شود و در جدول نباشد، تست شکست می‌خورد. ماتریس اولیه = **رفتار فعلی**، که در ACC-0.5 ثبت می‌شود. تغییر آن فقط با تصمیم آگاهانه (SEC-06).
+یک جدول داده‌محور (`tests/route_matrix.json`) برای هر مسیر و نقش (`anon`، `reception`، `retired_doctor`، `manager`) نتیجهٔ مورد انتظار را دارد و `tests/test_route_matrix.py` همه را اجرا می‌کند. نقش ورود `doctor` بازنشسته شد (ADR-013؛ `USER_ROLES = ("manager", "reception")` در `src/services/auth_service.py`، پزشک‌ها ردیف `medical_staff`اند)، پس ستون `retired_doctor` نشست همان حساب قدیمی است و باید همه‌جا مثل `anon` رفتار کند (`tests/test_retired_doctor_role.py`). اگر مسیر جدیدی اضافه شود و در جدول نباشد، تست شکست می‌خورد. ماتریس = **رفتار فعلی**، که در ACC-0.5 ثبت شد. تغییر آن فقط با تصمیم آگاهانه (SEC-06).
 
 ### L5: جریان‌های اجباری
 

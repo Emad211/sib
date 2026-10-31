@@ -1,13 +1,15 @@
-"""Authentication & session hardening (ACC-1.5..1.7; SEC-01, SEC-03, SEC-04, SEC-09)."""
+"""Authentication & session hardening (ACC-1.5..1.7; SEC-01, SEC-03, SEC-04, SEC-07, SEC-09)."""
 
 import sqlite3
 from pathlib import Path
 from unittest import mock
 
+import bcrypt
 import pytest
 from conftest import Config, core, login_as
 
 from src.config.settings import DEFAULT_SECRET_KEY
+from src.services.auth_service import MIN_PASSWORD_LENGTH, SHORT_PASSWORD_MESSAGE
 from tools.make_synthetic_db import TEST_PASSWORD
 
 
@@ -178,3 +180,113 @@ def test_install_secret_leaves_no_temp_files(tmp_path):
 
     load_or_create_install_secret(tmp_path)
     assert [p.name for p in tmp_path.iterdir()] == [".hesabdari_secret_key"]
+
+
+# --------------------------------------------------------------------------- password policy (SEC-07)
+
+
+def _sql(app, sql, params=()):
+    conn = sqlite3.connect(app.config["DATABASE_PATH"])
+    try:
+        return conn.execute(sql, params).fetchall()
+    finally:
+        conn.close()
+
+
+def _add_user(client, username, password, full_name="کاربر آزمون"):
+    return client.post(
+        "/manager/users",
+        data={
+            "entity_type": "user",
+            "action": "add",
+            "username": username,
+            "password": password,
+            "full_name": full_name,
+            "role": "reception",
+        },
+    )
+
+
+def _update_password(client, user_id, username, new_password):
+    return client.post(
+        "/manager/users",
+        data={
+            "entity_type": "user",
+            "action": "update",
+            "user_id": user_id,
+            "username": username,
+            "full_name": "پذیرش یک",
+            "role": "reception",
+            "is_active": "1",
+            "new_password": new_password,
+        },
+    )
+
+
+def _insert_legacy_user(app, username, password):
+    """A row written before the minimum length existed: a hash of a 3-character password."""
+    conn = sqlite3.connect(app.config["DATABASE_PATH"])
+    conn.execute(
+        "INSERT INTO users (username, password_hash, role, full_name, is_active) VALUES (?, ?, 'reception', ?, 1)",
+        (username, bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=4)), "رمز کوتاه قدیمی"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_the_minimum_password_length_and_its_message():
+    """SEC-07: E02 names the rule but no number, so 8 characters is the floor."""
+    assert MIN_PASSWORD_LENGTH == 8
+    assert SHORT_PASSWORD_MESSAGE == "رمز عبور باید حداقل ۸ نویسه باشد."
+
+
+def test_creating_a_user_with_a_short_password_is_refused(synthetic_app):
+    """SEC-07: no minimum length was enforced when a user was created."""
+    c = _manager_client(synthetic_app)
+    assert _add_user(c, "shorty", "a" * (MIN_PASSWORD_LENGTH - 1)).status_code == 302
+    assert _sql(synthetic_app, "SELECT COUNT(*) FROM users WHERE username = 'shorty'") == [(0,)]
+    with c.session_transaction() as s:
+        assert ("error", SHORT_PASSWORD_MESSAGE) in s["_flashes"]
+
+
+def test_a_password_of_exactly_the_minimum_length_is_accepted(synthetic_app):
+    password = "a" * MIN_PASSWORD_LENGTH
+    assert _add_user(_manager_client(synthetic_app), "minpass", password).status_code == 302
+    assert _sql(synthetic_app, "SELECT COUNT(*) FROM users WHERE username = 'minpass'") == [(1,)]
+    r = _login(synthetic_app.test_client(), "reception", "minpass", password)
+    assert r.status_code == 302 and r.headers["Location"].endswith("/reception/")
+
+
+def test_a_short_password_cannot_replace_an_existing_one(synthetic_app):
+    """SEC-07: the same floor applies when a password is changed, and nothing else changes."""
+    c = _manager_client(synthetic_app)
+    uid = _sql(synthetic_app, "SELECT id FROM users WHERE username = 'reception1'")[0][0]
+    before = _sql(synthetic_app, "SELECT password_hash FROM users WHERE id = ?", (uid,))
+    assert _update_password(c, uid, "reception1", "a" * (MIN_PASSWORD_LENGTH - 1)).status_code == 302
+    assert _sql(synthetic_app, "SELECT password_hash FROM users WHERE id = ?", (uid,)) == before
+    assert _login(synthetic_app.test_client(), "reception", "reception1").status_code == 302
+
+
+def test_a_long_enough_new_password_replaces_the_old_one(synthetic_app):
+    c = _manager_client(synthetic_app)
+    uid = _sql(synthetic_app, "SELECT id FROM users WHERE username = 'reception1'")[0][0]
+    new = "b" * MIN_PASSWORD_LENGTH
+    assert _update_password(c, uid, "reception1", new).status_code == 302
+    assert _login(synthetic_app.test_client(), "reception", "reception1", new).status_code == 302
+
+
+def test_a_user_with_an_older_short_password_can_still_log_in(synthetic_app):
+    """SEC-07: the floor is checked only where a password is written, never at login."""
+    _insert_legacy_user(synthetic_app, "legacy_short", "old")
+    r = _login(synthetic_app.test_client(), "reception", "legacy_short", "old")
+    assert r.status_code == 302 and r.headers["Location"].endswith("/reception/")
+
+
+def test_register_user_refuses_a_short_password(webapp_db):
+    """The create-user CLI (src/app.py) goes through register_user, so it inherits this."""
+    from src.services.auth_service import AuthService
+
+    service = AuthService()
+    assert service.register_user("cliuser", "a" * (MIN_PASSWORD_LENGTH - 1), "reception", "CLI") is False
+    assert webapp_db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+    assert service.register_user("cliuser", "a" * MIN_PASSWORD_LENGTH, "reception", "CLI") is True

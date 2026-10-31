@@ -11,10 +11,12 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.jalali import Gregorian
 from src.common.utils import iran_now
+from src.services.activity_logger import ActionType
 
 from . import bp
 from ._common import manager_api_required, manager_required
 from .exports import make_csv_response
+from .reports import log_report_access
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ def _nursing_exclusion_pairs(db):
 def insurance_arrears():
     """صفحه معوقات بیمه - نمایش مطالبات از بیمه‌ها"""
 
+    log_report_access(ActionType.REPORT_VIEW, "insurance_arrears")
     db = get_db()
 
     # Jalali ranges for date picker
@@ -401,6 +404,7 @@ def insurance_arrears():
 def export_insurance_arrears():
     """خروجی CSV معوقات بیمه"""
 
+    log_report_access(ActionType.REPORT_EXPORT, "insurance_arrears")
     db = get_db()
 
     # دریافت فیلترها - تاریخ شمسی
