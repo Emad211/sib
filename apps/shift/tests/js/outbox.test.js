@@ -20,6 +20,7 @@ const {
   isValidIngestResponse,
   expectedEventIdFor,
   classifyHttpStatus,
+  refusalReason,
   nextRetryDelayMs,
   MAX_TRIES,
   MAX_BACKOFF_SECONDS,
@@ -201,5 +202,18 @@ describe("Client-side ULID and Tehran business date", () => {
     assert.strictEqual(tehranBusinessDate(Date.UTC(2026, 9, 28, 3, 59)), "2026-10-27");
     // 2026-10-28T12:00+03:30 is the day shift.
     assert.strictEqual(tehranBusinessDate(Date.UTC(2026, 9, 28, 8, 30)), "2026-10-28");
+  });
+});
+
+describe("A refused record keeps the server's own reason (F6)", () => {
+  it("reads the Persian detail out of a 422 body", async () => {
+    const resp = { status: 422, json: async () => ({ detail: "نقش شما اجازهٔ ثبت این رویداد را ندارد." }) };
+    assert.strictEqual(await refusalReason(resp), "نقش شما اجازهٔ ثبت این رویداد را ندارد.");
+  });
+
+  it("falls back to the status when the body carries no detail", async () => {
+    assert.strictEqual(await refusalReason({ status: 400, json: async () => ({}) }), "پاسخ سرور 400");
+    const broken = { status: 410, json: async () => { throw new Error("not json"); } };
+    assert.strictEqual(await refusalReason(broken), "پاسخ سرور 410");
   });
 });

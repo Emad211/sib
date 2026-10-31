@@ -15,8 +15,10 @@ from shift.adapters.db.core import Database
 from shift.api.deps import running_shift
 from shift.api.errors import install_error_handlers
 from shift.api.routes_events import router as events_router
+from shift.common.clock import parse_iso
 from shift.common.ids import new_ulid
 from shift.domain.policy import ShiftKey
+from shift.services.outbox import business_date_for
 
 RUNNING = ShiftKey(date(2026, 10, 28), 2)
 MATRIX_STAFF = {"staff_id": "staff-no-roles", "mobile": "09120000010", "device_id": "device-no-roles"}
@@ -226,14 +228,18 @@ def test_invalid_submissions_are_rejected(seeded: TestClient, overrides: dict[st
         assert events_repo.count_events(connection) == 0
 
 
-def test_backdated_work_date_is_rejected(seeded: TestClient) -> None:
-    """A client-supplied work_date must agree with the authenticated shift date."""
+def test_a_wrong_work_date_hint_never_loses_the_record(seeded: TestClient) -> None:
+    """F5: the phone's date is a hint; the instant it happened decides which shift the record joins."""
     session = _login(seeded)
+    body = _event_payload(work_date="2020-01-01")
 
-    response = seeded.post("/api/v1/events", json=_event_payload(work_date="2020-01-01"), headers=_headers(session))
+    response = seeded.post("/api/v1/events", json=body, headers=_headers(session))
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
-    assert "work_date" in response.json()["error"]["message"]
+    assert response.status_code == status.HTTP_200_OK
+    with seeded.app.state.database.read() as connection:
+        stored = events_repo.find_by_event_id(connection, response.json()["event_id"])
+    assert stored is not None
+    assert stored.work_date == business_date_for(parse_iso(body["client_at"])).isoformat()
 
 
 def test_the_authenticated_shift_date_is_accepted(seeded: TestClient) -> None:

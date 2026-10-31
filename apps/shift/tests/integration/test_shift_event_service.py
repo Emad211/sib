@@ -166,7 +166,7 @@ def test_an_approval_needs_the_target_role_once_and_not_the_author(seeded: Datab
         principal=reception,
         shift=shift,
     )
-    pending = service.pending_for(accountant, shift)
+    pending = service.pending_for(accountant)
     assert [entry.event_id for entry in pending] == [author.event_id]
 
     decision = _submission(
@@ -177,7 +177,7 @@ def test_an_approval_needs_the_target_role_once_and_not_the_author(seeded: Datab
         ref_event_id=author.event_id,
     )
     service.record(decision, principal=accountant, shift=shift)
-    assert service.pending_for(accountant, shift) == []
+    assert service.pending_for(accountant) == []
 
     # A replay of the same decision is idempotent; a second, different decision is refused.
     replay = service.record(decision, principal=accountant, shift=shift)
@@ -198,20 +198,28 @@ def test_an_approval_needs_the_target_role_once_and_not_the_author(seeded: Datab
         )
 
 
-def test_pending_is_scoped_to_the_current_shift(seeded: Database) -> None:
+def test_pending_reads_the_whole_log_and_names_each_records_own_shift(seeded: Database) -> None:
+    """F2: an undecided record is the next shift's work too, and it keeps the shift that opened it."""
     shift = ShiftKey(WORK_DATE, 2)
     later = ShiftKey(WORK_DATE, 3)
     service = _service(seeded)
     reception = _principal("reception")
     accountant = _principal("accountant")
-    service.record(
+    recorded = service.record(
         _submission("card.transfer_reported", {"amount": 10_000, "admission_no": "A-2"}, reception, shift),
         principal=reception,
         shift=shift,
     )
 
-    assert len(service.pending_for(accountant, shift)) == 1
-    assert service.pending_for(accountant, later) == []
+    assert [entry.event_id for entry in service.pending_for(accountant)] == [recorded.event_id]
+    assert [entry.shift_id for entry in service.pending_for(accountant)] == [shift.text]
+
+    service.record(
+        _submission("event.approved", {}, accountant, later, ref_event_id=recorded.event_id),
+        principal=accountant,
+        shift=later,
+    )
+    assert service.pending_for(accountant) == []
 
 
 def test_handover_keeps_its_online_only_refusal(seeded: Database) -> None:

@@ -299,14 +299,14 @@ def test_a_replayed_withdrawal_writes_once(bench: Bench) -> None:
 
 
 def test_a_confirmed_waste_is_recorded_and_lowers_the_shelf(bench: Bench) -> None:
-    """E-05: the item leaves the reference quantity, and the waste waits for no approval."""
+    """E-05: the item leaves the reference quantity at once; the second person closes it afterwards."""
     reception = _principal("reception")
 
     result = bench.record("stock.waste_reported", _waste(quantity=2), reception)
 
     assert result.created is True
     assert bench.quantity() == SHELF_QUANTITY - 2
-    assert bench.service.pending_for(_principal("storekeeper"), SHIFT) == []
+    assert bench.service.pending_for(_principal("storekeeper")) == [], "a waste waits for its named person"
     assert bench.event_types()[-1] == "stock.waste_reported"
 
 

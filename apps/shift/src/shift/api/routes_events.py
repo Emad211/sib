@@ -76,16 +76,17 @@ class EventIn(BaseModel):
 
 
 class EventOut(BaseModel):
-    """Event ingestion response."""
+    """Event ingestion response; `held` is additive, so an older cached shell keeps working (F5)."""
 
     seq: int
     event_id: str
     created: bool
     status: str
+    held: bool = False
 
 
 class PendingEventOut(BaseModel):
-    """One undecided shift event the signed-in approver may decide."""
+    """One open shift event the signed-in person may decide, whatever shift opened it."""
 
     event_id: str
     type: str
@@ -105,15 +106,19 @@ def get_shift_events(request: Request) -> ShiftEventService:
 @router.get(
     "/shift-events/pending",
     response_model=list[PendingEventOut],
-    summary="Events waiting for this approver in the running shift",
+    summary="The open items this signed-in person may decide now",
 )
 def get_pending_events(
-    principal: Annotated[Principal, Depends(require(Permission.SHIFT_EVENT_APPROVE))],
-    shift: Annotated[ShiftKey, Depends(running_shift)],
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
     service: Annotated[ShiftEventService, Depends(get_shift_events)],
 ) -> list[PendingEventOut]:
-    """Only the current shift, only the kinds this person's role may decide (R-01, R-07)."""
-    return [PendingEventOut(**entry.to_payload()) for entry in service.pending_for(principal, shift)]
+    """Any phone that may append may ask; the service answers with its own open items only (R-01, R-07).
+
+    The confirmation the owner asks for may be a nurse's or a receptionist's, so the route cannot be
+    the approval roles' alone. It returns the item, its actor and its time — no shift's figures and
+    nothing another person could decide.
+    """
+    return [PendingEventOut(**entry.to_payload()) for entry in service.pending_for(principal)]
 
 
 @router.post(
@@ -165,4 +170,5 @@ def post_event(
         event_id=result.event_id,
         created=result.created,
         status=result.status,
+        held=result.held,
     )

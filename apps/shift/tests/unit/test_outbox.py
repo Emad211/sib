@@ -4,8 +4,9 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from shift.common.clock import parse_iso
+from shift.common.clock import parse_iso, to_tehran
 from shift.common.ids import new_ulid
+from shift.domain.shift_clock import covering
 from shift.services.outbox import EventSubmission, OutboxValidationError, business_date_for
 
 
@@ -42,9 +43,17 @@ def test_without_a_session_shift_the_submission_derives_the_business_date() -> N
     assert event.work_date == date(2026, 10, 28)
 
 
-def test_a_client_work_date_must_match_the_business_date() -> None:
+def test_a_work_date_hint_never_outranks_the_occurred_instant() -> None:
+    """F5: a queue that crossed midnight is attributed by when it happened, not by its hint."""
+    event = _submission(requested_work_date="2026-10-01").to_new_event()
+
+    assert event.work_date == date(2026, 10, 28)
+    assert event.shift_id == covering(to_tehran(parse_iso("2026-10-29T01:00:00+03:30"))).text
+
+
+def test_a_malformed_work_date_hint_is_still_refused() -> None:
     with pytest.raises(OutboxValidationError, match="work_date"):
-        _submission(requested_work_date="2026-10-01").to_new_event()
+        _submission(requested_work_date="not-a-date").to_new_event()
 
 
 def test_a_naive_client_time_is_rejected() -> None:

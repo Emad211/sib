@@ -5,6 +5,10 @@ grows without anybody counting it: this kind is the app's side of that entry (H-
 asks what came, how many and from where; the purchase chain itself — order, delivery, price,
 payment — is SHF-4 and is not built here.
 
+The shelf grows at once, because the goods have already arrived, and the owner's «انباردار یا پذیرش»
+confirms the entry afterwards through the common approval flow; the confirmation changes a status and
+never the quantity twice. That rule names roles and no person, so `approvable_by` is the whole of it.
+
 A vendor entry without its reference cannot be matched against the invoice later, so it is refused;
 the store's own charge-up carries no invoice and may leave the reference empty.
 
@@ -17,7 +21,7 @@ from typing import Any
 
 from shift.domain.effects import StockOperation, stock_delta
 from shift.domain.payloads import ShelfRestocked
-from shift.domain.permissions import Permission
+from shift.domain.permissions import Permission, Role
 from shift.domain.shift_events.base import (
     FieldKind,
     FieldSpec,
@@ -88,6 +92,7 @@ KIND = KindSpec(
     sample=sample,
     summarize=summarize,
     validate=validate,
+    approvable_by=(Role.STOREKEEPER, Role.RECEPTION),
     card_fields=("quantity", "item_id", "source", "reference"),
 )
 

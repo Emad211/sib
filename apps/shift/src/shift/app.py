@@ -18,6 +18,7 @@ from shift.api import (
     routes_devices,
     routes_events,
     routes_handover,
+    routes_held,
     routes_manager,
     routes_settings,
     routes_web,
@@ -39,6 +40,7 @@ from shift.services.daily_card import DailyCardService
 from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
+from shift.services.held_events import HeldEvents
 from shift.services.projections import ProjectionEngine
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
@@ -154,6 +156,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.settings_service = SettingsService(database, clock=clock)
         # The manager's campaign calendar is the only source of a «ت» discount (S01 §3).
         application.state.campaigns = CampaignService(database, clock=clock)
+        # F5: a record whose own instant is implausible is kept with the manager, never dropped.
+        application.state.held = HeldEvents(database, application.state.events, clock=clock)
         # The staff phone's shift events (SHF-3): one validated, idempotent writer for every kind.
         application.state.shift_events = ShiftEventService(
             database,
@@ -163,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.settings_service,
             campaigns=application.state.campaigns,
             clock=clock,
+            held=application.state.held,
         )
         # The manager's daily card (SHF-6.1) reads the log, the flows and the audit trail and stores
         # one document per day; the scheduler's action below is the only thing that generates it.
@@ -246,6 +251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(routes_events.router)
     app.include_router(routes_handover.router)
+    app.include_router(routes_held.router)
     app.include_router(routes_web.router)
 
     @app.get("/healthz", tags=["ops"])

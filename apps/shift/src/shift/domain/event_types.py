@@ -18,6 +18,14 @@ class EventType(StrEnum):
     HANDOVER_SIGNED = "handover.signed"
     HANDOVER_EARLY_LEAVE_REPORTED = "handover.early_leave_reported"
     HANDOVER_EMERGENCY_START_CONFIRMED = "handover.emergency_start_confirmed"
+    # An internal record of the flow's own log: a cash event that occurred before this flow's cutoff
+    # arrived while it was being counted, so the reference it compares against moved by this delta
+    # (H-11). Metadata, never money, and it keeps a rebuild identical to the live comparison.
+    HANDOVER_CASH_REFERENCE_ADJUSTED = "handover.cash_reference_adjusted"
+    # An internal record of a cash event that occurred before a flow's cutoff but arrived after that
+    # flow settled: the manager is told, and its own effect cancels the late event's box change so
+    # the settled figure cannot be moved twice (H-11).
+    HANDOVER_LATE_CASH_RECORDED = "handover.late_cash_recorded"
     DISCREPANCY_RECORDED = "discrepancy.recorded"
     CASH_WITHDRAWN = "cash.withdrawn"
     CASH_DEPOSITED = "cash.deposited"
@@ -43,6 +51,11 @@ class EventType(StrEnum):
     CLEANING_CONFIRMED = "cleaning.confirmed"
     EVENT_APPROVED = "event.approved"
     EVENT_REJECTED = "event.rejected"
+    # F5: a record whose own instant is in the future or more than three days old is never dropped —
+    # it is kept, the manager is told, and only `event.released` lets its movement into the books.
+    EVENT_HELD = "event.held"
+    EVENT_RELEASED = "event.released"
+    EVENT_HOLD_REJECTED = "event.hold_rejected"
 
 
 class UnknownEventType(ValueError):

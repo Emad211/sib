@@ -53,4 +53,26 @@
         });
     });
   });
+  // F5: a held record is released or rejected by the manager; both answers are Persian and the page
+  // reloads only after the server confirmed the decision.
+  document.querySelectorAll("[data-held-release], [data-held-reject]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var release = button.hasAttribute("data-held-release");
+      var id = button.getAttribute(release ? "data-held-release" : "data-held-reject");
+      if (!id) return;
+      if (!release && !window.confirm("این رویداد رد شود؟ دیگر روی صندوق و قفسه اثر نمی‌کند.")) return;
+      button.disabled = true;
+      fetch("/api/v1/manager/held-events/" + encodeURIComponent(id) + "/" + (release ? "release" : "reject"), {
+        method: "POST",
+      })
+        .then(function (response) {
+          if (!response.ok) throw new Error("پاسخ " + response.status);
+          window.location.reload();
+        })
+        .catch(function () {
+          button.disabled = false;
+          window.alert("ثبت تصمیم انجام نشد؛ دوباره تلاش کنید.");
+        });
+    });
+  });
 })();

@@ -5,6 +5,9 @@ shelf or in the box, so neither kind has a projection effect (S03 §3). The deli
 own that points at the held event with `ref_event_id` and closes it once: one belonging goes back to
 the patient once, and a second delivery of the same held event would claim two returns of one item.
 
+A belonging outlives the shift it was kept in: the patient may come back the next morning, so the
+delivery declares `cross_shift` and may point at a held event of an earlier shift.
+
 The payload models live here, in the module that owns the two kinds, because the kind is the single
 owner of its own questions; `domain/payloads.py` keeps the older vocabulary they are built on.
 """
@@ -80,6 +83,7 @@ register(
         needs_reference=True,
         reference_types=("patient.item_held",),
         unique_reference=True,
+        cross_shift=True,
         card_fields=DELIVERED_CARD_FIELDS,
     ),
 )

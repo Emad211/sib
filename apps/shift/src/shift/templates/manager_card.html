@@ -38,6 +38,22 @@
   </section>
   {% endif %}
 
+  {% if "over_cap_withdrawals" in card.sections %}
+  {% set withdrawals = card.sections.over_cap_withdrawals %}
+  <section class="mg-section mg-emergency{% if not withdrawals %} mg-clear{% endif %}" aria-labelledby="mg-withdrawals-title">
+    <h2 id="mg-withdrawals-title" class="mg-section-title">برداشت بالای سقف از صندوق</h2>
+    {% for row in withdrawals %}
+    <article class="mg-alert-row">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-alert-who">گیرنده: {{ row.recipient }} · مدیر نام‌برده: {{ row.manager }}</p>
+      <p class="mg-line">دلیل: {{ row.reason }}</p>
+      <p class="mg-line mg-muted">{{ row.at }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
   {% if "cash_exceptions" in card.sections %}
   <section class="mg-section" aria-labelledby="mg-cash-title">
     <h2 id="mg-cash-title" class="mg-section-title">نقد ثبت‌شده در تحویل</h2>
@@ -136,6 +152,42 @@
   </section>
   {% endif %}
 
+  {% if "late_cash" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-late-cash-title">
+    <h2 id="mg-late-cash-title" class="mg-section-title">نقد دیررسیده</h2>
+    <p class="mg-note">این نقد پیش از برش تحویل رخ داده ولی پس از تسویه رسیده است؛ صندوق دو بار کم نشد.</p>
+    {% for row in card.sections.late_cash %}
+    <article class="mg-row">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
+      <p class="mg-line">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }}</p>
+      <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }}{% if row.handover_id %} · تحویل <span class="mg-id" dir="ltr">{{ row.handover_id }}</span>{% endif %}</p>
+      <p class="mg-line mg-muted">توضیح مغایرت همان تحویل: {{ row.explains }}</p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if "held_events" in card.sections %}
+  <section class="mg-section" aria-labelledby="mg-held-title">
+    <h2 id="mg-held-title" class="mg-section-title">رویدادهای نگه‌داشته‌شده</h2>
+    <p class="mg-note">این رویدادها زمان نامعتبر دارند و تا تصمیم شما روی صندوق و قفسه اثر نکرده‌اند.</p>
+    {% for row in card.sections.held_events %}
+    <article class="mg-row" data-held-row>
+      <p class="mg-line mg-strong">{{ row.label }}</p>
+      <p class="mg-line">{{ row.message }}</p>
+      <p class="mg-line mg-muted">رخداد: {{ row.occurred_at }} · رسیدن: {{ row.received_at }} · ثبت‌کننده: {{ row.actor }}</p>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-held-release="{{ row.held_event_id }}">آزادسازی</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-held-reject="{{ row.held_event_id }}">رد</button>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">در این روز چیزی ثبت نشده است.</p>
+    {% endfor %}
+  </section>
+  {% endif %}
   {% else %}
   <section class="mg-section" aria-labelledby="mg-empty-title">
     <h1 id="mg-empty-title" class="mg-title">کارت روزانهٔ مدیر</h1>
@@ -145,4 +197,8 @@
   </section>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/manager.js"></script>
 {% endblock %}

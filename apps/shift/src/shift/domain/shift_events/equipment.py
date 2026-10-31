@@ -7,6 +7,9 @@ the manager's card can show it as open until somebody records the repair.
 
 The chain is one incident, so the assignment and the fix both reference the report rather than each
 other; `unique_reference` makes the second fix of the same fault a refusal, not a second closing.
+
+A fault outlives the shift that found it: the manager assigns it and the assignee closes it whenever
+they are on duty, so both notes declare `cross_shift` and may point at a report of an earlier shift.
 """
 
 from datetime import date
@@ -139,6 +142,7 @@ FAULT_ASSIGNED = KindSpec(
     validate=_validate_assignment,
     needs_reference=True,
     reference_types=(REPORTED,),
+    cross_shift=True,
     card_fields=("assignee_id", "due_on"),
 )
 
@@ -157,6 +161,7 @@ FAULT_FIXED = KindSpec(
     needs_reference=True,
     reference_types=(REPORTED,),
     unique_reference=True,
+    cross_shift=True,
     card_fields=("note",),
 )
 

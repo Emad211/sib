@@ -2,10 +2,9 @@
 
 When the storekeeper is not there, two people open the sealed second key: one records the item, the
 quantity and the reason, and names the other. The shelf drops at once — the goods have already left
-— and the storekeeper confirms the record afterwards in the manager's card (`approvable_by`,
-`requires_approval`). That confirmation changes a status and never the projection: the withdrawal is
-on the shelf in H-01 `U` from the moment it was recorded, which is exactly why the confirmation is
-asked for at all.
+— and the storekeeper confirms the record afterwards in the manager's card (`approvable_by`). That
+confirmation changes a status and never the projection: the withdrawal is on the shelf in H-01 `U`
+from the moment it was recorded, which is exactly why the confirmation is asked for at all.
 
 A row stored before SHF-3 carries only item, location and quantity, so the payload model keeps
 `reason` and `second_person_id` optional and every old row still replays. The missing pair is refused
@@ -98,7 +97,6 @@ KIND = KindSpec(
     summarize=summarize,
     validate=validate,
     approvable_by=(Role.STOREKEEPER,),
-    requires_approval=True,
     card_fields=("quantity", "item_id", "second_person_id", "reason"),
 )
 

@@ -220,6 +220,9 @@ def _sections(card: Card) -> dict[str, list[dict[str, Any]]]:
     """The card's seven sections as rows of text; a section the stored card lacks is left out."""
     builders: dict[str, Callable[[Card], list[dict[str, Any]]]] = {
         "emergency_starts": _emergency_rows,
+        "over_cap_withdrawals": _withdrawal_rows,
+        "late_cash": _late_cash_rows,
+        "held_events": _held_rows,
         "cash_exceptions": _cash_rows,
         "discrepancies": _discrepancy_rows,
         "flows": _flow_rows,
@@ -424,3 +427,50 @@ def _hint(kind: SettingKind, minimum: int | None, maximum: int | None) -> str:
     if kind is SettingKind.WEEKDAY or minimum is None or maximum is None:
         return ""
     return f"عددی بین {minimum:,} و {maximum:,}."
+
+
+def _withdrawal_rows(card: Card) -> list[dict[str, str]]:
+    """Every above-cap withdrawal of the window, prominently, next to the emergency starts."""
+    return [
+        {
+            "event_id": entry.event_id,
+            "amount": f"{entry.amount:,}",
+            "reason": entry.reason,
+            "recipient": _person(entry.recipient),
+            "manager": _person(entry.manager),
+            "at": _stamp_fa(entry.at_tehran),
+        }
+        for entry in card.over_cap_withdrawals
+    ]
+
+
+def _late_cash_rows(card: Card) -> list[dict[str, str]]:
+    """A cash record that arrived late: when it happened, when it arrived, and the gap it explains."""
+    return [
+        {
+            "event_id": entry.event_id,
+            "handover_id": entry.handover_id or "",
+            "amount": f"{entry.amount:,}",
+            "occurred_at": _stamp_fa(entry.occurred_at_tehran),
+            "received_at": _stamp_fa(entry.received_at_tehran),
+            "actor": _person(entry.actor),
+            "explains": "بله" if entry.explains_discrepancy else "خیر",
+        }
+        for entry in card.late_cash
+    ]
+
+
+def _held_rows(card: Card) -> list[dict[str, str]]:
+    """Records the server kept for the manager: released or rejected from this page (F5)."""
+    return [
+        {
+            "held_event_id": entry.held_event_id,
+            "event_id": entry.event_id,
+            "label": entry.label,
+            "message": entry.message,
+            "occurred_at": _stamp_fa(entry.occurred_at_tehran),
+            "received_at": _stamp_fa(entry.received_at_tehran),
+            "actor": _person(entry.actor),
+        }
+        for entry in card.held_events
+    ]

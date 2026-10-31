@@ -1,8 +1,11 @@
 """Approval decisions (S01 §3 «تأیید»): `event.approved` and `event.rejected`.
 
-The service owns the approval rules — which roles may decide which kind, never the author, once per
-target. This module only names the two event types and their optional note, so the registry, the
-phone and the manager's card share one vocabulary.
+A decision is a shift event like any other: it needs a target, it never moves a projection, and it is
+appended idempotently through the same phone endpoint. Who may decide *which* record is not a property
+of the decision, it is a property of the target: the person the target names (`confirmer_field`) or a
+holder of one of its roles (`approvable_by`), never its author. So the decision declares the permission
+every role holds and the service decides the rest; a role gate here would refuse the named nurse and
+receptionist the clinic asks to confirm.
 """
 
 from typing import Annotated
@@ -40,7 +43,7 @@ def _kind(event_type: str, code: str, label: str, sample_note: str) -> KindSpec:
         label_fa=label,
         group=KindGroup.MONEY,
         fields=(FieldSpec("note", "یادداشت (اختیاری)", FieldKind.TEXT, required=False, max_length=500),),
-        permission=Permission.SHIFT_EVENT_APPROVE,
+        permission=Permission.EVENTS_APPEND,
         payload_model=DecisionNote,
         effects=no_effects,
         sample=lambda: {"note": sample_note},

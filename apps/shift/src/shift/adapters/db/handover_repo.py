@@ -178,6 +178,23 @@ def latest_flow_at_or_before(
     return None if row is None else _row(row)
 
 
+def first_flow_at_or_after(connection: Connection, instant: datetime, flow: HandoverFlow) -> FlowRow | None:
+    """The first flow whose cutoff had not yet fallen when `instant` happened, or None.
+
+    A cash event stamped before a flow's cutoff belongs to the shift that flow closes, so the flow it
+    concerns is the earliest one that started at or after the event did (H-11).
+    """
+    row = (
+        connection.exec_driver_sql(
+            f"{_SELECT} WHERE flow = ? AND opened_at >= ? ORDER BY opened_at, handover_id LIMIT 1",
+            (flow.value, utc_iso(instant)),
+        )
+        .mappings()
+        .first()
+    )
+    return None if row is None else _row(row)
+
+
 def newest_flow(connection: Connection, flow: HandoverFlow) -> FlowRow | None:
     """The newest flow of one kind, signed or not: its incoming person holds the flow now (SHF-7.1)."""
     row = (

@@ -50,6 +50,8 @@ PATH_VALUES = {
     "card_date": "2026-10-29",
     # An id no flow ever used: every guarded handover route answers 404 for a permitted role.
     "handover_id": "01J00000000000000000000000",
+    # An id no record was ever held under: the two held-record routes answer 404 for the manager.
+    "held_event_id": "01J00000000000000000000000",
 }
 _ITEM_BODY = {
     "name": "پاراستامول ۵۰۰ میلی‌گرم",

@@ -33,13 +33,14 @@
 
 | گروه | انواع |
 |---|---|
-| تحویل | `handover.started`، `handover.cash_counted`، `handover.item_counted`، `handover.recount_requested`، `handover.outgoing_counted`، `handover.joint_counted`، `handover.count_settled`، `handover.step_advanced`، `handover.checklist_answered`، `handover.parcel_handed`، `handover.signed`، `handover.early_leave_reported`، `handover.emergency_start_confirmed` |
+| تحویل | `handover.started`، `handover.cash_counted`، `handover.item_counted`، `handover.recount_requested`، `handover.outgoing_counted`، `handover.joint_counted`، `handover.count_settled`، `handover.step_advanced`، `handover.checklist_answered`، `handover.parcel_handed`، `handover.signed`، `handover.early_leave_reported`، `handover.emergency_start_confirmed`؛ دو رکورد داخلیِ برش نقدی: `handover.cash_reference_adjusted` (متادیتا، بی‌اثر) و `handover.late_cash_recorded` (اثر معکوسِ رویداد دیررسیده، تا صندوق دو بار کم نشود) |
 | مغایرت | `discrepancy.recorded` (خودکار) |
 | رویداد شیفت — پول | `card.transfer_reported`، `refund.requested`، `campaign.discount_applied`، `cash.withdrawn` |
 | رویداد شیفت — انبار | `stock.waste_reported`، `stock.shelf_restocked`، `stock.emergency_withdrawal` |
 | رویداد شیفت — مراقبت | `patient.item_held`، `patient.item_delivered`، `vitals.recorded`، `vitals.followup_opened`، `cleaning.confirmed` |
 | رویداد شیفت — تجهیزات | `equipment.fault_reported`، `equipment.fault_assigned`، `equipment.fault_fixed` |
 | تأیید | `event.approved`، `event.rejected` (با `ref_event_id`، بی اثر projection)؛ `changed` (زنجیرهٔ خرید SHF-4) |
+| نگه‌داشته (F5) | `event.held` (رکورد نامعتبر زمانی، بی‌اثر و منتظر مدیر)، `event.released` (آزادسازی؛ خودِ رویداد اصلی با همان هویت و همان زمان وقوع اثر را یک‌بار اعمال می‌کند)، `event.hold_rejected` (برای همیشه بیرون) |
 | خرید | `order_drafted`، `order_decided`، `order_placed`، `delivery_received`، `delivery_flagged`، `delivery_transferred`، `invoice_digitized`، `payment_recorded`، `vendor_return`، `vendor_credit` |
 | انبار | `restock_confirmed`، `stock.weekly_count`، `expiry_flagged` |
 | پاداش | `reward_earned`، `reward_confirmed`، `reward_revoked` |
@@ -100,8 +101,8 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 |---|---|
 | `stock(item, location)` | از رویدادهای شمارش تأییدشده + شارژ + مصرف حسابداری − برداشت − ضایعات |
 | `cash(cash_box)` | N0 + نقد حسابداری − برداشت‌ها − واریزها؛ کلید: صندوق (cash box)، نه شیفت (ADR-017). N0 از آخرین تسویه (`handover.count_settled`) می‌آید و هر تسویهٔ تازه آن را جابه‌جا می‌کند |
-| `open_decisions` | هر رویداد نیازمند تأیید مدیر که هنوز `approved/rejected/changed` ندارد |
-| `my_queue(user)` | کارهای باز نقش‌های کاربر در شیفت جاری (R-01، R-07) |
+| `open_decisions` | هر رویداد نیازمند تأیید که هنوز `approved/rejected/changed` ندارد؛ داور: نقشِ `approvable_by`، شخصِ `confirmer_field`، یا مدیر — هرگز ثبت‌کننده (F2) |
+| `my_queue(user)` | اقلام بازِ همان شخص یا نقش‌هایش، از هر شیفت (شیفت‌های قبل فقط همین اقلام باز، بی‌عدد صندوق — R-01، R-07؛ F2) |
 | `reward_ledger(month)` | پاداش‌های تأییدشده منهای ابطال‌ها |
 
 ## ۶. کارت روزانهٔ مدیر (سند مشتق و ذخیره‌شده)
@@ -110,7 +111,7 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 |---|---|---|
 | `card_date` | روزی که کارت برای آن است (ISO) | PRIMARY KEY؛ یک کارت در هر روز |
 | `covered_from` / `covered_to` | نخستین و آخرین روزی که کارت می‌پوشاند (ISO) | شنبه دو روز |
-| `schema_version` | نسخهٔ شکل `payload` (`CARD_SCHEMA_VERSION`، اکنون ۳) | کارت ذخیره‌شدهٔ نسخهٔ ۲ همچنان خوانده می‌شود و کارت تازه با ۳ نوشته می‌شود؛ سند با نسخهٔ ناشناس خوانده نمی‌شود |
+| `schema_version` | نسخهٔ شکل `payload` (`CARD_SCHEMA_VERSION`، اکنون ۴) | کارت‌های ذخیره‌شدهٔ نسخهٔ ۲ و ۳ همچنان خوانده می‌شوند (بخش تازه‌ای که ندارند خالی خوانده می‌شود) و کارت تازه با ۴ نوشته می‌شود؛ سند با نسخهٔ ناشناس خوانده نمی‌شود |
 | `generated_at_utc` / `generated_at_tehran` | زمان ساخت | تا کارت بدون رمزگشایی سند پیدا شود |
 | `payload` | سند کارت به **canonical JSON** | تنها شکل سند؛ صفحه از همین می‌خواند |
 
@@ -133,3 +134,4 @@ received_flagged ─manager decision─► unlock | return_to_vendor
 - 1.4، ۱۴۰۵/۰۸/۰۹: افزودن رویداد `count_settled` با فیلد `basis` به واژگان تحویل و قاعدهٔ جابه‌جایی N0 روی عدد تسویه‌شده (ADR-017 بند ۹)، رویداد `step_advanced` برای اینکه گام جریان از لاگ بازسازی شود، و قطعی‌شدن زنجیرهٔ شمارش تک‌نفرهٔ H-08 (ADR-017 بند ۱۰).
 - 1.5، ۱۴۰۵/۰۸/۰۹: افزودن بخش ۶ برای کارت روزانهٔ مدیر — جدول `daily_cards` (کلید `card_date`، `payload` به canonical JSON، `schema_version`)، دلیل مشتق و بازسازی‌پذیر بودن در برابر فقط‌افزودنی بودن `events` و ثبت بازتولید با اکشن `daily_card.generated` در `audit_log`، واژگان پنج بخش و نبود بخش بی‌داده، قاعدهٔ پوشش (جمعه بی کارت، شنبه دو روز، مرز نیمه‌شب تهران)، سطح `DailyCardService` و تزریق سازندهٔ کارت از سوی scheduler — همه بر پایهٔ کد SHF-6.1.
 - 1.6، ۱۴۰۵/۰۸/۰۹: رویدادهای شیفت SHF-3 در بخش ۳ با نام‌های واقعی رجیستری و گروه‌بندی پول/انبار/مراقبت/تجهیزات، رویداد تأیید `event.approved`/`event.rejected` با `ref_event_id` و بی اثر projection، و پاراگراف اثرها (تنها چهار نوع متحرک) و بیرون‌از‌شمارش بودن امانت بیمار؛ بخش ۶ با هفت بخش کارت (`shift_events`، `open_events`) و `CARD_SCHEMA_VERSION` برابر ۳ و خوانا ماندن کارت نسخهٔ ۲.
+- 1.7، ۱۴۰۵/۰۸/۰۹: پس از بازبینی SHF-3 — دو رکورد داخلیِ برش نقدی (`handover.cash_reference_adjusted`، `handover.late_cash_recorded`) در گروه تحویل، سه رکورد نگه‌داشتهٔ F5 (`event.held`، `event.released`، `event.hold_rejected`)، معنای تازهٔ `open_decisions`/`my_queue` برای اقلام باز شیفت‌های قبل، و `CARD_SCHEMA_VERSION` برابر ۴ با خوانا ماندن کارت‌های ۲ و ۳.

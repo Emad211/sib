@@ -179,6 +179,24 @@ function classifyHttpStatus(status) {
 }
 
 /**
+ * The server's own Persian refusal, or a status fallback when the body carries none.
+ * @param {Response} resp
+ * @returns {Promise<string>}
+ */
+async function refusalReason(resp) {
+  const fallback = `پاسخ سرور ${resp.status}`;
+  try {
+    const body = await resp.json();
+    if (body && typeof body.detail === "string" && body.detail.trim()) {
+      return body.detail.slice(0, 300);
+    }
+  } catch (err) {
+    // The refusal was not JSON: the status line is still worth showing.
+  }
+  return fallback;
+}
+
+/**
  * Earliest delay until a due replay attempt, or null when nothing is queued.
  * @param {Array<Object>} items
  * @param {number} now
@@ -315,6 +333,12 @@ async function removeOutboxItem(idempotencyKey) {
   await withStore("readwrite", (store) => store.delete(idempotencyKey));
 }
 
+/** Delete one record from the phone's queue and refresh every list that shows it (F6 dismiss). */
+async function dismissOutboxItem(idempotencyKey) {
+  await removeOutboxItem(idempotencyKey);
+  dispatchOutboxChanged();
+}
+
 async function updateOutboxItem(record) {
   await withStore("readwrite", (store) => store.put(record));
 }
@@ -330,8 +354,7 @@ function scheduleRetry(item, reason) {
   item.next_try_at = Date.now() + calculateBackoffMs(item.tries);
 }
 
-async function replayOne(item) {
-  const expectedEventId = expectedEventIdFor(item);
+async function replayOne(item) {  const expectedEventId = expectedEventIdFor(item);
   try {
     const resp = await fetch(item.url, {
       method: "POST",
@@ -356,8 +379,10 @@ async function replayOne(item) {
     }
 
     if (classifyHttpStatus(resp.status) === "terminal") {
+      // The server refused the record for good. Its Persian reason is what the person holding the
+      // phone has to read, so it is kept with the item instead of a bare status code (F6).
       item.status = "failed";
-      item.last_error = `Server error ${resp.status}`;
+      item.last_error = await refusalReason(resp);
       await updateOutboxItem(item);
       return;
     }
@@ -484,6 +509,7 @@ if (typeof module !== "undefined" && module.exports) {
     isValidIngestResponse,
     expectedEventIdFor,
     classifyHttpStatus,
+    refusalReason,
     nextRetryDelayMs,
     MAX_TRIES,
     MAX_BACKOFF_SECONDS,
@@ -501,6 +527,8 @@ if (typeof window !== "undefined") {
     isOfflineEventTypeAllowed,
     enqueueOutboxItem,
     getQueuedItems,
+    removeOutboxItem,
+    dismissOutboxItem,
     replayOutbox,
     retryFailedItem,
     triggerReplay,

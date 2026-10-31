@@ -54,7 +54,6 @@ KIND = KindSpec(
     summarize=_summary,
     validate=_validate,
     approvable_by=(Role.SHIFT_DOCTOR, Role.MANAGER),
-    requires_approval=True,
     card_fields=("admission_no", "reason"),
 )
 

@@ -52,7 +52,7 @@ def _cleaning_summary(payload: BaseModel) -> dict[str, Any]:
 register(
     KindSpec(
         event_type="cleaning.confirmed",
-        code="خ",
+        code="خد",
         label_fa="چک‌لیست خدمه",
         group=KindGroup.CARE,
         fields=(

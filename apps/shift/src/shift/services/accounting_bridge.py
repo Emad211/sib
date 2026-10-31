@@ -54,6 +54,7 @@ from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.event_store import EventStore, NewEvent
+from shift.services.late_cash import notice_late_cash
 
 log = logging.getLogger(__name__)
 
@@ -517,10 +518,18 @@ class AccountingBridge:
         return created
 
     def _append_events(self, events: Sequence[NewEvent]) -> int:
-        """Append a planned batch; a retry returns the stored event, so nothing is counted twice."""
+        """Append a planned batch; a retry returns the stored event, so nothing is counted twice.
+
+        Money that accounting stamped before a flow's cutoff but that reaches us only after that flow
+        settled gets its late-cash record here, so the box is never moved twice (H-11).
+        """
         if not events:
             return 0
-        return sum(1 for result in self._store.append_many(events) if result.created)
+        results = self._store.append_many(events)
+        for result in results:
+            if result.created:
+                notice_late_cash(self._database, self._store, result.event, clock=self._clock)
+        return sum(1 for result in results if result.created)
 
     def _refresh_open_invoices(self, accounting: AccountingDatabase) -> int:
         """Replace the open-invoice snapshot; H-03 needs it at handover time."""
