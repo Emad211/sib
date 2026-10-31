@@ -58,10 +58,17 @@
   var installEvent = null;
   var installBanner = document.getElementById("install-banner");
 
+  // The bars are fixed over the content: while one is up, the page keeps room under its last tile.
+  function syncBottomPadding() {
+    var showing = document.querySelectorAll(".install-banner:not(.hidden), .update-toast:not(.hidden)");
+    document.body.classList.toggle("has-bottom-banner", showing.length > 0);
+  }
+
   function hideInstall() {
     if (installBanner) {
       installBanner.classList.add("hidden");
     }
+    syncBottomPadding();
   }
 
   window.addEventListener("beforeinstallprompt", function (event) {
@@ -69,6 +76,7 @@
     installEvent = event;
     if (installBanner && isHomeScreen() && !isStandalone() && !isDismissed()) {
       installBanner.classList.remove("hidden");
+      syncBottomPadding();
     }
   });
 
@@ -124,6 +132,7 @@
     if (updateToast) {
       updateToast.classList.remove("hidden");
     }
+    syncBottomPadding();
   }
 
   function watchRegistration(registration) {
@@ -173,6 +182,7 @@
       if (updateToast) {
         updateToast.classList.add("hidden");
       }
+      syncBottomPadding();
       var worker = waitingWorker;
       if (!worker) {
         pendingReload = true;
@@ -196,6 +206,7 @@
       if (updateToast) {
         updateToast.classList.add("hidden");
       }
+      syncBottomPadding();
     });
   }
 

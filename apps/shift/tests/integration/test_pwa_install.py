@@ -39,9 +39,10 @@ def test_manifest_names_the_app_in_persian_and_takes_its_colours_from_the_tokens
 ) -> None:
     """The launcher label is the app, never the clinic's name; colours stay one source (app.css)."""
     manifest = _manifest(client)
-    css = (_STATIC / "app.css").read_text(encoding="utf-8").split("@media (prefers-color-scheme: dark)")[0]
-    theme_color = re.search(r"--color-primary-button:\s*(#[0-9a-fA-F]{6})", css)
-    background_color = re.search(r"--color-bg:\s*(#[0-9a-fA-F]{6})", css)
+    css = (_STATIC / "app.css").read_text(encoding="utf-8")
+    dark = css.split("@media (prefers-color-scheme: dark)")[1]
+    # The phone launches and its system bars sit on the dark ground, so both colours are that token.
+    dark_bg = re.search(r"--color-bg:\s*(#[0-9a-fA-F]{6})", dark)
 
     assert manifest["name"] == "شیفت"
     assert manifest["short_name"] == "شیفت"
@@ -53,9 +54,9 @@ def test_manifest_names_the_app_in_persian_and_takes_its_colours_from_the_tokens
     assert manifest["start_url"] == "/?src=pwa"
     assert manifest["display"] == "standalone"
     assert manifest["orientation"].startswith("portrait")
-    assert theme_color is not None and background_color is not None
-    assert manifest["theme_color"].lower() == theme_color.group(1).lower()
-    assert manifest["background_color"].lower() == background_color.group(1).lower()
+    assert dark_bg is not None
+    assert manifest["theme_color"].lower() == dark_bg.group(1).lower()
+    assert manifest["background_color"].lower() == dark_bg.group(1).lower()
     # A shortcut the API would refuse by permission is worse than no shortcut at all.
     assert not manifest.get("shortcuts")
 
@@ -94,7 +95,8 @@ def test_both_shells_install_cleanly_with_a_local_font(client: TestClient) -> No
 
 def test_no_template_or_static_file_reaches_the_internet(client: TestClient) -> None:
     """Inside Iran a CDN is a blank screen: every asset must be same-origin."""
-    external = re.compile(r"(?:https?:)?//(?!127\.0\.0\.1|localhost)[a-z0-9.-]+\.[a-z]{2,}", re.I)
+    # www.w3.org is the XML namespace string createElementNS needs, never a request.
+    external = re.compile(r"(?:https?:)?//(?!127\.0\.0\.1|localhost|www\.w3\.org)[a-z0-9.-]+\.[a-z]{2,}", re.I)
     sources = [
         *_TEMPLATES.rglob("*.html"),
         *_STATIC.rglob("*.html"),

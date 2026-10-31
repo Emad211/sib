@@ -51,7 +51,7 @@ CA_CERT_NAME = "ca.crt"
 SERVER_KEY_NAME = "server.key"
 SERVER_CERT_NAME = "server.crt"
 STATE_NAME = "server.json"
-CA_SUBJECT = "/CN=Sib Shift Local CA/O=Sib Clinic"
+CA_SUBJECT = "/CN=Shift Local CA/O=Shift"
 # A CA outlives the server certificates it signs; Android Chrome rejects a leaf that lives longer
 # than 398 days, so the server certificate stays at 397 and is renewed a month before it lapses.
 CA_VALIDITY_DAYS = 3650
@@ -187,7 +187,7 @@ def _create_ca_with_cryptography(certificates: Certificates) -> None:
 
     now = datetime.now(UTC)
     key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
-    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Sib Shift Local CA")])
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Shift Local CA")])
     certificate = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -395,7 +395,7 @@ def build_install_app(certificates: Certificates, *, https_url: str, https_port:
     trusted_hosts = {ip.lower(), name.lower(), "localhost", "127.0.0.1"}
 
     async def root_certificate(request: Request) -> FileResponse:
-        return FileResponse(certificates.ca_crt, media_type=CERTIFICATE_TYPE, filename="sib-shift-ca.crt")
+        return FileResponse(certificates.ca_crt, media_type=CERTIFICATE_TYPE, filename="shift-ca.crt")
 
     async def install_page(request: Request) -> HTMLResponse:
         return HTMLResponse(INSTALL_PAGE.replace("{https_url}", https_url))

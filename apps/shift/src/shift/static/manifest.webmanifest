@@ -10,8 +10,8 @@
   "orientation": "portrait-primary",
   "dir": "rtl",
   "lang": "fa-IR",
-  "theme_color": "#0f766e",
-  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
   "categories": ["medical", "productivity"],
   "prefer_related_applications": false,
   "icons": [

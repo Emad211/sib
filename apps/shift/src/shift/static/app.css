@@ -46,7 +46,7 @@
   --color-border-subtle: #e2e8f0;
   --color-success: #15803d;
   --color-success-bg: #dcfce7;
-  --color-warning: #b45309;
+  --color-warning: #92400e;
   --color-warning-bg: #fef3c7;
   --color-danger: #b91c1c;
   --color-danger-bg: #fee2e2;
@@ -81,8 +81,9 @@
     --color-warning: #fbbf24;
     --color-warning-bg: #78350f;
     --color-danger: #f87171;
-    --color-danger-bg: #7f1d1d;
-    --color-info: #38bdf8;
+    /* Darker than the badge text needs in light mode: #7f1d1d left 3.6:1 under #f87171. */
+    --color-danger-bg: #5f1616;
+    --color-info: #7dd3fc;
     --color-info-bg: #0c4a6e;
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
@@ -355,10 +356,28 @@ body {
   transition: border-color 0.15s ease;
 }
 
+/* Every field, including the plain ones the shell pages draw by hand, sits on the theme's
+   surface instead of the browser's flat grey, and says when it has the focus. */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  min-height: var(--touch-target);
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
 .form-control:focus {
-  outline: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 /* Outbox Queue Section */
@@ -443,6 +462,8 @@ body {
 .home-tile-title { font-size: 1.0625rem; font-weight: 700; }
 .home-tile-hint { font-size: 0.8125rem; color: var(--color-text-muted); }
 .who-am-i { font-size: 0.75rem; color: var(--color-text-muted); }
+/* A link keeps the theme's teal; the browser default is purple and unreadable on the dark ground. */
+a { color: var(--color-primary); }
 .logout-btn {
   min-height: 2.75rem;
   padding: 0 0.75rem;
@@ -591,6 +612,12 @@ a, button, .btn, .home-tile, input, select, textarea {
 
 .update-toast > span {
   min-width: 0;
+}
+
+/* While an install or update bar covers the bottom of the screen, the last tile must still be
+   reachable by scrolling: pwa.js puts this class on <body> when either bar is showing. */
+body.has-bottom-banner .main-container {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
 }
 
 .update-toast .btn {

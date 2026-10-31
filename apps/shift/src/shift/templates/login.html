@@ -25,13 +25,13 @@
            box-shadow: 0 8px 24px rgba(15, 23, 42, .08); }
     h1 { margin: 0 0 1.25rem; font-size: 1.15rem; }
     label { display: block; margin: .75rem 0 .3rem; font-size: .9rem; }
-    input { width: 100%; padding: .6rem .7rem; font-size: 1rem; border: 1px solid var(--color-border);
-            border-radius: .5rem; box-sizing: border-box; direction: ltr; text-align: center; }
-    button { width: 100%; margin-top: 1.1rem; padding: .7rem; font-size: 1rem; border: 0;
-             border-radius: .5rem; background: var(--color-primary-button); color: var(--color-on-primary); cursor: pointer; }
-    button:disabled { background: #8ea6c8; cursor: progress; }
-    #message { min-height: 1.2rem; margin: .9rem 0 0; font-size: .88rem; color: #b42318; }
-    #message.ok { color: #067647; }
+    input { width: 100%; box-sizing: border-box; text-align: center; }
+    button { width: 100%; margin-top: 1.1rem; min-height: var(--touch-target); padding: .7rem;
+             font-size: 1rem; border: 0; border-radius: .5rem;
+             background: var(--color-primary-button); color: var(--color-on-primary); cursor: pointer; }
+    button:disabled { background: var(--color-surface-raised); color: var(--color-text-muted); cursor: progress; }
+    #message { min-height: 1.2rem; margin: .9rem 0 0; font-size: .88rem; color: var(--color-danger); }
+    #message.ok { color: var(--color-success); }
     .hint { margin: 1.1rem 0 0; font-size: .78rem; color: var(--color-text-muted); line-height: 1.5; }
   </style>
 </head>
@@ -40,10 +40,11 @@
     <h1>ورود به شیفت</h1>
     <form id="login-form" novalidate>
       <label for="mobile">شمارهٔ موبایل</label>
-      <input id="mobile" name="mobile" inputmode="numeric" autocomplete="username" enterkeyhint="next" required>
+      <input id="mobile" name="mobile" class="form-control" dir="ltr" inputmode="numeric"
+             autocomplete="username" enterkeyhint="next" required>
       <label for="pin">رمز شش‌رقمی</label>
-      <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password"
-             enterkeyhint="go" maxlength="6" required>
+      <input id="pin" name="pin" class="form-control" type="password" dir="ltr" inputmode="numeric"
+             autocomplete="current-password" enterkeyhint="go" maxlength="6" required>
       <button id="submit" type="submit">ورود</button>
       <p id="message" role="status"></p>
     </form>
@@ -60,10 +61,28 @@
     const asciiDigits = (value) =>
       window.ShiftPWA && window.ShiftPWA.normalizeDigits ? window.ShiftPWA.normalizeDigits(value) : value;
 
+    // Say which field is empty and put the cursor there, instead of sending the form and
+    // letting the server answer «درخواست نامعتبر است.».
+    function requireField(field, text) {
+      if (asciiDigits(field.value).trim()) {
+        return true;
+      }
+      message.className = "";
+      message.textContent = text;
+      field.focus();
+      return false;
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       message.className = "";
       message.textContent = "";
+      if (!requireField(form.mobile, "شمارهٔ موبایل را وارد کنید")) {
+        return;
+      }
+      if (!requireField(form.pin, "رمز شش‌رقمی را وارد کنید")) {
+        return;
+      }
       if (!deviceId) {
         message.textContent = "این گوشی ثبت نشده است؛ ابتدا کد ثبت دستگاه را اسکن کنید.";
         return;
