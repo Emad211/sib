@@ -72,11 +72,18 @@ def catalog(seeded: Database, clock: FixedClock) -> CatalogService:
     return CatalogService(seeded, clock=clock)
 
 
+@pytest.fixture()
+def projections(seeded: Database, clock: FixedClock) -> ProjectionEngine:
+    """The engine the service syncs through, so a test can append a cash movement and catch it up."""
+    return ProjectionEngine(seeded, clock=clock)
+
+
 def _service(
     database: Database,
     store: EventStore,
     catalog: CatalogService,
     clock: FixedClock,
+    projections: ProjectionEngine,
     *,
     bridge: AccountingBridge | None,
     accounting_path: Path | None,
@@ -84,7 +91,7 @@ def _service(
     return HandoverService(
         database,
         store,
-        projections=ProjectionEngine(database, clock=clock),
+        projections=projections,
         catalog=catalog,
         audit=AuditService(database, clock=clock),
         clock=clock,
@@ -101,10 +108,15 @@ def accounting(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def service(
-    seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock, accounting: Path
+    seeded: Database,
+    store: EventStore,
+    catalog: CatalogService,
+    clock: FixedClock,
+    projections: ProjectionEngine,
+    accounting: Path,
 ) -> HandoverService:
     bridge = AccountingBridge(seeded, store, clock=clock)
-    return _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=accounting)
+    return _service(seeded, store, catalog, clock, projections, bridge=bridge, accounting_path=accounting)
 
 
 def _types(database: Database, handover_id: str) -> list[str]:
@@ -143,6 +155,32 @@ def _settle_cash(service: HandoverService, handover_id: str, counted: int) -> No
     assert service.count(handover_id, CASH, counted, caller=CALLER) is CountStatus.MATCHED
 
 
+def _close_reception(service: HandoverService, handover_id: str) -> None:
+    """Walk a reception flow whose cash already settled to its closing signature."""
+    assert service.advance(handover_id, caller=CALLER).step is HandoverStep.SHELF
+    for item in (PARA, DICLO):
+        assert service.count(handover_id, _item(item), 0, caller=CALLER) is CountStatus.MATCHED
+    for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
+        assert service.advance(handover_id, caller=CALLER).step is step
+    service.sign(handover_id, Signer.INCOMING, caller=CALLER)
+    assert service.sign(handover_id, Signer.OUTGOING, caller=CALLER).closed is True
+
+
+def _movement(store: EventStore, projections: ProjectionEngine, event_type: str, amount: int, *, at: datetime) -> None:
+    """A cash receipt or withdrawal stamped `at`, the way accounting or the shift screen records one."""
+    store.append(build_event(event_type, payload={"amount": amount}, client_at=at))
+    projections.sync()
+
+
+def _exceptions(database: Database) -> list[dict[str, Any]]:
+    """The handover exceptions the manager is told about; the only place a staff receipt may rest."""
+    with database.read() as connection:
+        rows = connection.exec_driver_sql(
+            "SELECT subject_id, detail FROM audit_log WHERE action = 'handover.cash_exception' ORDER BY id"
+        ).mappings()
+        return [{"subject_id": row["subject_id"], "detail": json.loads(row["detail"])} for row in rows]
+
+
 def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatures(
     service: HandoverService, database: Database, store: EventStore
 ) -> None:
@@ -175,7 +213,14 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
     assert (state.closed, state.step, state.signatures) == (True, None, frozenset(Signer))
     assert _payloads(database, handover_id, "handover.started") == [{"opening_cash": 1_000_000}]
     assert _payloads(database, handover_id, "handover.count_settled") == [
-        {"scope": "cash", "item_id": None, "location_id": None, "counted": 1_000_000, "basis": "agreeing_blind"}
+        {
+            "scope": "cash",
+            "item_id": None,
+            "location_id": None,
+            "counted": 1_000_000,
+            "basis": "agreeing_blind",
+            "carry": 0,
+        }
     ]
     assert _payloads(database, handover_id, "discrepancy.recorded") == []
     assert [step for step in _payloads(database, handover_id, "handover.step_advanced")] == [
@@ -272,21 +317,26 @@ def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
 
 
 def test_a_flow_does_not_start_while_accounting_still_shows_an_open_invoice(
-    tmp_path: Path, seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+    tmp_path: Path,
+    seeded: Database,
+    store: EventStore,
+    catalog: CatalogService,
+    clock: FixedClock,
+    projections: ProjectionEngine,
 ) -> None:
     scenario = build(tmp_path / "accounting.db")
     bridge = AccountingBridge(seeded, store, clock=clock)
-    service = _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=scenario.path)
+    service = _service(seeded, store, catalog, clock, projections, bridge=bridge, accounting_path=scenario.path)
 
     with pytest.raises(HandoverError, match="H-03"):
         _start(service, opening_cash=1_000_000)
 
 
 def test_a_flow_does_not_start_without_an_accounting_copy(
-    seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+    seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock, projections: ProjectionEngine
 ) -> None:
     """H-03: without the copy neither the open-invoice guard nor a reference can be computed."""
-    service = _service(seeded, store, catalog, clock, bridge=None, accounting_path=None)
+    service = _service(seeded, store, catalog, clock, projections, bridge=None, accounting_path=None)
 
     with pytest.raises(HandoverError) as refusal:
         _start(service, opening_cash=1_000_000)
@@ -299,12 +349,17 @@ def test_a_flow_does_not_start_without_an_accounting_copy(
 
 
 def test_a_flow_does_not_start_when_the_accounting_copy_is_unreachable(
-    tmp_path: Path, seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+    tmp_path: Path,
+    seeded: Database,
+    store: EventStore,
+    catalog: CatalogService,
+    clock: FixedClock,
+    projections: ProjectionEngine,
 ) -> None:
     broken = tmp_path / "broken.db"
     broken.write_bytes(b"this is not a sqlite database, it is a text file")
     bridge = AccountingBridge(seeded, store, clock=clock)
-    service = _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=broken)
+    service = _service(seeded, store, catalog, clock, projections, bridge=bridge, accounting_path=broken)
 
     with pytest.raises(HandoverError) as refusal:
         _start(service, opening_cash=1_000_000)
@@ -328,15 +383,26 @@ def test_both_flows_of_one_shift_run_side_by_side(service: HandoverService) -> N
     assert service.state(reception.handover_id).item_statuses == {}
 
 
-def test_a_cash_receipt_stamped_after_the_flow_cutoff_is_not_in_its_reference(
-    tmp_path: Path, seeded: Database, store: EventStore, catalog: CatalogService, clock: FixedClock
+def test_a_cash_receipt_stamped_inside_a_flow_is_reported_to_the_manager_and_carried_on_top(
+    tmp_path: Path,
+    seeded: Database,
+    store: EventStore,
+    catalog: CatalogService,
+    clock: FixedClock,
+    projections: ProjectionEngine,
 ) -> None:
-    """H-11: the reference is frozen at the flow's own start, so a later receipt cannot change it."""
+    """H-11: the reference is frozen at the flow's own start, so a later receipt cannot change it.
+
+    The owner's rule says the incoming person takes no money during a handover, so the 999 000 a
+    paper patient paid at 14:20 — after the 14:05 cutoff and before the flow closed — is the next
+    shift's cash. It stays on top of the settled figure, and the manager hears about it in the audit
+    trail alone (R-02): no response, header, public log or client event carries the number.
+    """
     scenario = build(tmp_path / "accounting.db")
     close_open_invoices(scenario.path, "2026-09-24 13:50:00")
     clock.moment = parse_time("2026-09-24 14:05:00")  # before the 14:20 invoice is closed
     bridge = AccountingBridge(seeded, store, clock=clock)
-    service = _service(seeded, store, catalog, clock, bridge=bridge, accounting_path=scenario.path)
+    service = _service(seeded, store, catalog, clock, projections, bridge=bridge, accounting_path=scenario.path)
     handover_id = _start(service, opening_cash=None).handover_id
 
     clock.moment = parse_time("2026-09-24 15:00:00")  # the 999 000 receipt lands after the cutoff
@@ -345,9 +411,90 @@ def test_a_cash_receipt_stamped_after_the_flow_cutoff_is_not_in_its_reference(
     _settle_cash(service, handover_id, 215_000)  # what the box held at the cutoff
 
     assert _payloads(seeded, handover_id, "handover.count_settled") == [
-        {"scope": "cash", "item_id": None, "location_id": None, "counted": 215_000, "basis": "agreeing_blind"}
+        {
+            "scope": "cash",
+            "item_id": None,
+            "location_id": None,
+            "counted": 215_000,
+            "basis": "agreeing_blind",
+            "carry": 999_000,
+        }
     ]
     assert _payloads(seeded, handover_id, "discrepancy.recorded") == []
+    with seeded.read() as connection:
+        assert projections_repo.cash_rows(connection) == [
+            {"cash_box_id": "reception", "expected": 1_214_000, "counted": 215_000, "variance": -999_000}
+        ]
+    assert _exceptions(seeded) == [{"subject_id": handover_id, "detail": {"amount": 999_000, "flow": "reception"}}]
+    assert "999000" not in str(service.state(handover_id))
+
+
+def test_receipts_stamped_between_flows_leave_no_discrepancy_on_any_shift(
+    service: HandoverService,
+    database: Database,
+    store: EventStore,
+    projections: ProjectionEngine,
+    clock: FixedClock,
+) -> None:
+    """The owner's normal sequence: a paper patient pays after a handover ends, before the next starts.
+
+    Each receipt lands after its flow's cutoff but while no flow is running, so the next flow's
+    frozen reference already contains it and no shift is charged with a gap it never had (H-11).
+    """
+    clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
+    first = _start(service, opening_cash=1_000_000).handover_id
+    _settle_cash(service, first, 1_000_000)
+    _close_reception(service, first)
+
+    clock.moment = datetime(2026, 10, 28, 9, 45, tzinfo=TEHRAN)  # after the handover, before any flow
+    _movement(store, projections, "acc.cash_receipt", 50_000, at=clock.moment)
+
+    clock.moment = datetime(2026, 10, 28, 14, 0, tzinfo=TEHRAN)  # the evening shift's own handover
+    second = _start(service, opening_cash=None).handover_id
+    _settle_cash(service, second, 1_050_000)
+    _close_reception(service, second)
+    clock.moment = datetime(2026, 10, 28, 14, 20, tzinfo=TEHRAN)
+    _movement(store, projections, "acc.cash_receipt", 30_000, at=clock.moment)
+
+    clock.moment = datetime(2026, 10, 28, 20, 0, tzinfo=TEHRAN)  # the night shift
+    third = _start(service, opening_cash=None).handover_id
+    _settle_cash(service, third, 1_080_000)
+    _close_reception(service, third)
+
+    for handover_id in (first, second, third):
+        assert _payloads(database, handover_id, "discrepancy.recorded") == []
+        assert [payload["carry"] for payload in _payloads(database, handover_id, "handover.count_settled")] == [0]
+    with database.read() as connection:
+        assert projections_repo.cash_rows(connection) == [
+            {"cash_box_id": "reception", "expected": 1_080_000, "counted": 1_080_000, "variance": 0}
+        ]
+    assert _exceptions(database) == []
+
+
+def test_a_withdrawal_during_a_flow_is_carried_negatively_and_is_no_exception(
+    service: HandoverService,
+    database: Database,
+    store: EventStore,
+    projections: ProjectionEngine,
+    clock: FixedClock,
+) -> None:
+    """H-11: the carry is symmetric. Only a receipt breaks the owner's rule; a withdrawal does not."""
+    clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
+    handover_id = _start(service, opening_cash=1_000_000).handover_id
+    assert service.count(handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.INCOMING
+
+    clock.moment = datetime(2026, 10, 28, 9, 31, tzinfo=TEHRAN)
+    _movement(store, projections, "cash.withdrawn", 20_000, at=clock.moment)
+
+    assert service.count(handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.MATCHED
+
+    assert _payloads(database, handover_id, "handover.count_settled")[0]["carry"] == -20_000
+    assert _payloads(database, handover_id, "discrepancy.recorded") == []
+    with database.read() as connection:
+        assert projections_repo.cash_rows(connection) == [
+            {"cash_box_id": "reception", "expected": 980_000, "counted": 1_000_000, "variance": 20_000}
+        ]
+    assert _exceptions(database) == []
 
 
 def test_the_flow_log_refuses_a_skipped_step(service: HandoverService, database: Database, store: EventStore) -> None:

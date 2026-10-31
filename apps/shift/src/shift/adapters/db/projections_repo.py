@@ -95,14 +95,17 @@ def apply_cash(connection: Connection, table: str, effect: CashEffect) -> None:
         )
         parameters = (box, effect.amount, effect.amount)
     elif effect.operation is CashOperation.SETTLE:
-        # The agreed figure becomes the box's base, so the next shift's N0 is that figure and a gap
-        # from the shift before cannot reappear in every later reference (H-02, H-13).
+        # The agreed figure is the box's base, so the next shift's N0 is that figure and a gap from
+        # the shift before cannot reappear in every later reference (H-02, H-13). Whatever the box
+        # recorded during the flow stays on top of it (H-11): the next shift's money, not this
+        # count's. `variance` always reads `counted - expected`, so it is `-carry` here.
+        expected = effect.amount + effect.carry
         sql = (
-            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, ?, ?, 0) "
+            f"INSERT INTO {table} (cash_box_id, expected, counted, variance) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(cash_box_id) DO UPDATE SET expected = excluded.expected, "
-            "counted = excluded.counted, variance = 0"
+            "counted = excluded.counted, variance = excluded.variance"
         )
-        parameters = (box, effect.amount, effect.amount)
+        parameters = (box, expected, effect.amount, effect.amount - expected)
     else:
         delta = effect.amount if effect.operation is CashOperation.ADD else -effect.amount
         sql = (

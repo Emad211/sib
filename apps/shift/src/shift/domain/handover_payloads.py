@@ -11,6 +11,8 @@ CountScope = Literal["cash", "item"]
 SignerSide = Literal["incoming", "outgoing"]
 SettlementBasis = Literal["joint", "agreeing_blind"]
 DifferenceAmount = Annotated[int, Field(strict=True)]
+# What the box took in during a flow: any whole number of Toman, negative when money went out.
+SettlementCarry = Annotated[int, Field(strict=True)]
 
 
 class CountTarget(Payload):
@@ -60,10 +62,17 @@ class CountSettled(CountTarget):
 
     Only a cash chain settles a box, so this event never names an item. The agreed figure is what
     the next shift opens with, which is why it — not the joint count — rebases the projection.
+
+    `carry` is every cash movement the box recorded during the flow, that is after the flow's own
+    cutoff (`opened_at`): a paper patient pays only once the handover is over, so that money is the
+    next shift's and stays on top of the agreed figure (`expected = counted + carry`). It is frozen
+    here so a rebuild replays the same box, and it may be negative when a withdrawal was recorded
+    during the flow (H-11, ADR-017 item 6, owner's rule 1405/08/09).
     """
 
     counted: Quantity
     basis: SettlementBasis
+    carry: SettlementCarry
 
     @model_validator(mode="after")
     def _cash_only(self) -> "CountSettled":

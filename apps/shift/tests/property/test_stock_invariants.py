@@ -45,8 +45,9 @@ def _replay(events) -> tuple[dict[tuple[str, str], int], dict[str, dict[str, int
             elif effects.cash.operation is CashOperation.COUNT:
                 row["counted"] = effects.cash.amount
             elif effects.cash.operation is CashOperation.SETTLE:
-                row["expected"] = effects.cash.amount
+                # The agreed figure is the base and the flow's carry stays on top of it (H-11).
                 row["counted"] = effects.cash.amount
+                row["expected"] = effects.cash.amount + effects.cash.carry
             row["variance"] = row["counted"] - row["expected"]
     return stock, cash
 

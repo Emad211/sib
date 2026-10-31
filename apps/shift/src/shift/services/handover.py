@@ -14,6 +14,12 @@ against. A settled item count is the shelf's next reference because its count ev
 a settled cash chain writes `handover.count_settled`, which rebases the box (ADR-017 item 9). A flow
 cannot start at all without a readable accounting copy, because the open-invoice guard and every
 reference come from it.
+
+The owner's cash rule (logic document, "a patient who arrives during the handover") makes the settle
+carry real: the incoming person admits on paper and takes no money, so every cash the box recorded
+after the cutoff stays on top of the agreed figure instead of inside it. A receipt stamped *inside*
+the flow's window breaks that rule, and it goes to the manager through the audit trail alone — no
+response, header, public log line or client-visible event carries the number (R-02, ADR-011).
 """
 
 import logging
@@ -47,6 +53,8 @@ from shift.services.projections import ProjectionEngine
 log = logging.getLogger(__name__)
 
 REFERENCE_ACTION = "handover.reference"
+# A receipt stamped inside a flow's window breaks the owner's rule; only the manager is told (R-02).
+EXCEPTION_ACTION = "handover.cash_exception"
 # R-02: a refusal never carries a number, and this one only says why the flow cannot start at all.
 NO_ACCOUNTING = (
     "نسخهٔ حسابداری در دسترس نیست؛ بدون آن صورت‌حساب‌های باز و عدد مرجع قابل محاسبه نیستند و تحویل شیفت آغاز نمی‌شود."
@@ -102,6 +110,14 @@ class _Opening:
 
     cash: int | None
     opening: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _Carry:
+    """What the box recorded during one flow, and the receipts inside its window that should not exist."""
+
+    amount: int
+    receipts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,8 +249,10 @@ class HandoverService:
         ]
         if status in _PENDING:
             events.append((EventType.HANDOVER_RECOUNT_REQUESTED.value, _target_payload(target)))
-        events += _settlement(target, new_chain, basis="agreeing_blind")
+        carry = self._settlement_carry(flow, target, new_chain)
+        events += _settlement(target, new_chain, basis="agreeing_blind", carry=0 if carry is None else carry.amount)
         self._append(flow.row, caller, events)
+        self._report_carry(flow, caller, carry)
         return status
 
     def joint(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
@@ -247,8 +265,10 @@ class HandoverService:
         events: list[tuple[str, Mapping[str, Any]]] = [
             (_JOINT_EVENT, {**_target_payload(target), "counted": counted}),
         ]
-        events += _settlement(target, new_chain, basis="joint")
+        carry = self._settlement_carry(flow, target, new_chain)
+        events += _settlement(target, new_chain, basis="joint", carry=0 if carry is None else carry.amount)
         self._append(flow.row, caller, events)
+        self._report_carry(flow, caller, carry)
         return status
 
     def advance(self, handover_id: str, *, caller: Caller) -> HandoverState:
@@ -364,6 +384,51 @@ class HandoverService:
         if opening_cash is not None:
             raise HandoverError("the cash box already has a figure; the incoming count settles it (H-13)")
         return _Opening(cash=int(box["expected"]), opening=None)
+
+    def _settlement_carry(self, flow: _Flow, target: CountTarget, chain: ItemCount | CashCount) -> _Carry | None:
+        """The cash a settling chain must keep on top of its figure, or None when nothing settles.
+
+        The frozen reference is what the box held when the flow started (H-11), so what the box
+        holds beyond it is exactly the cash recorded during the flow: the next shift's money, which
+        the agreed figure must not swallow. A receipt stamped inside the flow's own window cannot
+        happen in the owner's sequence and is summed for the manager.
+        """
+        if not chain.settled:
+            return None
+        if target.scope != _CASH or flow.references.cash is None:
+            return _Carry(amount=0, receipts=0)
+        reference = flow.references.cash
+        with self._database.read() as connection:
+            box = next(
+                (
+                    row
+                    for row in projections_repo.cash_rows(connection)
+                    if row["cash_box_id"] == CashBox.RECEPTION.value
+                ),
+                None,
+            )
+            receipts = handover_repo.cash_receipt_total(
+                connection, after=flow.row.opened_at, until=self._clock.now_utc()
+            )
+        live = reference if box is None else int(box["expected"])
+        return _Carry(amount=live - reference, receipts=receipts)
+
+    def _report_carry(self, flow: _Flow, caller: Caller, carry: _Carry | None) -> None:
+        """Tell the manager, through the audit trail only, that a receipt landed inside a flow.
+
+        The audit trail is the one sink allowed to carry a number (R-02, ADR-011): no response, no
+        response header, no `logs/shift.log` line and no client-visible event ever carries it.
+        """
+        if carry is None or not carry.receipts:
+            return
+        self._audit.record(
+            AuditEntry(
+                actor_id=caller.actor_id,
+                action=EXCEPTION_ACTION,
+                subject_id=flow.row.handover_id,
+                detail={"flow": flow.row.flow.value, "amount": carry.receipts},
+            )
+        )
 
     def _item_references(
         self, flow: HandoverFlow, shift: ShiftKey, stock: Mapping[tuple[str, str], int]
@@ -548,14 +613,14 @@ def _target_payload(target: CountTarget) -> dict[str, Any]:
 
 
 def _settlement(
-    target: CountTarget, chain: ItemCount | CashCount, *, basis: str
+    target: CountTarget, chain: ItemCount | CashCount, *, basis: str, carry: int = 0
 ) -> list[tuple[str, Mapping[str, Any]]]:
     """What a settled chain writes: the cash rebase, then a discrepancy only when a gap is real."""
     if not chain.settled:
         return []
     events: list[tuple[str, Mapping[str, Any]]] = []
     if target.scope == _CASH:
-        settled = {"scope": _CASH, "counted": chain.agreed, "basis": basis}
+        settled = {"scope": _CASH, "counted": chain.agreed, "basis": basis, "carry": carry}
         events.append((EventType.HANDOVER_COUNT_SETTLED.value, settled))
     if chain.discrepancy is not None:
         gap = {"difference": chain.discrepancy.difference, "culprit_id": chain.discrepancy.culprit_id}

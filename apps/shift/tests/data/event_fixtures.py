@@ -26,7 +26,7 @@ def default_payload(event_type: str) -> dict[str, Any]:
     if event_type == "handover.joint_counted":
         return {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 10}
     if event_type == "handover.count_settled":
-        return {"scope": "cash", "counted": 1_000_000, "basis": "joint"}
+        return {"scope": "cash", "counted": 1_000_000, "basis": "joint", "carry": 0}
     if event_type == "handover.checklist_answered":
         return {"item_id": "item-1", "ok": True}
     if event_type == "handover.parcel_handed":
@@ -132,7 +132,7 @@ def random_events(seed: int, count: int = 10_000, key_prefix: str = "event") -> 
         elif shape == "settle":
             counted = rng.randrange(0, 5_000_001)
             basis = rng.choice(["joint", "agreeing_blind"])
-            payload = {"scope": "cash", "counted": counted, "basis": basis}
+            payload = {"scope": "cash", "counted": counted, "basis": basis, "carry": rng.randrange(-250_000, 250_001)}
         elif shape == "count":
             payload = {"item_id": item, "location_id": location, "counted": rng.randrange(0, 50)}
         else:

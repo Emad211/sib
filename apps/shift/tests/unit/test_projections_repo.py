@@ -61,6 +61,24 @@ def test_a_cash_effect_without_a_box_is_refused(connection: Connection) -> None:
         projections_repo.apply_cash(connection, projections_repo.CASH_SHADOW, CashEffect(CashOperation.ADD, 1, None))
 
 
+def test_a_settlement_keeps_the_carry_on_top_of_the_agreed_figure(connection: Connection) -> None:
+    """H-11: `expected = counted + carry`, and `variance = counted − expected` stays true either way."""
+    table = projections_repo.CASH_SHADOW
+    box = CashBox.RECEPTION.value
+    projections_repo.apply_cash(connection, table, CashEffect(CashOperation.OPEN, 1_000_000, box))
+
+    projections_repo.apply_cash(connection, table, CashEffect(CashOperation.SETTLE, 1_000_000, box, carry=250_000))
+
+    carried = [{"cash_box_id": box, "expected": 1_250_000, "counted": 1_000_000, "variance": -250_000}]
+    assert projections_repo.cash_rows(connection, table) == carried
+
+    projections_repo.apply_cash(connection, table, CashEffect(CashOperation.SETTLE, 1_250_000, box, carry=-50_000))
+
+    assert projections_repo.cash_rows(connection, table) == [
+        {"cash_box_id": box, "expected": 1_200_000, "counted": 1_250_000, "variance": 50_000}
+    ]
+
+
 def test_the_cash_checksum_covers_the_box_id(connection: Connection) -> None:
     table = projections_repo.CASH_SHADOW
     projections_repo.apply_cash(connection, table, CashEffect(CashOperation.OPEN, 10, CashBox.RECEPTION.value))

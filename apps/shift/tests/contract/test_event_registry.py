@@ -61,22 +61,51 @@ def test_a_settled_cash_chain_rebases_the_box_and_a_joint_count_moves_it_not() -
     """H-13: the agreed figure is the next shift's N0, so only the settlement rebases the projection."""
     joint = validate_payload("handover.joint_counted", {"scope": "cash", "counted": 1_200_000})
     settled = validate_payload(
-        "handover.count_settled", {"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind"}
+        "handover.count_settled", {"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind", "carry": 0}
     )
 
     assert effects_for("handover.joint_counted", joint, "shift-1").cash is None
     cash = effects_for("handover.count_settled", settled, "shift-1").cash
     assert cash is not None
-    assert (cash.operation, cash.amount, cash.cash_box_id) == (CashOperation.SETTLE, 1_200_000, "reception")
+    assert (cash.operation, cash.amount, cash.cash_box_id, cash.carry) == (
+        CashOperation.SETTLE,
+        1_200_000,
+        "reception",
+        0,
+    )
+
+
+def test_a_settlement_carries_every_cash_movement_of_the_flow_even_a_negative_one() -> None:
+    """H-11: cash recorded during the flow stays on top of the agreed figure, a withdrawal included."""
+    settled = validate_payload(
+        "handover.count_settled", {"scope": "cash", "counted": 1_200_000, "basis": "joint", "carry": -20_000}
+    )
+
+    cash = effects_for("handover.count_settled", settled, "shift-1").cash
+
+    assert cash is not None
+    assert (cash.amount, cash.carry) == (1_200_000, -20_000)
+
+
+@pytest.mark.parametrize("carry", [1.5, True, "1000", None])
+def test_a_settlement_carry_is_a_whole_number(carry: object) -> None:
+    with pytest.raises(ValidationError):
+        validate_payload("handover.count_settled", {"scope": "cash", "counted": 1, "basis": "joint", "carry": carry})
+
+
+def test_a_settlement_without_its_carry_is_refused() -> None:
+    """A stored settlement always names what the box took in during the flow, so a rebuild can replay it."""
+    with pytest.raises(ValidationError):
+        validate_payload("handover.count_settled", {"scope": "cash", "counted": 1, "basis": "joint"})
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 1, "basis": "joint"},
-        {"scope": "cash", "counted": 1},
-        {"scope": "cash", "counted": 1, "basis": "guess"},
-        {"scope": "cash", "item_id": "item-1", "counted": 1, "basis": "joint"},
+        {"scope": "item", "item_id": "item-1", "location_id": "location-1", "counted": 1, "basis": "joint", "carry": 0},
+        {"scope": "cash", "counted": 1, "carry": 0},
+        {"scope": "cash", "counted": 1, "basis": "guess", "carry": 0},
+        {"scope": "cash", "item_id": "item-1", "counted": 1, "basis": "joint", "carry": 0},
     ],
 )
 def test_a_settlement_is_a_cash_chain_with_a_real_basis(payload: dict) -> None:

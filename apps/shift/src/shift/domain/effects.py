@@ -32,11 +32,17 @@ class StockEffect:
 
 @dataclass(frozen=True, slots=True)
 class CashEffect:
-    """One change to one cash box; the box is reception's until the clinic opens a second (D2)."""
+    """One change to one cash box; the box is reception's until the clinic opens a second (D2).
+
+    `carry` belongs to `SETTLE` alone: the cash the box recorded during the flow, which stays on top
+    of the agreed figure so the next shift's `N0` includes it (H-11). Every other operation leaves it
+    at zero.
+    """
 
     operation: CashOperation
     amount: int
     cash_box_id: str | None
+    carry: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,12 +81,14 @@ def cash_count(payload: Any) -> Effects:
 
 
 def cash_settle(payload: Any) -> Effects:
-    """A settled cash chain rebases the box: the agreed figure becomes both expected and counted (H-13).
+    """A settled cash chain rebases the box to `counted + carry` (H-13, H-11).
 
-    Without this the gap of one shift would sit inside every later reference, because the next
-    shift's `N0` is the figure the handover settled on (H-02, ADR-017 item 8).
+    Without the rebase the gap of one shift would sit inside every later reference, because the next
+    shift's `N0` is the figure the handover settled on (H-02, ADR-017 item 8). The carry is the cash
+    the box took in during the flow — the next shift's money, because the incoming person takes none
+    — so it stays on top of the agreed figure instead of being absorbed by it.
     """
-    return Effects(cash=CashEffect(CashOperation.SETTLE, payload.counted, CashBox.RECEPTION.value))
+    return Effects(cash=CashEffect(CashOperation.SETTLE, payload.counted, CashBox.RECEPTION.value, payload.carry))
 
 
 def cash_delta(operation: CashOperation) -> EffectBuilder:

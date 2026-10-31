@@ -81,7 +81,7 @@ def test_a_settled_cash_count_rebases_the_box_so_the_next_shifts_start_from_the_
             build_event(
                 "handover.count_settled",
                 shift_id="2026-10-28#1",
-                payload={"scope": "cash", "counted": 1_150_000, "basis": "agreeing_blind"},
+                payload={"scope": "cash", "counted": 1_150_000, "basis": "agreeing_blind", "carry": 0},
             ),
             build_event(
                 "discrepancy.recorded",
@@ -107,14 +107,14 @@ def test_a_settled_cash_count_rebases_the_box_so_the_next_shifts_start_from_the_
             build_event(
                 "handover.count_settled",
                 shift_id="2026-10-28#2",
-                payload={"scope": "cash", "counted": 1_250_000, "basis": "joint"},
+                payload={"scope": "cash", "counted": 1_250_000, "basis": "joint", "carry": 0},
             ),
             build_event("handover.started", shift_id="2026-10-28#3", payload={"opening_cash": None}),
             build_event("cash.withdrawn", shift_id="2026-10-28#3", payload={"amount": 50_000}),
             build_event(
                 "handover.count_settled",
                 shift_id="2026-10-28#3",
-                payload={"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind"},
+                payload={"scope": "cash", "counted": 1_200_000, "basis": "agreeing_blind", "carry": 0},
             ),
         ]
     )

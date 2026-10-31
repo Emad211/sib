@@ -141,3 +141,49 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
             {name: projections_repo.checksum(connection, name, name) for name in projections_repo.PROJECTIONS},
         ) == live
     assert live[1] == [{"cash_box_id": "reception", "expected": 997_000, "counted": 997_000, "variance": 0}]
+
+
+def test_a_settlement_carry_rebuilds_to_the_live_cash_projection(database: Database, tmp_path: Path) -> None:
+    """H-11: the carry is stored in the settle event, so a replay rebases the box exactly as live did."""
+    seed(database)
+    clock = FixedClock(MOMENT)
+    store = EventStore(database, clock=clock)
+    projections = ProjectionEngine(database, clock=clock)
+    service = HandoverService(
+        database,
+        store,
+        projections=projections,
+        catalog=CatalogService(database, clock=clock),
+        audit=AuditService(database, clock=clock),
+        clock=clock,
+        bridge=AccountingBridge(database, store, clock=clock),
+        accounting_path=str(empty_accounting(tmp_path / "accounting.db")),
+    )
+    caller = Caller(actor_id="staff-in", device_id="device-1")
+    handover_id = service.start(
+        HandoverFlow.RECEPTION,
+        outgoing_id="staff-out",
+        incoming_id="staff-in",
+        caller=caller,
+        opening_cash=1_000_000,
+    ).handover_id
+    store.append(
+        build_event(
+            "acc.cash_receipt",
+            payload={"amount": 250_000},
+            client_at=datetime(2026, 10, 28, 9, 40, tzinfo=TEHRAN),
+        )
+    )
+    projections.sync()
+    cash = CountTarget(scope="cash")
+    service.count(handover_id, cash, 1_000_000, caller=caller)
+    service.count(handover_id, cash, 1_000_000, caller=caller)
+
+    with database.read() as connection:
+        live = projections_repo.cash_rows(connection)
+
+    assert live == [{"cash_box_id": "reception", "expected": 1_250_000, "counted": 1_000_000, "variance": -250_000}]
+    assert projections.rebuild(dry_run=True).drift == ()
+    assert projections.rebuild().drift == ()
+    with database.read() as connection:
+        assert projections_repo.cash_rows(connection) == live

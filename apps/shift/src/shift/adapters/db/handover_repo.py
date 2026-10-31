@@ -15,11 +15,14 @@ from sqlalchemy import Connection
 
 from shift.adapters.db import mirror_repo
 from shift.common.clock import parse_iso, to_tehran, utc_iso
+from shift.domain.events import EventType
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 
 ClockCovering = Callable[[datetime], ShiftKey]
+
+_RECEIPT_EVENT = EventType.ACC_CASH_RECEIPT.value
 
 _COLUMNS = (
     "handover_id",
@@ -178,3 +181,23 @@ def shift_id_at(
 def open_invoice_count(connection: Connection) -> int:
     """How many invoices accounting still shows open; H-03 refuses a handover start while any are."""
     return int(connection.exec_driver_sql(f"SELECT COUNT(*) FROM {mirror_repo.OPEN_INVOICE}").scalar_one())
+
+
+def cash_receipt_total(connection: Connection, *, after: datetime, until: datetime) -> int:
+    """The cash receipts accounting stamped inside one flow's window, summed (H-11).
+
+    A receipt stamped after the flow's cutoff is the next shift's money, so one stamped before the
+    flow closed cannot happen in the owner's sequence: the incoming person takes nothing until the
+    handover ends. The service reports the total to the manager as a handover exception, which is
+    the only reason this query exists.
+
+    The stamps are compared through `julianday`, because each event stores `client_at` in the
+    writer's own form — the bridge copies accounting's Tehran local text, a handset keeps its clock —
+    so plain text order would not be chronological.
+    """
+    total = connection.exec_driver_sql(
+        "SELECT COALESCE(SUM(json_extract(payload, '$.amount')), 0) FROM events "
+        "WHERE type = ? AND julianday(client_at) > julianday(?) AND julianday(client_at) <= julianday(?)",
+        (_RECEIPT_EVENT, utc_iso(after), utc_iso(until)),
+    ).scalar_one()
+    return int(total)
