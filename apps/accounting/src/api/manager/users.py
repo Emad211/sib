@@ -14,7 +14,7 @@ from src.adapters.sqlite.core import get_db
 from src.api.auth import login_required
 from src.common.utils import format_jalali_datetime, iran_now
 from src.services.activity_logger import ActionCategory, ActionType, log_activity
-from src.services.auth_service import USER_ROLES
+from src.services.auth_service import USER_ROLES, password_length_error
 
 from . import bp
 from ._common import manager_required
@@ -49,8 +49,13 @@ def users_management():
                 full_name = request.form.get("full_name", "").strip()
                 role = request.form.get("role", "reception")
 
+                # SEC-07: a password that is being SET must reach the minimum length
+                problem = password_length_error(password) if password else None
+
                 if role not in USER_ROLES:
                     flash("نقش کاربر نامعتبر است.", "error")
+                elif problem:
+                    flash(problem, "error")
                 elif username and password and full_name:
                     # چک کردن تکراری نبودن نام کاربری
                     existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
@@ -93,9 +98,13 @@ def users_management():
                 role = request.form.get("role", "reception")
                 is_active = request.form.get("is_active") == "1"
                 new_password = request.form.get("new_password", "").strip()
+                # SEC-07: a password that is being CHANGED must reach the minimum length
+                problem = password_length_error(new_password) if new_password else None
 
                 if role not in USER_ROLES:
                     flash("نقش کاربر نامعتبر است.", "error")
+                elif problem:
+                    flash(problem, "error")
                 elif user_id and username and full_name:
                     # چک کردن تکراری نبودن نام کاربری برای کاربر دیگر
                     existing = db.execute(

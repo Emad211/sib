@@ -55,6 +55,7 @@ include = [
     "src/api/manager/settings.py",
     "src/api/manager/tariffs.py",
     "src/api/manager/users.py",
+    "src/services/auth_service.py",
 ]
 
 [lint]
