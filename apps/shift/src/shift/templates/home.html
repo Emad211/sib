@@ -57,6 +57,30 @@
 </section>
 {% endif %}
 
+{% if show_rewards_link %}
+<section class="card" aria-labelledby="rewards-link-title">
+  <h2 id="rewards-link-title" class="card-title">پاداش من</h2>
+  <p class="card-subtitle">مبلغ، رتبه و تعداد کارهای تأییدشدهٔ همین ماه، و هدف تیمی — بی نام کسی.</p>
+  <a class="btn btn-primary btn-block" href="/rewards">دیدن پاداش این ماه</a>
+</section>
+{% endif %}
+
+{% if show_queue_link %}
+<section class="card" aria-labelledby="queue-link-title">
+  <h2 id="queue-link-title" class="card-title">صف حسابدار</h2>
+  <p class="card-subtitle">کارت‌به‌کارت‌های در انتظار تطبیق، برداشت‌های صندوق، مرجوعی‌ها و فهرست پاداش ماه.</p>
+  <a class="btn btn-primary btn-block" href="/accountant/queue">باز کردن صف</a>
+</section>
+{% endif %}
+
+{% if show_campaign_report_link %}
+<section class="card" aria-labelledby="report-link-title">
+  <h2 id="report-link-title" class="card-title">گزارش کمپین</h2>
+  <p class="card-subtitle">هر کمپین در بازهٔ انتخابی: چند تخفیف و چه جمعی.</p>
+  <a class="btn btn-primary btn-block" href="/accountant/campaigns">دیدن گزارش کمپین</a>
+</section>
+{% endif %}
+
 {% if show_manager_link %}
 <section class="card" aria-labelledby="manager-link-title">
   <h2 id="manager-link-title" class="card-title">کارت روزانهٔ مدیر</h2>

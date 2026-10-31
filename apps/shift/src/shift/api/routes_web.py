@@ -98,6 +98,10 @@ def get_home(request: Request) -> HTMLResponse:
     show_manager_link = principal is not None and Permission.DAILY_CARD_VIEW in principal.permissions
     # Same rule for the shift-event screen: a visitor with no session keeps no link (SHF-3).
     show_events_link = principal is not None and Permission.EVENTS_APPEND in principal.permissions
+    # And for the three SHF-5 screens: one's own rewards, the accountant's queue, the campaign report.
+    show_rewards_link = principal is not None and Permission.REWARD_VIEW in principal.permissions
+    show_queue_link = principal is not None and Permission.ACCOUNTANT_QUEUE_VIEW in principal.permissions
+    show_campaign_report_link = principal is not None and Permission.CAMPAIGN_REPORT_VIEW in principal.permissions
     return _shell_page(
         request,
         "home.html",
@@ -105,6 +109,9 @@ def get_home(request: Request) -> HTMLResponse:
             "show_dev_events": settings.environment == "development",
             "show_manager_link": show_manager_link,
             "show_events_link": show_events_link,
+            "show_rewards_link": show_rewards_link,
+            "show_queue_link": show_queue_link,
+            "show_campaign_report_link": show_campaign_report_link,
         },
     )
 
