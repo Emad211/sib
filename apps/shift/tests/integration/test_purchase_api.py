@@ -11,6 +11,7 @@ The catalog is the synthetic reference data from `tests/data/synthetic_catalog.p
 invented and no production database or patient data is read (ADR-006).
 """
 
+import hashlib
 import re
 from collections.abc import Iterator
 
@@ -127,6 +128,26 @@ def test_a_refused_action_is_one_persian_message_with_no_figure(staff_client: Te
     assert message == UNKNOWN_ACTION
     assert PERSIAN.search(message), "a refusal is a Persian sentence the person can read"
     assert not re.search(r"\d", message), "no count and no price in a refusal (R-02)"
+
+
+def test_the_accountant_opens_the_photo_taken_at_the_door(staff_client: TestClient) -> None:
+    """F1: the state names the invoice's own photo, and the accountant's session can open it."""
+    _record_a_parcel(staff_client)
+
+    state = staff_client.get(STATE_URL)
+    assert state.status_code == 200, state.text
+    photo = state.json()["invoices"][0]["invoice_photo"]
+    assert photo == hashlib.sha256(INVOICE_PHOTO).hexdigest(), "the invoice names the photo the door stored"
+
+    opened = staff_client.get(f"/api/v1/photos/{photo}")
+    assert opened.status_code == 200, opened.text
+    assert opened.headers["content-type"] == "image/jpeg"
+    assert opened.content == INVOICE_PHOTO
+
+    # Reception took the photo and holds no approver permission, so the read route refuses it (R-07).
+    staff_client.cookies.clear()
+    _sign_in(staff_client, "reception")
+    assert staff_client.get(f"/api/v1/photos/{photo}").status_code == 403
 
 
 def test_the_page_shell_holds_no_purchase_data_and_is_never_stored(staff_client: TestClient) -> None:

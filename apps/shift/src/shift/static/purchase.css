@@ -234,6 +234,94 @@
   font-size: 0.75rem;
 }
 
+/* F1: the invoice photo inside the digitization form, as wide as the phone; a tap opens it big. */
+.pu-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 0.75rem;
+}
+
+.pu-photo-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  cursor: zoom-in;
+}
+
+.pu-photo-image {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background-color: var(--color-surface-sunken, #00000014);
+}
+
+.pu-photo-caption {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
+/* The viewer: the whole phone screen, the photo as large as it goes, one tap on it to zoom further. */
+.pu-viewer {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0.75rem;
+  color: #ffffff;
+  background-color: #000000;
+  border: none;
+}
+
+.pu-viewer::backdrop {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.pu-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pu-viewer-caption {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.pu-viewer-hint {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
+.pu-viewer-stage {
+  height: calc(100% - 4.75rem);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pu-viewer-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+  cursor: zoom-in;
+}
+
+.pu-viewer-image.is-zoomed {
+  width: 250%;
+  max-width: none;
+  cursor: zoom-out;
+}
+
 @media (max-width: 420px) {
   .pu-line,
   .pu-line.is-priced,
