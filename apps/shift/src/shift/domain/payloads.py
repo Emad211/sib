@@ -48,7 +48,9 @@ class CashWithdrawn(CashAmount):
 
 
 class CashDeposited(CashAmount):
-    pass
+    """Cash taken out of the box to the bank; the accountant records it, the bank slip is optional (B2)."""
+
+    photo_sha256: PhotoHash | None = None
 
 
 class CashReceipt(CashAmount):

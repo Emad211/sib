@@ -73,6 +73,9 @@
     vendorReturn: "مرجوعی ثبت شد.",
     credit: "بستانکاری ثبت شد.",
     restock: "شارژ قفسه ثبت شد.",
+    offer: "شارژ قفسه برای تأیید فرستاده شد.",
+    confirm: "تأیید ثبت شد.",
+    parcelCount: "شمارش بار ثبت شد.",
     count: "شمارش هفتگی ثبت شد.",
     unreadable: "وضعیت خرید و انبار خوانده نشد؛ صفحه را تازه کنید.",
   };
@@ -98,6 +101,9 @@
   var NO_AMOUNT = "مبلغ را درست وارد کنید.";
   var NO_METHOD = "روش پرداخت را انتخاب کنید.";
   var NO_QUANTITY = "تعداد را درست وارد کنید.";
+  // F1: the invoice photo is mandatory at the door, the payment receipt's is optional (decision 6).
+  var NO_INVOICE_PHOTO = "عکس فاکتور را بگیرید.";
+  var PHOTO_FAILED = "عکس ثبت نشد؛ دوباره بگیرید.";
 
   var clinic = null;
   var busy = false;
@@ -180,6 +186,30 @@
     });
   }
 
+  /** F1: a photo is stored under its own content hash, so the record names a file the app really holds. */
+  function uploadPhoto(file, required) {
+    if (!file) {
+      return required ? Promise.reject(new Error(NO_INVOICE_PHOTO)) : Promise.resolve(null);
+    }
+    return file.arrayBuffer().then(function (bytes) {
+      return crypto.subtle.digest("SHA-256", bytes).then(function (digest) {
+        var hash = Array.prototype.map
+          .call(new Uint8Array(digest), function (byte) {
+            return ("0" + byte.toString(16)).slice(-2);
+          })
+          .join("");
+        return fetch("/api/v1/photos/" + hash, {
+          method: "PUT",
+          credentials: "same-origin",
+          headers: { "Content-Type": "image/jpeg" },
+          body: file,
+        }).then(function (response) {
+          if (!response.ok) throw new Error(PHOTO_FAILED);
+          return hash;
+        });
+      });
+    });
+  }
   /** Steps run one after another: a plain `{action, data}`, or a function given the last answer. */
   function chain(steps) {
     return steps.reduce(function (previous, step) {
@@ -716,6 +746,13 @@
     var reason = selectControl(PROBLEMS, "مشکلی نداشت");
     reason.dataset.reason = "";
     box.appendChild(field("مشکل بار (اختیاری)", reason));
+    // F1: the vendor's invoice is photographed at the door before the receipt is recorded (decision 6).
+    var invoicePhoto = document.createElement("input");
+    invoicePhoto.type = "file";
+    invoicePhoto.accept = "image/jpeg";
+    invoicePhoto.capture = "environment";
+    invoicePhoto.dataset.invoicePhoto = "";
+    box.appendChild(field("عکس فاکتور (الزامی)", invoicePhoto));
     box.appendChild(
       actionButton("ثبت دریافت بار", function () {
         var payload;
@@ -727,7 +764,14 @@
         if (order && order.value) payload.order_id = order.value;
         var count = Number(packages.value);
         if (Number.isInteger(count) && count > 0) payload.packages = count;
-        var steps = [{ action: "delivery.receive", data: payload }];
+        var steps = [
+          function () {
+            return uploadPhoto(invoicePhoto.files[0], true).then(function (hash) {
+              payload.invoice_photo_sha256 = hash;
+              return post("delivery.receive", payload);
+            });
+          },
+        ];
         if (reason.value) {
           // The label names the id the server minted for this receipt, so it follows it (P-06).
           steps.push(function (answer) {
@@ -1058,7 +1102,82 @@
     }
   }
 
-  /** The shelf charge: the store down and one shelf up in one record, the counter is the confirmer (P-10). */
+  /** G3: what waits for this very person — a parcel in hand to count, a shelf charge to confirm. */
+  function renderInbox() {
+    var inbox = clinic.inbox;
+    var waiting = inbox !== null ? inbox.parcels_to_count.length + inbox.restock_to_confirm.length : 0;
+    showSection("purchase-inbox", waiting > 0);
+    if (waiting === 0) return;
+    var box = sectionBody("purchase-inbox");
+    box.textContent = "";
+    var names = {};
+    knownItems().forEach(function (item) {
+      names[item.item_id] = item.name;
+    });
+    inbox.parcels_to_count.forEach(function (parcel) {
+      var card = el("div", "pu-card");
+      card.appendChild(el("h3", null, "بار " + parcel.invoice_reference));
+      card.appendChild(el("p", "pu-hint", "این بار به شما تحویل شده است؛ آنچه روی قفسه گذاشتید را بشمارید."));
+      var rows = el("div", "pu-count-box");
+      (parcel.items || []).forEach(function (line) {
+        var itemId = line.item_id;
+        var row = el("div", "pu-count-row");
+        row.dataset.item = itemId;
+        row.appendChild(el("span", null, line.name || names[itemId] || "کالا"));
+        var counted = numberInput(0);
+        counted.dataset.received = "";
+        row.appendChild(field("شمارش", counted));
+        rows.appendChild(row);
+      });
+      card.appendChild(rows);
+      card.appendChild(
+        actionButton("ثبت شمارش بار", function () {
+          var lines = [];
+          var bad = false;
+          Array.prototype.forEach.call(rows.querySelectorAll(".pu-count-row"), function (row) {
+            var value = Number(row.querySelector("[data-received]").value);
+            if (!Number.isInteger(value) || value < 0) {
+              bad = true;
+              return;
+            }
+            lines.push({ item_id: row.dataset.item, quantity: value });
+          });
+          if (bad || lines.length === 0) return fail(new Error(NO_QUANTITY));
+          return run(
+            { action: "delivery.confirm", data: { delivery_id: parcel.delivery_id, lines: lines } },
+            MESSAGES.parcelCount
+          );
+        }, null, "delivery.confirm")
+      );
+      box.appendChild(card);
+    });
+    inbox.restock_to_confirm.forEach(function (offer) {
+      var card = el("div", "pu-card");
+      card.appendChild(el("h3", null, offer.item_name || names[offer.item_id] || "کالا"));
+      card.appendChild(
+        el(
+          "p",
+          "pu-meta",
+          "از " + (offer.from_location_name || "انبار اصلی") + " به " + (offer.to_location_name || "قفسه")
+        )
+      );
+      var counted = numberInput(0);
+      counted.dataset.offerCount = "";
+      card.appendChild(field("شمارش", counted));
+      card.appendChild(
+        actionButton("تأیید شارژ قفسه", function () {
+          var value = Number(counted.value);
+          if (!Number.isInteger(value) || value < 0) return fail(new Error(NO_QUANTITY));
+          return run(
+            { action: "restock.confirm", data: { offer_id: offer.offer_id, quantity: value } },
+            MESSAGES.confirm
+          );
+        }, null, "restock.confirm")
+      );
+      box.appendChild(card);
+    });
+  }
+
   function renderRestock() {
     var warehouse = clinic.warehouse;
     showSection("purchase-restock", warehouse !== null);
@@ -1108,7 +1227,29 @@
     var quantity = numberInput(1);
     quantity.dataset.restockQuantity = "";
     box.appendChild(field("تعداد", quantity));
-    box.appendChild(el("p", "pu-hint", "تأییدکننده: خود شما."));
+    // G3: both sides confirm. The giver names the person who will count what arrives on the shelf, and
+    // nothing leaves the store until that person's own count matches (owner decision, «هر دو طرف تأیید»).
+    var confirmer = document.createElement("select");
+    confirmer.dataset.confirmer = "";
+    (clinic.directory || []).forEach(function (person) {
+      var option = document.createElement("option");
+      option.value = person.staff_id;
+      option.textContent = person.name + (person.role ? " · " + person.role : "");
+      confirmer.appendChild(option);
+    });
+    if (confirmer.options.length === 0) {
+      box.appendChild(el("p", "pu-hint", "کسی برای تأیید شارژ در فهرست کارمندان نیست."));
+      return;
+    }
+    box.appendChild(field("تحویل‌گیرنده (تأیید با شمارش او)", confirmer));
+    var pending = clinic.inbox ? clinic.inbox.restock_waiting : [];
+    if (pending.length > 0) {
+      var list = el("ul", "pu-lines");
+      pending.forEach(function (offer) {
+        list.appendChild(el("li", null, itemName(offer.item_id) + " · در انتظار تأیید تحویل‌گیرنده"));
+      });
+      box.appendChild(list);
+    }
     box.appendChild(
       actionButton("ثبت شارژ قفسه", function () {
         var chosen = chargeable.filter(function (candidate) {
@@ -1117,6 +1258,7 @@
         if (!chosen) return fail(new Error(NO_ITEM));
         var count = Number(quantity.value);
         if (!Number.isInteger(count) || count < 1) return fail(new Error(NO_QUANTITY));
+        if (!confirmer.value) return fail(new Error(NO_RECIPIENT));
         return run(
           {
             action: "restock.record",
@@ -1125,9 +1267,10 @@
               from_location_id: STORE,
               to_location_id: chosen.location_id,
               quantity: count,
+              confirmer_id: confirmer.value,
             },
           },
-          MESSAGES.restock
+          MESSAGES.offer
         );
       }, null, "restock.record")
     );
@@ -1235,6 +1378,7 @@
     renderTransit();
     renderInvoice();
     renderReturn();
+    renderInbox();
     renderRestock();
     renderCount();
   }

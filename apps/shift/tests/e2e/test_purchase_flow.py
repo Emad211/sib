@@ -70,6 +70,8 @@ ITEM_NAME = next(item.name for item in ITEMS if item.item_id == ITEM)
 SHELF = "shelf_reception"
 STORE = "main_store"
 QUANTITY = 4
+# A synthetic JPEG header: F1 makes the invoice photo mandatory at the door (decision 6).
+INVOICE_PHOTO = b"\xff\xd8\xff\xe0" + b"0" * 64
 UNIT_PRICE = 25_000
 INVOICE_REFERENCE = "فاکتور ۱۲"
 VENDOR = "داروخانهٔ آزمایشی"
@@ -91,6 +93,8 @@ RECEIVED = "دریافت بار ثبت شد."
 DIGITIZED = "فاکتور ثبت شد."
 PAID = "پرداخت ثبت شد."
 CHARGED = "شارژ قفسه ثبت شد."
+OFFERED = "شارژ قفسه برای تأیید فرستاده شد."
+CONFIRMED = "تأیید ثبت شد."
 COUNTED_STATUS = "شمارش هفتگی ثبت شد."
 LOCK = "پرداخت تا تصمیم مدیر قفل است"
 PAID_LABEL = "پرداخت‌شده"
@@ -376,6 +380,10 @@ def test_the_chain_from_a_storekeeper_draft_to_a_paid_invoice(live_shift: LiveSh
         reception_page.fill(f"{line}[data-item]", ITEM)
         reception_page.fill(f"{line}[data-location]", SHELF)
         reception_page.fill(f"{line}[data-quantity]", str(QUANTITY))
+        reception_page.set_input_files(
+            "#purchase-receive [data-invoice-photo]",
+            files=[{"name": "invoice.jpg", "mimeType": "image/jpeg", "buffer": INVOICE_PHOTO}],
+        )
         reception_page.fill("#purchase-receive [data-packages]", str(PACKAGES))
         reception_page.select_option("#purchase-receive [data-reason]", PROBLEM)
         reception_page.click("#purchase-receive [data-do='delivery.receive']")
@@ -460,17 +468,33 @@ def test_the_warehouse_shelf_charge_and_the_blind_weekly_count(live_shift: LiveS
         page.goto(f"{live_shift.base_url}/purchase", wait_until="domcontentloaded")
         page.wait_for_selector("#purchase-restock [data-restock-item]", timeout=15000)
 
-        # 1. The storekeeper charges the reception shelf from the main store (P-10).
+        # 1. The storekeeper offers the reception shelf's charge, naming the person who confirms it (P-10, G3).
         page.select_option("#purchase-restock [data-restock-item]", ITEM)
         page.fill("#purchase-restock [data-restock-quantity]", str(CHARGE))
+        page.select_option("#purchase-restock [data-confirmer]", RECEPTIONIST.staff_id)
         page.click("#purchase-restock [data-do='restock.record']")
-        _wait_status(page, CHARGED)
+        _wait_status(page, OFFERED)
+        assert _stock(live_shift.database, ITEM) == (0, 0), "an offer moves nothing until both sides counted"
+
+        # 1b. The named receiver counts what arrived on the shelf and confirms it: now the stock moves.
+        reception, reception_page = _open_phone(browser)
+        phones.append(reception)
+        _login(reception_page, live_shift.base_url, RECEPTIONIST)
+        reception_page.goto(f"{live_shift.base_url}/purchase", wait_until="domcontentloaded")
+        reception_page.wait_for_selector("#purchase-inbox [data-offer-count]", timeout=15000)
+        inbox_text = _flat(reception_page.inner_text("#purchase-inbox"))
+        assert _flat(ITEM_NAME) in inbox_text, "the offer names the item the shelf is waiting for"
+        reception_page.fill("#purchase-inbox [data-offer-count]", str(CHARGE))
+        reception_page.click("#purchase-inbox [data-do='restock.confirm']")
+        _wait_status(reception_page, CONFIRMED)
+        # The shelf moved by exactly the charge, and the screen still prints no shelf figure (P-11).
+        assert _stock(live_shift.database, ITEM) == (CHARGE, -CHARGE)
+        page.goto(f"{live_shift.base_url}/purchase", wait_until="domcontentloaded")
+        page.wait_for_selector("#purchase-restock [data-restock-item]", timeout=15000)
         history = _flat(page.inner_text("#purchase-restock"))
         assert _flat(ITEM_NAME) in history
         assert "انبار اصلی" in history and "قفسهٔ پذیرش" in history
         assert _fa(CHARGE) in history, "the record says how much moved"
-        # The shelf moved by exactly the charge, and the screen still prints no shelf figure (P-11).
-        assert _stock(live_shift.database, ITEM) == (CHARGE, -CHARGE)
         assert page.locator("#purchase-count [data-count]").evaluate_all(
             "nodes => nodes.every(node => node.value === '')"
         ), "the count boxes start empty: the count is blind"

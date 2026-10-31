@@ -51,6 +51,8 @@ STORE = "main_store"
 SYRINGE = "syringe_5cc"
 SHELF_BEFORE = 3
 STORE_BEFORE = 12
+# A stored invoice photo's content hash: the service only checks the shape when it has no photo folder.
+PHOTO = "a" * 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +227,7 @@ def _received_delivery(desk: Desk, order_id: str | None = None) -> str:
         invoice_reference="فاکتور ۱۲",
         lines=[{"item_id": ITEM, "location_id": LOCATION, "quantity": 4}],
         packages=1,
+        invoice_photo_sha256=PHOTO,
     )["delivery_id"]
 
 
@@ -246,6 +249,22 @@ def _invoice(desk: Desk, delivery_id: str) -> dict[str, Any]:
     assert invoices is not None
     found = next(invoice for invoice in invoices if invoice["delivery_id"] == delivery_id)
     return found
+
+
+def _charge(desk: Desk, *, item: str = ITEM, to: str = LOCATION, quantity: int = 5) -> str:
+    """A shelf charge the way the clinic does it: the storekeeper offers, the named nurse confirms (G3)."""
+    offered = _act(
+        desk,
+        desk.storekeeper,
+        "restock.record",
+        item_id=item,
+        from_location_id=STORE,
+        to_location_id=to,
+        quantity=quantity,
+        confirmer_id=desk.nurse.staff_id,
+    )
+    _act(desk, desk.nurse, "restock.confirm", offer_id=offered["event_id"], quantity=quantity)
+    return offered["event_id"]
 
 
 def _approve(desk: Desk, event_id: str) -> None:
@@ -491,8 +510,8 @@ def test_a_rejected_flag_keeps_the_payment_locked(desk: Desk) -> None:
         _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=1_000, method="cash")
 
 
-def test_a_parcel_goes_to_the_storekeeper_and_only_a_storekeeper_takes_custody(desk: Desk) -> None:
-    """P-12: the parcel is handed on by its real delivery id, and custody names a storekeeper."""
+def test_a_parcel_goes_to_the_storekeeper_who_counts_it_before_it_joins_the_store(desk: Desk) -> None:
+    """P-12, G3: the parcel is handed on by its real id; custody and stock move on the receiver's own count."""
     delivery_id = _received_delivery(desk)
 
     with pytest.raises(PurchaseRuleError, match="انباردار"):
@@ -524,8 +543,68 @@ def test_a_parcel_goes_to_the_storekeeper_and_only_a_storekeeper_takes_custody(d
         packages=1,
     )
 
+    # One side has spoken: the parcel is still on its way, and the store has not grown.
+    assert len(desk.service.pending(desk.shift).undelivered) == 1
+    assert _state(desk, desk.reception)["deliveries"][0]["custody"] == "shift"
+    assert _shelf(desk, ITEM, STORE) == STORE_BEFORE
+
+    mine = _state(desk, desk.storekeeper)
+    assert mine["inbox"]["parcels_to_count"][0]["delivery_id"] == delivery_id
+    assert mine["deliveries"][0]["lines"][0]["quantity"] is None, "the receiver counts blind"
+    with pytest.raises(PurchaseRuleError, match="سپرده"):
+        _act(desk, desk.nurse, "delivery.confirm", delivery_id=delivery_id, lines=[{"item_id": ITEM, "quantity": 4}])
+
+    answer = _act(
+        desk, desk.storekeeper, "delivery.confirm", delivery_id=delivery_id, lines=[{"item_id": ITEM, "quantity": 4}]
+    )
+
+    assert answer["differs"] is False
     assert desk.service.pending(desk.shift).undelivered == ()
     assert _state(desk, desk.reception)["deliveries"][0]["custody"] == "storekeeper"
+    assert _shelf(desk, ITEM, STORE) == STORE_BEFORE + 4, "vendor goods join the store on the receiver's count"
+    # The emptied projection above is a test device, so the log is replayed rather than compared to it:
+    # a replay has to rebuild the store's figures from the records alone.
+    desk.projections.rebuild()
+    assert _shelf(desk, ITEM, STORE) == STORE_BEFORE + 4
+    with pytest.raises(PurchaseRuleError, match="منتظر"):
+        _act(
+            desk,
+            desk.storekeeper,
+            "delivery.confirm",
+            delivery_id=delivery_id,
+            lines=[{"item_id": ITEM, "quantity": 4}],
+        )
+
+
+def test_a_receivers_count_that_differs_enters_the_store_and_locks_the_payment(desk: Desk) -> None:
+    """G3: the receiver's count is what is on the shelf; a difference flags the parcel, it does not hide it."""
+    delivery_id = _received_delivery(desk)
+    _act(
+        desk,
+        desk.reception,
+        "delivery.transfer",
+        delivery_id=delivery_id,
+        to_staff_id=desk.storekeeper.staff_id,
+        to_kind="storekeeper",
+    )
+
+    with pytest.raises(PurchaseRuleError, match="همهٔ اقلام"):
+        _act(
+            desk,
+            desk.storekeeper,
+            "delivery.confirm",
+            delivery_id=delivery_id,
+            lines=[{"item_id": SYRINGE, "quantity": 1}],
+        )
+    answer = _act(
+        desk, desk.storekeeper, "delivery.confirm", delivery_id=delivery_id, lines=[{"item_id": ITEM, "quantity": 3}]
+    )
+
+    assert answer["differs"] is True
+    assert _shelf(desk, ITEM, STORE) == STORE_BEFORE + 3
+    parcel = _state(desk, desk.reception)["deliveries"][0]
+    assert (parcel["flagged_reason"], parcel["custody"]) == ("short", "storekeeper")
+    assert [row.delivery_id for row in desk.service.pending(desk.shift).locked_deliveries] == [delivery_id]
 
 
 # --- a vendor return ------------------------------------------------------------------------
@@ -559,9 +638,9 @@ def test_a_vendor_return_lets_the_accountant_credit_up_to_the_invoice(desk: Desk
 # --- the shelf charge -----------------------------------------------------------------------
 
 
-def test_a_shelf_charge_moves_the_store_down_and_the_shelf_up_once(desk: Desk) -> None:
-    """P-10: one record, both ends; the rebuild has to land on the same shelves as the live run."""
-    _act(
+def test_a_shelf_charge_needs_both_sides_and_then_moves_the_store_down_and_the_shelf_up_once(desk: Desk) -> None:
+    """P-10, G3: the offer moves nothing; the named person's count moves both ends, once, and rebuild agrees."""
+    offered = _act(
         desk,
         desk.storekeeper,
         "restock.record",
@@ -569,12 +648,24 @@ def test_a_shelf_charge_moves_the_store_down_and_the_shelf_up_once(desk: Desk) -
         from_location_id=STORE,
         to_location_id=LOCATION,
         quantity=5,
+        confirmer_id=desk.nurse.staff_id,
     )
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE, SHELF_BEFORE)
+    waiting = _state(desk, desk.nurse)["inbox"]["restock_to_confirm"]
+    assert [row["offer_id"] for row in waiting] == [offered["event_id"]]
+    assert "quantity" not in waiting[0], "the person counting the shelf does not read the offered figure"
 
-    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (
-        STORE_BEFORE - 5,
-        SHELF_BEFORE + 5,
-    )
+    with pytest.raises(PurchaseRuleError, match="کسی که"):
+        _act(desk, desk.reception, "restock.confirm", offer_id=offered["event_id"], quantity=5)
+    with pytest.raises(PurchaseRuleError, match="نمی‌خواند"):
+        _act(desk, desk.nurse, "restock.confirm", offer_id=offered["event_id"], quantity=4)
+    assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE
+
+    _act(desk, desk.nurse, "restock.confirm", offer_id=offered["event_id"], quantity=5)
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.nurse, "restock.confirm", offer_id=offered["event_id"], quantity=5)
+
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE - 5, SHELF_BEFORE + 5)
     report = desk.projections.rebuild()
     assert report.applied
     assert report.drift == ()
@@ -583,6 +674,7 @@ def test_a_shelf_charge_moves_the_store_down_and_the_shelf_up_once(desk: Desk) -
 
 def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(desk: Desk) -> None:
     """P-10: the two ends must be two places, and the item has to belong to the shelf it lands on."""
+    named = {"confirmer_id": desk.nurse.staff_id}
     with pytest.raises(PurchaseRuleError, match="یکی"):
         _act(
             desk,
@@ -592,6 +684,7 @@ def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(
             from_location_id=LOCATION,
             to_location_id=LOCATION,
             quantity=1,
+            **named,
         )
     with pytest.raises(PurchaseRuleError, match="کاتالوگ"):
         _act(
@@ -602,6 +695,7 @@ def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(
             from_location_id=STORE,
             to_location_id="cpr_room",
             quantity=1,
+            **named,
         )
     # A source that is not the store is refused before the catalog is even asked.
     with pytest.raises(PurchaseRuleError, match="انبار اصلی"):
@@ -613,46 +707,28 @@ def test_a_charge_to_the_same_place_or_into_a_shelf_without_the_item_is_refused(
             from_location_id="no_such_place",
             to_location_id=LOCATION,
             quantity=1,
+            **named,
         )
 
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE
 
 
-def test_the_charge_names_the_person_who_confirmed_the_count(desk: Desk) -> None:
-    """P-10: the shift lead who counted is the confirmer, and it must be somebody the clinic still has."""
-    _act(
-        desk,
-        desk.storekeeper,
-        "restock.record",
-        item_id=ITEM,
-        from_location_id=STORE,
-        to_location_id=LOCATION,
-        quantity=1,
-        confirmer_id=desk.nurse.staff_id,
-    )
+def test_the_confirmer_is_somebody_else_and_somebody_the_clinic_still_has(desk: Desk) -> None:
+    """G3: nobody confirms their own charge, and the named person must be active staff."""
+    offer = {
+        "item_id": ITEM,
+        "from_location_id": STORE,
+        "to_location_id": LOCATION,
+        "quantity": 1,
+    }
+    with pytest.raises(PurchaseRuleError, match="کس دیگری"):
+        _act(desk, desk.storekeeper, "restock.record", confirmer_id=desk.storekeeper.staff_id, **offer)
     with pytest.raises(PurchaseRuleError, match="تأییدکننده"):
-        _act(
-            desk,
-            desk.storekeeper,
-            "restock.record",
-            item_id=ITEM,
-            from_location_id=STORE,
-            to_location_id=LOCATION,
-            quantity=1,
-            confirmer_id="staff-ghost",
-        )
-    _act(
-        desk,
-        desk.storekeeper,
-        "restock.record",
-        item_id=ITEM,
-        from_location_id=STORE,
-        to_location_id=LOCATION,
-        quantity=1,
-    )
+        _act(desk, desk.storekeeper, "restock.record", confirmer_id="staff-ghost", **offer)
+    _act(desk, desk.storekeeper, "restock.record", confirmer_id=desk.nurse.staff_id, **offer)
 
-    recorded = [event.payload["confirmer_id"] for event in _log(desk, EventType.RESTOCK_CONFIRMED)]
-    assert recorded == [desk.nurse.staff_id, desk.storekeeper.staff_id], "named first, then the caller"
+    recorded = [event.payload["confirmer_id"] for event in _log(desk, EventType.RESTOCK_OFFERED)]
+    assert recorded == [desk.nurse.staff_id]
 
 
 # --- the weekly count -----------------------------------------------------------------------
@@ -693,6 +769,9 @@ def test_the_weekly_status_turns_done_once_the_window_has_a_count(desk: Desk) ->
     assert weekly["state"] == "overdue", "the new window is uncounted and its 07:30 deadline has passed"
 
     _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE)
+    weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
+    assert weekly["state"] == "overdue", "one counted item does not close the week (decision 2)"
+    _act(desk, desk.storekeeper, "weekly.count", item_id=ITEM, location_id=STORE, counted=STORE_BEFORE)
 
     weekly = _state(desk, desk.storekeeper)["warehouse"]["weekly"]
     assert weekly["state"] == "done"
@@ -720,15 +799,7 @@ def test_a_shelf_count_never_marks_the_week_done(desk: Desk) -> None:
 def test_the_store_list_holds_what_the_store_holds(desk: Desk) -> None:
     """A shelf charge leaves the item at the store, so the storekeeper can count and re-charge it."""
     before = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
-    _act(
-        desk,
-        desk.storekeeper,
-        "restock.record",
-        item_id=OTHER,
-        from_location_id=STORE,
-        to_location_id=LOCATION,
-        quantity=2,
-    )
+    _charge(desk, item=OTHER, quantity=2)
     after = {row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]}
 
     assert SYRINGE in before, "a counted item whose catalog home is the store"
@@ -761,7 +832,7 @@ def test_the_warehouse_section_carries_no_projected_figure(desk: Desk) -> None:
 
     assert warehouse["items"]
     assert all(set(item) == {"item_id", "name", "location_id", "unit", "minimum"} for item in warehouse["items"])
-    assert set(warehouse) == {"items", "locations", "weekly", "restock"}
+    assert set(warehouse) == {"items", "locations", "weekly", "restock", "counted_ids", "baseline_done"}
 
 
 def test_below_minimum_lists_the_items_under_their_catalog_minimum(desk: Desk) -> None:
@@ -835,6 +906,9 @@ def test_the_handover_hands_a_real_parcel_and_stops_listing_it_once_the_store_ta
         to_kind="storekeeper",
         packages=1,
     )
+    assert delivery_id in {parcel.delivery_id for parcel in desk.service.in_transit(desk.shift)}, "not counted yet"
+
+    _act(desk, desk.storekeeper, "delivery.confirm", delivery_id=delivery_id, lines=[{"item_id": ITEM, "quantity": 4}])
 
     assert desk.service.in_transit(desk.shift) == ()
 
@@ -888,6 +962,7 @@ def test_a_shelf_charge_moves_stock_only_from_the_main_store(desk: Desk) -> None
             from_location_id=LOCATION,
             to_location_id="cpr_room",
             quantity=1,
+            confirmer_id=desk.nurse.staff_id,
         )
 
 
@@ -926,3 +1001,127 @@ def test_two_payments_at_once_cannot_pass_the_invoice_balance(desk: Desk) -> Non
 
     assert sorted(outcomes) == ["recorded", "refused"], "one payment lands and the other sees the new balance"
     assert len(_log(desk, EventType.PAYMENT_RECORDED)) == 1
+
+
+# --- the owner's photo rule, the price history and the main store's own counts ---------------
+
+
+def test_the_invoice_photo_is_mandatory_at_the_door_and_the_payment_receipt_photo_is_optional(desk: Desk) -> None:
+    """Decision 6 (F1): a receipt with no invoice photo is refused; a payment needs none."""
+    lines = [{"item_id": ITEM, "location_id": LOCATION, "quantity": 4}]
+    with pytest.raises(PurchaseRuleError, match="عکس فاکتور"):
+        _act(desk, desk.reception, "delivery.receive", invoice_reference="۱", lines=lines)
+    with pytest.raises(PurchaseRuleError, match="ذخیره"):
+        _act(desk, desk.reception, "delivery.receive", invoice_reference="۱", lines=lines, invoice_photo_sha256="../x")
+
+    delivery_id = _digitized_delivery(desk)
+    _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=40_000, method="cash")
+    _act(
+        desk,
+        desk.accountant,
+        "payment.record",
+        delivery_id=delivery_id,
+        amount_toman=60_000,
+        method="transfer",
+        receipt_photo_sha256="b" * 64,
+    )
+
+    invoice = _invoice(desk, delivery_id)
+    assert invoice["invoice_photo"] == PHOTO
+    assert invoice["receipt_photos"] == ["b" * 64]
+    # Reception and the storekeeper see no price and no photo hash of the accountant's side.
+    assert "invoice_photo" not in _state(desk, desk.reception)["deliveries"][0]
+
+
+def test_the_price_history_lists_every_price_of_an_item_per_vendor_for_the_accountant_only(desk: Desk) -> None:
+    """F2: a read of the log, oldest first, with the change from the price before."""
+    _digitized_delivery(desk, unit_price=25_000)
+    _digitized_delivery(desk, unit_price=27_500)
+
+    history = _state(desk, desk.accountant)["price_history"]
+    series = next(row for row in history if row["item_id"] == ITEM)
+    assert series["vendor"] == "داروخانهٔ نمونه"
+    assert [point["unit_price_toman"] for point in series["points"]] == [25_000, 27_500]
+    assert (series["latest"], series["change"]) == (27_500, 2_500)
+    assert _state(desk, desk.storekeeper)["price_history"] is None
+    assert _state(desk, desk.reception)["price_history"] is None
+
+
+def test_the_first_weekly_count_needs_the_storekeepers_opening_count_of_the_whole_store(desk: Desk) -> None:
+    """B1: with no store stock at all a weekly count would be all noise, so the opening count comes first."""
+    with desk.database.write() as connection:
+        connection.exec_driver_sql("DELETE FROM proj_stock")
+    with pytest.raises(PurchaseRuleError, match="شمارش اولیه"):
+        _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=3)
+
+    items = [row["item_id"] for row in _state(desk, desk.storekeeper)["warehouse"]["items"]]
+    assert _state(desk, desk.storekeeper)["warehouse"]["baseline_done"] is False
+    with pytest.raises(PurchaseRuleError, match="همهٔ اقلام"):
+        _act(desk, desk.storekeeper, "store.baseline", lines=[{"item_id": ITEM, "quantity": 1}])
+    with pytest.raises(PurchaseRuleError, match="انباردار"):
+        _act(desk, desk.accountant, "store.baseline", lines=[{"item_id": item, "quantity": 1} for item in items])
+
+    _act(desk, desk.storekeeper, "store.baseline", lines=[{"item_id": item, "quantity": 7} for item in items])
+
+    assert _shelf(desk, SYRINGE, STORE) == 7
+    assert _log(desk, EventType.STOCK_STORE_BASELINED)[0].actor_id == desk.storekeeper.staff_id
+    assert _log(desk, EventType.DISCREPANCY_RECORDED) == [], "an opening count is compared with nothing"
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.storekeeper, "store.baseline", lines=[{"item_id": item, "quantity": 7} for item in items])
+    _act(desk, desk.storekeeper, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=7)
+    # The emptied projection above is a test device, so the log is replayed rather than compared to it:
+    # a replay has to rebuild the store's figures from the records alone.
+    desk.projections.rebuild()
+    assert _shelf(desk, SYRINGE, STORE) == 7
+
+
+def test_only_the_storekeeper_counts_the_week_and_the_accountants_sample_never_sets_the_stock(desk: Desk) -> None:
+    """Decision 2: the accountant's count is a monthly blind check of five items; it cannot close the week."""
+    with pytest.raises(PurchaseRuleError, match="انباردار"):
+        _act(desk, desk.accountant, "weekly.count", item_id=SYRINGE, location_id=STORE, counted=STORE_BEFORE)
+
+    sample = _state(desk, desk.accountant)["sample"]
+    picked = [row["item_id"] for row in sample["items"]]
+    assert 1 <= len(picked) <= 5 and sample["month"].count("-") == 1
+    assert _state(desk, desk.accountant)["sample"] == sample, "the month's pick is stable, never re-rolled"
+    assert _state(desk, desk.storekeeper)["sample"] is None
+    outside = (
+        next(
+            row["item_id"]
+            for row in _state(desk, desk.storekeeper)["warehouse"]["items"]
+            if row["item_id"] not in picked
+        )
+        if len(picked) < 2
+        else None
+    )
+    if outside is not None:
+        with pytest.raises(PurchaseRuleError, match="نمونه"):
+            _act(desk, desk.accountant, "sample.count", item_id=outside, location_id=STORE, counted=1)
+
+    before = _shelf(desk, picked[0], STORE)
+    answer = _act(
+        desk, desk.accountant, "sample.count", item_id=picked[0], location_id=STORE, counted=(before or 0) + 2
+    )
+    assert set(answer) == {"status", "event_id"}, "the answer carries no difference"
+    assert _shelf(desk, picked[0], STORE) == before, "a sample compares and never sets"
+    gap = _log(desk, EventType.DISCREPANCY_RECORDED)[-1].payload
+    assert (gap["item_id"], gap["difference"], gap["culprit_id"]) == (picked[0], 2, None)
+    with pytest.raises(PurchaseRuleError, match="شمرده"):
+        _act(desk, desk.accountant, "sample.count", item_id=picked[0], location_id=STORE, counted=before)
+    assert _state(desk, desk.accountant)["sample"]["items"][0]["done"] is True
+
+
+def test_a_near_expiry_mark_is_stored_with_the_count_that_saw_it(desk: Desk) -> None:
+    """B1: the mark rides on the item's count and is kept; the card reads it from the log."""
+    _act(
+        desk,
+        desk.storekeeper,
+        "weekly.count",
+        item_id=SYRINGE,
+        location_id=STORE,
+        counted=STORE_BEFORE,
+        near_expiry=True,
+    )
+
+    flagged = _log(desk, EventType.EXPIRY_FLAGGED)
+    assert [(row.payload["item_id"], row.actor_id) for row in flagged] == [(SYRINGE, desk.storekeeper.staff_id)]

@@ -49,6 +49,7 @@ from shift.services.daily_card import (
     PurchaseOrderLine,
     WeeklyCountLine,
 )
+from shift.services.daily_card_extras import CallSampleLine, EventCountLine, OverdueFaultLine
 from shift.services.event_store import EventStore
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 
@@ -780,6 +781,9 @@ def test_the_stored_payload_is_the_card_and_never_a_reference(
         "parcels_in_transit",
         "weekly_count",
         "below_minimum",
+        "event_counts",
+        "overdue_faults",
+        "call_sample",
     }
     assert document["card_date"] == "2026-10-27"
     assert document["generated_at"] == "2026-10-27T04:01:00+00:00"
@@ -859,6 +863,28 @@ def test_an_older_card_reads_with_empty_new_sections_and_a_new_card_writes_the_c
                 "held_events",
             ),
         ),
+        (
+            6,
+            (
+                "emergency_starts",
+                "over_cap_withdrawals",
+                "cash_exceptions",
+                "discrepancies",
+                "flows",
+                "open_flows",
+                "shift_events",
+                "open_events",
+                "rewards",
+                "campaign_discounts",
+                "late_cash",
+                "held_events",
+                "purchase_orders",
+                "flagged_deliveries",
+                "parcels_in_transit",
+                "weekly_count",
+                "below_minimum",
+            ),
+        ),
     ):
         assert _stored_as(database, {**document, "schema": schema, "sections": _only(document, names)}) == names
 
@@ -892,7 +918,10 @@ def _stored_as(database: Database, document: dict[str, Any]) -> tuple[str, ...]:
     stored = DailyCardService(database).get(CARD_DAY)
     assert stored is not None
     assert stored.rewards == () and stored.campaign_discounts == ()
-    assert stored.purchase_orders == () and stored.below_minimum == () and stored.weekly_count == ()
+    if document["schema"] < 6:
+        assert stored.purchase_orders == () and stored.below_minimum == () and stored.weekly_count == ()
+    # Whatever the schema, the C1 sections a card predates are simply empty and not drawn.
+    assert stored.event_counts == () and stored.overdue_faults == () and stored.call_sample == ()
     return stored.present_sections
 
 
@@ -1083,6 +1112,9 @@ def test_a_built_card_survives_the_stored_payload_unchanged(
                 person,
             ),
         ),
+        event_counts=(EventCountLine("ق", "قند", 2),),
+        overdue_faults=(OverdueFaultLine("دستگاه", "پرستار", "2026-10-20", 7),),
+        call_sample=(CallSampleLine("1234", "2026-10-26", "پذیرش"),),
     )
     for name in SECTION_NAMES:
         assert getattr(card, name), f"the fixture left {name} empty, so the round trip would prove nothing"

@@ -29,6 +29,7 @@ from shift.domain.purchase_payloads import (
     VendorCredit,
     VendorReturn,
 )
+from shift.domain.store_payloads import DeliveryConfirmed
 
 # The statuses of S03 §4, in the order a parcel can reach them.
 RECEIVED = "received"
@@ -64,6 +65,11 @@ class DeliveryState:
     returned: bool
     actor_id: str
     at_tehran: str
+    # F1: the invoice photo reception took, and the accountant's optional receipt photos (content hashes).
+    invoice_photo: str | None = None
+    receipt_photos: tuple[str, ...] = ()
+    # G3: who the giver named as the receiver while the parcel waits for that person's own count.
+    awaiting_staff_id: str | None = None
 
 
 def delivery_states(events: Iterable[Any]) -> dict[str, DeliveryState]:
@@ -105,6 +111,7 @@ def _fold(states: dict[str, DeliveryState], event: Any, approved: set[str]) -> D
             returned=False,
             actor_id=event.actor_id,
             at_tehran=event.at_tehran,
+            invoice_photo=payload.invoice_photo_sha256,
         )
     current = states.get(_delivery_id(event) or "")
     if current is None:
@@ -123,8 +130,20 @@ def _fold(states: dict[str, DeliveryState], event: Any, approved: set[str]) -> D
         payload = payload_of(DeliveryTransferred, event)
         if payload is None:
             return None
+        if payload.to_kind == "storekeeper":
+            # G3: the giver's record only names the receiver; custody moves with the receiver's own count.
+            return replace(
+                current,
+                awaiting_staff_id=payload.to_staff_id,
+                status=current.status if current.returned else IN_TRANSIT,
+            )
         status = current.status if current.returned else _CUSTODY_STATUS[payload.to_kind]
-        return replace(current, custody=payload.to_kind, status=status)
+        return replace(current, custody=payload.to_kind, status=status, awaiting_staff_id=None)
+    if event.type == EventType.DELIVERY_CONFIRMED:
+        if payload_of(DeliveryConfirmed, event) is None:
+            return None
+        status = current.status if current.returned else WITH_STOREKEEPER
+        return replace(current, custody="storekeeper", status=status, awaiting_staff_id=None)
     if event.type == EventType.VENDOR_RETURN:
         if payload_of(VendorReturn, event) is None:
             return None
@@ -144,7 +163,10 @@ def _fold(states: dict[str, DeliveryState], event: Any, approved: set[str]) -> D
         payload = payload_of(PaymentRecorded, event)
         if payload is None:
             return None
-        return replace(current, paid_total=current.paid_total + payload.amount_toman)
+        photos = current.receipt_photos
+        if payload.receipt_photo_sha256:
+            photos = (*photos, payload.receipt_photo_sha256)
+        return replace(current, paid_total=current.paid_total + payload.amount_toman, receipt_photos=photos)
     if event.type == EventType.VENDOR_CREDIT:
         payload = payload_of(VendorCredit, event)
         if payload is None:

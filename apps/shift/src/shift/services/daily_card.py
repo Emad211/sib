@@ -75,6 +75,15 @@ from shift.domain.shift_events import (
 )
 from shift.domain.stock_checks import weekly_status
 from shift.services.audit import AuditEntry, AuditService
+from shift.services.daily_card_extras import (
+    CallSampleLine,
+    EventCountLine,
+    OverdueFaultLine,
+    call_sample,
+    event_counts,
+    flag_event_ids,
+    overdue_faults,
+)
 from shift.services.handover import EXCEPTION_ACTION
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService
@@ -83,6 +92,7 @@ from shift.services.shift_events import waits_for_decision
 # The background runtime produces the cards, exactly as it produces the snapshots; runtime.RUNTIME_ACTOR
 # is the same name, and the card service does not import the asyncio runtime for one string.
 ACTOR = "shift-runtime"
+UNNAMED = "نامشخص"
 GENERATED_ACTION = "daily_card.generated"
 # A settled gap's direction: the event log keeps the sign, the card keeps the meaning beside the size.
 SHORTAGE = "shortage"
@@ -138,6 +148,10 @@ SECTION_NAMES = (
     "parcels_in_transit",
     "weekly_count",
     "below_minimum",
+    # C1: the counts per code, the overdue repairs and the control-call sample (owner document).
+    "event_counts",
+    "overdue_faults",
+    "call_sample",
 )
 LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4, 5, 6})
 
@@ -352,9 +366,12 @@ class ShiftEventLine:
     summary: dict[str, Any]
     status: str
     ref_event_id: str | None
+    # The record's own id, so a decision button on the card can point at it (C1).
+    event_id: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
+            "event_id": self.event_id,
             "event_type": self.event_type,
             "code": self.code,
             "label_fa": self.label_fa,
@@ -377,6 +394,7 @@ class ShiftEventLine:
             summary=dict(payload["summary"]),
             status=str(payload["status"]),
             ref_event_id=None if ref_event_id is None else str(ref_event_id),
+            event_id=None if payload.get("event_id") is None else str(payload["event_id"]),
         )
 
 
@@ -413,9 +431,12 @@ class WithdrawalLine:
     reason: str
     recipient: Person
     manager: Person
+    # Whether the manager has decided it: a button is drawn only while it is pending (C1, ADR-019).
+    status: str = "pending"
 
     def to_payload(self) -> dict[str, Any]:
         return {
+            "status": self.status,
             "event_id": self.event_id,
             "at_tehran": self.at_tehran,
             "amount": self.amount,
@@ -433,6 +454,7 @@ class WithdrawalLine:
             reason=str(payload["reason"]),
             recipient=Person.from_payload(payload["recipient"]),
             manager=Person.from_payload(payload["manager"]),
+            status=str(payload.get("status", "pending")),
         )
 
 
@@ -690,9 +712,12 @@ class FlaggedDeliveryLine:
     at_tehran: str
     age_hours: int
     actor: Person
+    # The flag record the manager's decision points at (C1).
+    flag_event_id: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
+            "flag_event_id": self.flag_event_id,
             "delivery_id": self.delivery_id,
             "invoice_reference": self.invoice_reference,
             "reason_fa": self.reason_fa,
@@ -710,6 +735,7 @@ class FlaggedDeliveryLine:
             at_tehran=str(payload["at_tehran"]),
             age_hours=int(payload["age_hours"]),
             actor=Person.from_payload(payload["actor"]),
+            flag_event_id=None if payload.get("flag_event_id") is None else str(payload["flag_event_id"]),
         )
 
 
@@ -837,6 +863,9 @@ class Card:
     below_minimum: tuple[BelowMinimumLine, ...] = ()
     checklist_answers: tuple[ChecklistAnswerLine, ...] = ()
     cash_float: int | None = None
+    event_counts: tuple[EventCountLine, ...] = ()
+    overdue_faults: tuple[OverdueFaultLine, ...] = ()
+    call_sample: tuple[CallSampleLine, ...] = ()
     present_sections: tuple[str, ...] = SECTION_NAMES
 
     @property
@@ -872,6 +901,9 @@ class Card:
                 "parcels_in_transit": [entry.to_payload() for entry in self.parcels_in_transit],
                 "weekly_count": [entry.to_payload() for entry in self.weekly_count],
                 "below_minimum": [entry.to_payload() for entry in self.below_minimum],
+                "event_counts": [entry.to_payload() for entry in self.event_counts],
+                "overdue_faults": [entry.to_payload() for entry in self.overdue_faults],
+                "call_sample": [entry.to_payload() for entry in self.call_sample],
             },
         }
 
@@ -920,6 +952,9 @@ class Card:
             ),
             weekly_count=tuple(WeeklyCountLine.from_payload(entry) for entry in sections.get("weekly_count", ())),
             below_minimum=tuple(BelowMinimumLine.from_payload(entry) for entry in sections.get("below_minimum", ())),
+            event_counts=tuple(EventCountLine.from_payload(entry) for entry in sections.get("event_counts", ())),
+            overdue_faults=tuple(OverdueFaultLine.from_payload(entry) for entry in sections.get("overdue_faults", ())),
+            call_sample=tuple(CallSampleLine.from_payload(entry) for entry in sections.get("call_sample", ())),
             present_sections=tuple(name for name in SECTION_NAMES if name in sections),
         )
 
@@ -958,6 +993,7 @@ class DailyCardService:
             names = _Names(connection)
             catalog = _CatalogNames(connection)
             index = _EventIndex(connection)
+            shift_event_rows = _shift_events(connection, window, names, catalog, index)
             return Card(
                 card_date=window.card_date,
                 covered_from=window.covered_from,
@@ -968,20 +1004,25 @@ class DailyCardService:
                 discrepancies=_discrepancies(connection, window, names),
                 flows=_flows(connection, window, names),
                 open_flows=_open_flows(connection, moment, names),
-                shift_events=_shift_events(connection, window, names, catalog, index),
+                shift_events=shift_event_rows,
                 open_events=_open_events(moment, names, catalog, index),
-                over_cap_withdrawals=_over_cap_withdrawals(connection, window, names),
+                over_cap_withdrawals=_over_cap_withdrawals(connection, window, names, index),
                 late_cash=_late_cash(connection, window, names),
                 held_events=_held_events(connection, window, names),
                 rewards=_rewards(connection, window, names),
                 campaign_discounts=_campaign_discounts(connection, window),
                 purchase_orders=_purchase_orders(connection, moment, names, catalog),
-                flagged_deliveries=_flagged_deliveries(connection, moment, names),
+                flagged_deliveries=_flagged_deliveries(connection, moment, names, index),
                 parcels_in_transit=_parcels_in_transit(connection, moment, names),
                 weekly_count=(_weekly_count(connection, moment, self._settings()),),
                 below_minimum=_below_minimum(connection, moment, catalog),
                 checklist_answers=_checklist_answers(connection, window, names, catalog),
                 cash_float=self._settings().optional_number(SettingKey.CASH_FLOAT_TOMAN),
+                event_counts=event_counts(shift_event_rows),
+                overdue_faults=overdue_faults(
+                    index.events, moment, lambda staff_id: names.person(staff_id).name or UNNAMED
+                ),
+                call_sample=call_sample(connection, window),
             )
 
     def regenerate(self, run_day: date) -> Card | None:
@@ -1294,6 +1335,7 @@ def _shift_event_line(
         summary=_summary(kind, event.payload, names, catalog),
         status=index.status(event, kind),
         ref_event_id=event.ref_event_id,
+        event_id=event.event_id,
     )
 
 
@@ -1325,7 +1367,9 @@ def _summary_value(field_kind: FieldKind | None, value: Any, names: _Names, cata
     return value
 
 
-def _over_cap_withdrawals(connection: Connection, window: CardWindow, names: _Names) -> tuple[WithdrawalLine, ...]:
+def _over_cap_withdrawals(
+    connection: Connection, window: CardWindow, names: _Names, index: _EventIndex
+) -> tuple[WithdrawalLine, ...]:
     """Every withdrawal that named a manager: only an above-cap one asks for that name (F3/F4).
 
     The wizard asks for the manager's name above the cap and refuses it at or below the cap, so the
@@ -1345,9 +1389,16 @@ def _over_cap_withdrawals(connection: Connection, window: CardWindow, names: _Na
                 reason=str(event.payload.get("reason") or ""),
                 recipient=names.person(str(event.payload.get("recipient_id") or "")),
                 manager=names.person(str(manager_id)),
+                status=_decision_status(index, event),
             )
         )
     return tuple(rows)
+
+
+def _decision_status(index: _EventIndex, event: EventRecord) -> str:
+    """`pending`, `approved` or `rejected` for a record that asks the manager (C1)."""
+    kind = _registered_kind(event)
+    return STATUS_PENDING if kind is None else index.status(event, kind)
 
 
 def _late_cash(connection: Connection, window: CardWindow, names: _Names) -> tuple[LateCashLine, ...]:
@@ -1568,9 +1619,12 @@ def _purchase_orders(
     return tuple(rows)
 
 
-def _flagged_deliveries(connection: Connection, moment: datetime, names: _Names) -> tuple[FlaggedDeliveryLine, ...]:
+def _flagged_deliveries(
+    connection: Connection, moment: datetime, names: _Names, index: _EventIndex
+) -> tuple[FlaggedDeliveryLine, ...]:
     """A parcel with a problem label and no manager decision: its payment is locked (P-06, M-19)."""
     rows: list[FlaggedDeliveryLine] = []
+    flags = flag_event_ids(index.events)
     for parcel in delivery_states(events_repo.iter_events(connection)).values():
         if not parcel.payment_locked or parcel.returned:
             continue
@@ -1582,6 +1636,7 @@ def _flagged_deliveries(connection: Connection, moment: datetime, names: _Names)
                 at_tehran=parcel.at_tehran,
                 age_hours=_age_hours(moment, parse_iso(parcel.at_tehran)),
                 actor=names.person(parcel.actor_id),
+                flag_event_id=flags.get(parcel.delivery_id),
             )
         )
     return tuple(rows)

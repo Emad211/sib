@@ -31,6 +31,8 @@ QUANTITY = 4
 UNIT_PRICE = 25_000
 INVOICE_REFERENCE = "فاکتور ۱۲"
 PERSIAN = re.compile(r"[\u0600-\u06FF]")
+# A synthetic JPEG header: F1 makes the invoice photo mandatory, and the store only ever keeps content.
+INVOICE_PHOTO = b"\xff\xd8\xff\xe0" + b"0" * 64
 
 
 @pytest.fixture()
@@ -58,12 +60,14 @@ def _act(client: TestClient, csrf: str, action: str, data: dict) -> dict:
 def _record_a_parcel(client: TestClient) -> str:
     """Reception takes a parcel in, the accountant types its price: the chain the screen drives."""
     csrf = _sign_in(client, "reception")
+    photo = client.app.state.photos.save(INVOICE_PHOTO)
     received = _act(
         client,
         csrf,
         "delivery.receive",
         {
             "invoice_reference": INVOICE_REFERENCE,
+            "invoice_photo_sha256": photo,
             "lines": [{"item_id": ITEM, "location_id": LOCATION, "quantity": QUANTITY}],
         },
     )

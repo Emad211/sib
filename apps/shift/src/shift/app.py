@@ -227,6 +227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.catalog,
             application.state.settings_service,
             clock=clock,
+            photos=application.state.photos,
         )
         # One bridge for the process: the handover start reads accounting through it, and the
         # background poll keeps the mirror live. Without an accounting copy the bridge stays None

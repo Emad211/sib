@@ -53,6 +53,7 @@ from shift.domain.payloads import (
 )
 from shift.domain.purchase_specs import PURCHASE_EVENT_SPECS
 from shift.domain.shift_events import shift_event_specs
+from shift.domain.store_specs import STORE_EVENT_SPECS
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +115,8 @@ def _shift_event_specs() -> Mapping[EventType, EventSpec]:
     """
     composed = dict(BASE_EVENT_SPECS)
     for event_type, (payload_model, effects) in PURCHASE_EVENT_SPECS.items():
+        composed[event_type] = EventSpec(payload_model, effects, requires_shift=True)
+    for event_type, (payload_model, effects) in STORE_EVENT_SPECS.items():
         composed[event_type] = EventSpec(payload_model, effects, requires_shift=True)
     for event_type, (payload_model, effects) in shift_event_specs().items():
         composed[EventType(event_type)] = EventSpec(payload_model, effects, requires_shift=True)

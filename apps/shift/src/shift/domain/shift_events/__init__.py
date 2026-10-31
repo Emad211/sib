@@ -9,6 +9,7 @@ from shift.domain.shift_events import (  # noqa: F401 — importing registers th
     approvals,
     campaign_discount,
     card_transfer,
+    cash_deposit,
     cash_withdrawal,
     cleaning,
     emergency_withdrawal,

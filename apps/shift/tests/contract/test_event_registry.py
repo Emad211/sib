@@ -73,6 +73,13 @@ EXPECTED_EFFECTS = {
     EventType.VENDOR_CREDIT: ((), None),
     EventType.RESTOCK_CONFIRMED: ((StockOperation.SUBTRACT, StockOperation.ADD), None),
     EventType.EXPIRY_FLAGGED: ((), None),
+    # B1 and G3: the receiver's count adds the parcel to the main store, the storekeeper's opening count
+    # sets the whole store, and the giver's half of a shelf charge moves nothing until its confirmation.
+    EventType.DELIVERY_CONFIRMED: ((StockOperation.ADD,), None),
+    EventType.RESTOCK_OFFERED: ((), None),
+    EventType.STOCK_STORE_BASELINED: ((StockOperation.SET,), None),
+    EventType.STOCK_SAMPLE_COUNT: ((), None),
+    EventType.MANAGER_REVIEWED: ((), None),
 }
 
 
@@ -306,6 +313,11 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.VENDOR_CREDIT,
         EventType.RESTOCK_CONFIRMED,
         EventType.EXPIRY_FLAGGED,
+        EventType.DELIVERY_CONFIRMED,
+        EventType.RESTOCK_OFFERED,
+        EventType.STOCK_STORE_BASELINED,
+        EventType.STOCK_SAMPLE_COUNT,
+        EventType.MANAGER_REVIEWED,
     }
 
 

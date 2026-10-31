@@ -22,7 +22,6 @@ only, because the difference would hand the counter the number he is supposed to
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -30,13 +29,12 @@ from pydantic import BaseModel, ValidationError
 from shift.adapters.db import events_repo, projections_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
-from shift.common.clock import Clock, SystemClock, parse_iso, tehran_iso
+from shift.common.clock import Clock, SystemClock, tehran_iso
 from shift.common.ids import new_ulid
 from shift.domain.event_types import EventType
-from shift.domain.handover_payloads import DiscrepancyRecorded
-from shift.domain.payloads import WeeklyCount
 from shift.domain.permissions import Permission, Role
-from shift.domain.policy import SettingKey, ShiftKey
+from shift.domain.policy import ShiftKey
+from shift.domain.price_history import PriceSeries, price_history
 from shift.domain.purchase import APPROVED, DRAFT, PLACED, SUBMITTED, UNDECIDED, OrderState, order_states
 from shift.domain.purchase_deliveries import (
     FLAGGED,
@@ -50,21 +48,28 @@ from shift.domain.purchase_payloads import (
     DeliveryFlagged,
     DeliveryReceived,
     DeliveryTransferred,
-    ExpiryFlagged,
     InvoiceDigitized,
     OrderDecided,
     OrderDrafted,
     OrderPlaced,
     PaymentRecorded,
-    RestockConfirmed,
     VendorCredit,
     VendorReturn,
 )
-from shift.domain.stock_checks import WeeklyStatus, weekly_status
+from shift.domain.stock_checks import WeeklyStatus
+from shift.services import store_actions
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, Item, ItemKind
 from shift.services.event_store import EventStore, NewEvent
+from shift.services.photos import PhotoStore, is_photo_hash
 from shift.services.projections import ProjectionEngine
+from shift.services.purchase_rules import (
+    BAD_DATA,
+    MAIN_STORE,
+    NO_PHOTO,
+    PHOTO_NOT_STORED,
+    PurchaseRuleError,
+)
 from shift.services.settings import SettingsService
 
 Model = TypeVar("Model", bound=BaseModel)
@@ -72,7 +77,6 @@ Model = TypeVar("Model", bound=BaseModel)
 # What the signed-in person is told when a rule refuses the action; short, Persian and without a figure.
 NO_PERMISSION = "نقش شما اجازهٔ این کار را ندارد."
 UNKNOWN_ACTION = "این کار در زنجیرهٔ خرید شناخته نمی‌شود."
-BAD_DATA = "دادهٔ این کار کامل یا درست نیست."
 UNKNOWN_ORDER = "این سفارش پیدا نشد."
 NOT_UNDECIDED = "این سفارش منتظر تصمیم مدیر نیست؛ صفحه را تازه کنید."
 NOT_A_DRAFT = "فقط سفارشی که مدیر برای تغییر برگردانده است دوباره پیش‌نویس می‌شود."
@@ -90,20 +94,9 @@ OVER_PAYMENT = "مبلغ پرداخت از ماندهٔ فاکتور بیشتر 
 CANNOT_RETURN = "مرجوعی یک بار و برای باری ثبت می‌شود که پذیرش گرفته است."
 NO_RETURN = "بستانکاری فقط بعد از ثبت مرجوعی همین بار ثبت می‌شود."
 OVER_CREDIT = "مبلغ بستانکاری از سقف فاکتور بیشتر است."
-SAME_LOCATION = "مبدأ و مقصد شارژ قفسه نمی‌توانند یکی باشند."
-UNKNOWN_LOCATION = "محل مبدأ یا مقصد در کاتالوگ نیست."
-ITEM_NOT_THERE = "این قلم در قفسهٔ مقصد در کاتالوگ نیست."
-NOT_A_COUNTED_ITEM = "این قلم در این محل قلم شمارشی نیست."
-NOT_THE_STORE = "شمارش هفتگی فقط برای انبار اصلی ثبت می‌شود."
-RESTOCK_FROM_STORE = "شارژ قفسه فقط از انبار اصلی ثبت می‌شود."
-UNKNOWN_CONFIRMER = "تأییدکننده باید از کارکنان فعال درمانگاه باشد."
 PAYMENT_RETURNED = "بار این فاکتور به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."
 
-# The clinic counts the main store blind once a week (S01 §4, P-11). No catalog field or setting names
-# the store's location yet, so its id is pinned here: a shelf count must never mark the week done, and the
-# warehouse section lists what the store holds rather than every counted item of the clinic.
-MAIN_STORE = "main_store"
-
+STORE_PREFIX = "store:"
 # Every action, the permission it needs and the handler that writes it; nothing else may be appended.
 ACTIONS: Mapping[str, tuple[Permission, str]] = {
     "order.draft": (Permission.PURCHASE_ORDER_DRAFT, "_order_draft"),
@@ -117,8 +110,9 @@ ACTIONS: Mapping[str, tuple[Permission, str]] = {
     # P-09: the storekeeper records the return and holds the same receipt permission the delivery did.
     "return.record": (Permission.PURCHASE_DELIVERY_RECEIVE, "_return_record"),
     "credit.record": (Permission.PURCHASE_PAYMENT_RECORD, "_credit_record"),
-    "restock.record": (Permission.STOCK_RESTOCK_CONFIRM, "_restock_record"),
-    "weekly.count": (Permission.STOCK_COUNT_SUBMIT, "_weekly_count"),
+    # The main store's actions live in `store_actions` (opening count, weekly full count, monthly sample,
+    # the two-sided parcel and shelf charge); the prefix routes them to its handlers (B1, G3).
+    **{name: (permission, STORE_PREFIX + handler) for name, (permission, handler) in store_actions.ACTIONS.items()},
 }
 # The purchase page draws a button per permission here and nothing else (piece B reads this list).
 PURCHASE_PERMISSIONS: tuple[Permission, ...] = (
@@ -140,10 +134,6 @@ _RECEIVABLE = RECEIVED_STATUSES
 # One writer at a time: a rule that reads the folded log and then appends must not interleave with a
 # second request doing the same, or two payments could each pass the invoice-balance check (P-08).
 _WRITE_LOCK = threading.Lock()
-
-
-class PurchaseRuleError(ValueError):
-    """A purchase action the clinic's rules refuse; the route answers 422 with this message."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +176,10 @@ class Warehouse:
     locations: tuple[tuple[str, str], ...]
     weekly: WeeklyStatus
     restock: tuple[RestockRecord, ...]
+    # B1: the items already counted in this week's window (the week closes only when all are), and whether
+    # the storekeeper's opening count exists yet.
+    counted_ids: tuple[str, ...] = ()
+    baseline_done: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +194,15 @@ class PurchaseState:
     permissions: tuple[str, ...]
     # P-09: only the storekeeper records a vendor return, so the page may draw its form for them alone.
     is_storekeeper: bool = False
+    # F2: every item's price per vendor, for the people who already see invoices (the accountant).
+    price_history: tuple[PriceSeries, ...] | None = None
+    # B1: this month's five sampled items for the accountant, and what is already counted.
+    sample: dict[str, Any] | None = None
+    # G3: what waits for this very person — shelf charges to confirm and parcels to count (no figures).
+    inbox: dict[str, Any] | None = None
+    # G3: who the giver may name to confirm a shelf charge, by name and role; never an id for staff.
+    directory: tuple[dict[str, Any], ...] = ()
+    viewer_id: str = ""
 
     def to_payload(self) -> dict[str, Any]:
         """The JSON the route answers with; prices appear in the invoices section only."""
@@ -214,12 +217,18 @@ class PurchaseState:
                 ]
             ),
             "deliveries": (
-                None if self.deliveries is None else [_delivery_payload(delivery) for delivery in self.deliveries]
+                None
+                if self.deliveries is None
+                else [_delivery_payload(delivery, self.viewer_id) for delivery in self.deliveries]
             ),
             "invoices": (None if self.invoices is None else [_invoice_payload(delivery) for delivery in self.invoices]),
             "warehouse": None if self.warehouse is None else _warehouse_payload(self.warehouse),
             "permissions": list(self.permissions),
             "is_storekeeper": self.is_storekeeper,
+            "price_history": None if self.price_history is None else [_series_payload(s) for s in self.price_history],
+            "sample": self.sample,
+            "inbox": self.inbox,
+            "directory": list(self.directory),
         }
 
 
@@ -246,6 +255,7 @@ class PurchaseService:
         settings: SettingsService,
         *,
         clock: Clock | None = None,
+        photos: PhotoStore | None = None,
     ) -> None:
         self._database = database
         self._events = events
@@ -253,6 +263,9 @@ class PurchaseService:
         self._catalog = catalog
         self._settings = settings
         self._clock = clock or SystemClock()
+        # The photo folder, when the app has one: a receipt that names a photo the store lacks is refused (F1).
+        self._photos = photos
+        self._store = store_actions.StoreActions(database, events, catalog, settings, self._clock)
 
     # --- reading ---------------------------------------------------------------------------
 
@@ -279,6 +292,11 @@ class PurchaseService:
             warehouse=(self._warehouse(items, shift, log) if Permission.STOCK_RESTOCK_CONFIRM in held else None),
             permissions=tuple(sorted(item.value for item in PURCHASE_PERMISSIONS if item in held)),
             is_storekeeper=Role.STOREKEEPER.value in principal.roles,
+            price_history=price_history(log) if Permission.PURCHASE_PAYMENT_RECORD in held else None,
+            sample=self._sample_view(principal, shift, log),
+            inbox=self._inbox(principal, shift, log),
+            directory=self._directory(principal),
+            viewer_id=principal.staff_id,
         )
 
     def pending(self, shift: ShiftKey) -> PendingPurchase:
@@ -296,7 +314,7 @@ class PurchaseService:
                 parcel for parcel in parcels.values() if parcel.custody != "storekeeper" and not parcel.returned
             ),
             below_minimum=self._below_minimum(self._counted_items(shift)),
-            weekly=self._weekly(shift, log),
+            weekly=self._store.weekly(shift, log)[0],
         )
 
     def in_transit(self, shift: ShiftKey) -> tuple[DeliveryState, ...]:
@@ -331,7 +349,8 @@ class PurchaseService:
         if permission not in principal.permissions:
             raise PurchaseRuleError(NO_PERMISSION)
         with _WRITE_LOCK:
-            result: dict[str, Any] = getattr(self, handler)(principal, shift, dict(data))
+            owner = self._store if handler.startswith(STORE_PREFIX) else self
+            result: dict[str, Any] = getattr(owner, handler.removeprefix(STORE_PREFIX))(principal, shift, dict(data))
             self._projections.sync()
         return result
 
@@ -365,6 +384,7 @@ class PurchaseService:
     def _delivery_receive(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
         """P-04: what reception counted at the door, against an invoice number and with no prices."""
         data["delivery_id"] = self._mint()
+        self._need_photo(data.get("invoice_photo_sha256"), required=True)
         received = self._body(DeliveryReceived, data)
         if received.order_id is not None and self._require_order(received.order_id).status != PLACED:
             raise PurchaseRuleError(ORDER_NOT_PLACED)
@@ -412,6 +432,7 @@ class PurchaseService:
         A parcel that went back to the vendor has nothing left to pay for — the credit note is the
         accountant's record of it — so the payment door closes there as well as behind a locked flag.
         """
+        self._need_photo(data.get("receipt_photo_sha256"), required=False)
         payment = self._body(PaymentRecorded, data)
         parcel = self._require_delivery(payment.delivery_id)
         if not parcel.invoice_lines:
@@ -445,76 +466,6 @@ class PurchaseService:
             raise PurchaseRuleError(OVER_CREDIT)
         event_id = self._append(EventType.VENDOR_CREDIT, credit, principal, shift)
         return {"status": "recorded", "event_id": event_id, "delivery_id": credit.delivery_id}
-
-    def _restock_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-10: the store down and the shelf up in one record, confirmed by the person who counted it.
-
-        The shift lead who counted the units on the shelf is the confirmer, so the page may name them;
-        with no name it is the caller, who is the one counting at this moment. Either way the name must
-        be an active staff member, because the record says who confirmed the count.
-        """
-        if not data.get("confirmer_id"):
-            data["confirmer_id"] = principal.staff_id
-        restock = self._body(RestockConfirmed, data)
-        if restock.from_location_id == restock.to_location_id:
-            raise PurchaseRuleError(SAME_LOCATION)
-        if restock.from_location_id != MAIN_STORE:
-            raise PurchaseRuleError(RESTOCK_FROM_STORE)
-        places = {place.location_id for place in self._catalog.locations(shift)}
-        if restock.from_location_id not in places or restock.to_location_id not in places:
-            raise PurchaseRuleError(UNKNOWN_LOCATION)
-        if not any(
-            item.item_id == restock.item_id and item.location_id == restock.to_location_id
-            for item in self._catalog.items(shift)
-        ):
-            raise PurchaseRuleError(ITEM_NOT_THERE)
-        if not self._is_active_staff(restock.confirmer_id):
-            raise PurchaseRuleError(UNKNOWN_CONFIRMER)
-        event_id = self._append(EventType.RESTOCK_CONFIRMED, restock, principal, shift)
-        return {"status": "recorded", "event_id": event_id}
-
-    def _weekly_count(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-11: a blind count of one store item, its unnamed discrepancy and the expiry flag beside it.
-
-        Only the main store is counted this way: the weekly status the manager's card reads is about the
-        store, so a shelf count must never be able to mark the week done. The answers carry event ids and
-        nothing else — the difference is `counted − expected`, so naming it would tell the counter the
-        figure he just counted blind.
-        """
-        near_expiry = bool(data.pop("near_expiry", False))
-        counted = self._body(WeeklyCount, data)
-        location = counted.location_id
-        if location != MAIN_STORE:
-            raise PurchaseRuleError(NOT_THE_STORE)
-        # The same set the warehouse section lists, so the page never offers an item the rule refuses:
-        # a counted item that lives in the store, or one a shelf charge left stock at the store for.
-        if counted.item_id not in {item.item_id for item in self._store_items(self._counted_items(shift))}:
-            raise PurchaseRuleError(NOT_A_COUNTED_ITEM)
-        expected = self._stock().get((counted.item_id, location), 0)
-        batch = [self._new_event(EventType.STOCK_WEEKLY_COUNT, counted, principal, shift)]
-        difference = counted.counted - expected
-        if difference:
-            gap = DiscrepancyRecorded(
-                scope="item",
-                item_id=counted.item_id,
-                location_id=location,
-                difference=difference,
-                culprit_id=None,
-            )
-            batch.append(
-                self._new_event(
-                    EventType.DISCREPANCY_RECORDED, gap, principal, shift, ref_event_id=batch[0].client_event_id
-                )
-            )
-        if near_expiry:
-            expiry = ExpiryFlagged(item_id=counted.item_id, location_id=location, note=None)
-            batch.append(
-                self._new_event(
-                    EventType.EXPIRY_FLAGGED, expiry, principal, shift, ref_event_id=batch[0].client_event_id
-                )
-            )
-        self._events.append_many(batch)
-        return {"status": "recorded", "event_id": batch[0].client_event_id}
 
     # --- the little pieces ----------------------------------------------------------------
 
@@ -553,6 +504,19 @@ class PurchaseService:
             shift_id=shift.text,
             ref_event_id=ref_event_id,
         )
+
+    def _need_photo(self, value: object, *, required: bool) -> None:
+        """F1: the invoice photo is mandatory at the door; a payment receipt's photo is optional (decision 6).
+
+        A hash is only ever a 64-character digest, never a path; when the app has a photo folder the file
+        has to be in it, so a record can never name a photo the accountant could not open.
+        """
+        if value in (None, ""):
+            if required:
+                raise PurchaseRuleError(NO_PHOTO)
+            return
+        if not is_photo_hash(value) or (self._photos is not None and not self._photos.exists(str(value))):
+            raise PurchaseRuleError(PHOTO_NOT_STORED)
 
     def _mint(self) -> str:
         return new_ulid(self._clock.now_utc())
@@ -610,18 +574,6 @@ class PurchaseService:
             if stock.get((item.item_id, item.location_id), 0) < item.minimum
         )
 
-    def _weekly(self, shift: ShiftKey, log: list[EventRecord]) -> WeeklyStatus:
-        last: datetime | None = None
-        for event in log:
-            if event.type == EventType.STOCK_WEEKLY_COUNT:
-                last = parse_iso(event.at_tehran)
-        return weekly_status(
-            last,
-            self._clock.now_utc(),
-            due_weekday=self._settings.number(SettingKey.WEEKLY_COUNT_WEEKDAY, shift),
-            due_time=self._settings.clock_time(SettingKey.WEEKLY_COUNT_TIME, shift),
-        )
-
     def _warehouse(self, items: list[Item], shift: ShiftKey, log: list[EventRecord]) -> Warehouse:
         """The store's own view: what lives in the main store or has stock there, and the week's count.
 
@@ -641,22 +593,20 @@ class PurchaseService:
             for event in log
             if event.type == EventType.RESTOCK_CONFIRMED
         ]
+        weekly, counted_ids = self._store.weekly(shift, log)
         return Warehouse(
             items=self._store_items(items),
             locations=tuple((place.location_id, place.name) for place in self._catalog.locations(shift)),
-            weekly=self._weekly(shift, log),
+            weekly=weekly,
             restock=tuple(reversed(restock[-RESTOCK_HISTORY:])),
+            counted_ids=counted_ids,
+            baseline_done=self._store.baseline_done(log),
         )
 
     def _store_items(self, items: list[Item]) -> tuple[WarehouseItem, ...]:
         """Every counted item the store holds: its catalog home is there, or a charge left stock there."""
         catalog = {item.item_id: item for item in items}
-        home = [item.item_id for item in items if item.location_id == MAIN_STORE]
-        stocked = sorted(
-            item_id
-            for item_id, location_id in self._stock()
-            if location_id == MAIN_STORE and item_id in catalog and item_id not in home
-        )
+        ids = self._store.store_item_ids_of(items)
         return tuple(
             WarehouseItem(
                 catalog[item_id].item_id,
@@ -665,8 +615,81 @@ class PurchaseService:
                 catalog[item_id].unit,
                 catalog[item_id].minimum,
             )
-            for item_id in home + stocked
+            for item_id in ids
         )
+
+    def _sample_view(self, principal: Principal, shift: ShiftKey, log: list[EventRecord]) -> dict[str, Any] | None:
+        """B1: the accountant's five items of the month, blind: names and units, never a quantity."""
+        if not store_actions.SAMPLERS & set(principal.roles):
+            return None
+        month, picked, done = self._store.sample(shift, log)
+        names = {item.item_id: item for item in self._counted_items(shift)}
+        return {
+            "month": month,
+            "items": [
+                {"item_id": item_id, "name": names[item_id].name, "unit": names[item_id].unit, "done": item_id in done}
+                for item_id in picked
+                if item_id in names
+            ],
+        }
+
+    def _directory(self, principal: Principal) -> tuple[dict[str, Any], ...]:
+        """G3: the people the giver may name to confirm a shelf charge, by name and role.
+
+        Only somebody who may record a charge needs the list. The giver's own name is left out: a charge
+        confirmed by the person who recorded it is not a two-sided record (owner decision, G3).
+        """
+        if Permission.STOCK_RESTOCK_CONFIRM not in principal.permissions:
+            return ()
+        with self._database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+        return tuple(
+            {
+                "staff_id": person.staff.staff_id,
+                "name": person.staff.full_name,
+                "role": "، ".join(person.roles),
+            }
+            for person in people
+            if person.staff.active and person.staff.staff_id != principal.staff_id
+        )
+
+    def _inbox(self, principal: Principal, shift: ShiftKey, log: list[EventRecord]) -> dict[str, Any]:
+        """G3: what waits for this person's own count; the offered figure stays hidden from the counter."""
+        # Names travel with the offers: the counter may hold no warehouse section, and an id is never shown.
+        names = {item.item_id: item.name for item in self._counted_items(shift)}
+        places = {place.location_id: place.name for place in self._catalog.locations(shift)}
+        mine = [
+            {
+                "offer_id": offer.event_id,
+                "item_id": str(offer.payload["item_id"]),
+                "item_name": names.get(str(offer.payload["item_id"]), ""),
+                "to_location_id": str(offer.payload["to_location_id"]),
+                "to_location_name": places.get(str(offer.payload["to_location_id"]), ""),
+                "from_location_name": places.get(str(offer.payload["from_location_id"]), ""),
+                "giver_id": offer.actor_id,
+            }
+            for offer in self._store.open_offers(log)
+            if str(offer.payload["confirmer_id"]) == principal.staff_id
+        ]
+        waiting = [
+            {"offer_id": offer.event_id, "item_id": str(offer.payload["item_id"])}
+            for offer in self._store.open_offers(log)
+            if offer.actor_id == principal.staff_id
+        ]
+        parcels = [
+            {
+                "delivery_id": parcel.delivery_id,
+                "invoice_reference": parcel.invoice_reference,
+                "item_ids": sorted({line.item_id for line in parcel.lines}),
+                "items": [
+                    {"item_id": item_id, "name": names.get(item_id, "")}
+                    for item_id in sorted({line.item_id for line in parcel.lines})
+                ],
+            }
+            for parcel in delivery_states(log).values()
+            if parcel.awaiting_staff_id == principal.staff_id and not parcel.returned
+        ]
+        return {"restock_to_confirm": mine, "restock_waiting": waiting, "parcels_to_count": parcels}
 
 
 def _order_payload(order: OrderState) -> dict[str, Any]:
@@ -687,8 +710,13 @@ def _order_payload(order: OrderState) -> dict[str, Any]:
     }
 
 
-def _delivery_payload(parcel: DeliveryState) -> dict[str, Any]:
-    """A parcel as reception and the storekeeper read it: units and custody, never a price."""
+def _delivery_payload(parcel: DeliveryState, viewer_id: str = "") -> dict[str, Any]:
+    """A parcel as reception and the storekeeper read it: units and custody, never a price.
+
+    The person the parcel was handed to counts it blind (G3): their copy of the lines names the items and
+    leaves out reception's quantities, so the count they type is their own.
+    """
+    blind = parcel.awaiting_staff_id is not None and parcel.awaiting_staff_id == viewer_id
     return {
         "delivery_id": parcel.delivery_id,
         "order_id": parcel.order_id,
@@ -698,8 +726,10 @@ def _delivery_payload(parcel: DeliveryState) -> dict[str, Any]:
         "custody": parcel.custody,
         "returned": parcel.returned,
         "packages": parcel.packages,
+        "awaiting_staff_id": parcel.awaiting_staff_id,
+        "blind": blind,
         "lines": [
-            {"item_id": line.item_id, "location_id": line.location_id, "quantity": line.quantity}
+            {"item_id": line.item_id, "location_id": line.location_id, "quantity": None if blind else line.quantity}
             for line in parcel.lines
         ],
         "actor_id": parcel.actor_id,
@@ -719,6 +749,8 @@ def _invoice_payload(parcel: DeliveryState) -> dict[str, Any]:
         "paid_total": parcel.paid_total,
         "credit_total": parcel.credit_total,
         "remaining": max(parcel.invoice_total - parcel.paid_total, 0),
+        "invoice_photo": parcel.invoice_photo,
+        "receipt_photos": list(parcel.receipt_photos),
         "lines": [
             {
                 "item_id": line.item_id,
@@ -727,6 +759,26 @@ def _invoice_payload(parcel: DeliveryState) -> dict[str, Any]:
                 "total": line.quantity * line.unit_price_toman,
             }
             for line in parcel.invoice_lines
+        ],
+    }
+
+
+def _series_payload(series: PriceSeries) -> dict[str, Any]:
+    """One item's prices from one vendor, oldest first; the accountant's view and nobody else's (F2)."""
+    return {
+        "item_id": series.item_id,
+        "vendor": series.vendor,
+        "latest": series.latest,
+        "change": series.change_toman,
+        "points": [
+            {
+                "delivery_id": point.delivery_id,
+                "invoice_reference": point.invoice_reference,
+                "at_tehran": point.at_tehran,
+                "unit_price_toman": point.unit_price_toman,
+                "quantity": point.quantity,
+            }
+            for point in series.points
         ],
     }
 
@@ -752,6 +804,8 @@ def _warehouse_payload(warehouse: Warehouse) -> dict[str, Any]:
             "window_end": weekly.window_end.isoformat(),
             "last_count_at": None if weekly.last_count_at is None else tehran_iso(weekly.last_count_at),
         },
+        "counted_ids": list(warehouse.counted_ids),
+        "baseline_done": warehouse.baseline_done,
         "restock": [
             {
                 "item_id": record.item_id,
