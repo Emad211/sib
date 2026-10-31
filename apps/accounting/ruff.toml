@@ -5,6 +5,7 @@ target-version = "py313"
 include = [
     "tools/**/*.py",
     "tests/test_route_matrix.py",
+    "tests/test_acc_audit_fixes.py",
     "tests/test_prod_snapshot.py",
     "tests/test_migrations.py",
     "tests/test_backup.py",

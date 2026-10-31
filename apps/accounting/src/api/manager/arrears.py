@@ -132,6 +132,7 @@ def insurance_arrears():
         JOIN patients p ON v.patient_id = p.id
         JOIN invoices inv ON v.invoice_id = inv.id
         WHERE v.insurance_type IS NOT NULL AND v.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     params = []
 
@@ -159,6 +160,7 @@ def insurance_arrears():
         JOIN patients p ON i.patient_id = p.id
         JOIN invoices inv ON i.invoice_id = inv.id
         WHERE inv.insurance_type IS NOT NULL AND inv.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     inj_params = []
 
@@ -458,6 +460,7 @@ def export_insurance_arrears():
         JOIN patients p ON v.patient_id = p.id
         JOIN invoices inv ON v.invoice_id = inv.id
         WHERE v.insurance_type IS NOT NULL AND v.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     params = []
     if date_from_gregorian:
@@ -480,6 +483,7 @@ def export_insurance_arrears():
         JOIN patients p ON i.patient_id = p.id
         JOIN invoices inv ON i.invoice_id = inv.id
         WHERE inv.insurance_type IS NOT NULL AND inv.insurance_type != 'آزاد'
+          AND inv.status != 'voided'
     """
     inj_params = []
     if date_from_gregorian:
