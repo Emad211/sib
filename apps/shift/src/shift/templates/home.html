@@ -49,6 +49,14 @@
   {% endif %}
 </section>
 
+{% if show_manager_link %}
+<section class="card" aria-labelledby="manager-link-title">
+  <h2 id="manager-link-title" class="card-title">کارت روزانهٔ مدیر</h2>
+  <p class="card-subtitle">نقد ثبت‌شده در تحویل، مغایرت‌ها و تحویل‌های باز، هر روز صبح.</p>
+  <a class="btn btn-primary btn-block" href="/manager/card">باز کردن کارت امروز</a>
+</section>
+{% endif %}
+
 <!-- Outbox Card (hidden when 0 items) -->
 <section id="outbox-card" class="card hidden" aria-labelledby="outbox-card-title">
   <h2 id="outbox-card-title" class="card-title">صف رویدادهای محلی (Outbox)</h2>

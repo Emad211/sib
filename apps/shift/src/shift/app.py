@@ -17,6 +17,7 @@ from shift.api import (
     routes_devices,
     routes_events,
     routes_handover,
+    routes_manager,
     routes_settings,
     routes_web,
 )
@@ -48,6 +49,11 @@ def _catalog_service(request: Request) -> CatalogService:
 def _settings_service(request: Request) -> SettingsService:
     """The settings service created in the lifespan (manager routes only)."""
     return request.app.state.settings_service
+
+
+def _daily_card_service(request: Request) -> DailyCardService:
+    """The daily card service created in the lifespan (the manager's card pages)."""
+    return request.app.state.daily_card
 
 
 def _daily_card_action(cards: DailyCardService) -> Callable[[datetime], str]:
@@ -198,6 +204,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             running_shift=deps.running_shift,
         )
     )
+    # The manager's card and settings pages (SHF-6.1): server-rendered, one page guard each.
+    app.include_router(routes_manager.build_manager_router(cards=_daily_card_service, settings=_settings_service))
 
     static_dir = Path(__file__).resolve().parent / "static"
     if static_dir.exists():

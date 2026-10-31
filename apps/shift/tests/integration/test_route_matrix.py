@@ -45,6 +45,8 @@ PATH_VALUES = {
     "location_id": "shelf_reception",
     "setting": "session_ttl_hours",
     "role": "nurse",
+    # A day the matrix app never generated a card for, so the manager gets the 404 page.
+    "card_date": "2026-10-29",
     # An id no flow ever used: every guarded handover route answers 404 for a permitted role.
     "handover_id": "01J00000000000000000000000",
 }
