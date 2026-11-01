@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.api import deps
+from shift.api.errors import Conflict
 from shift.api.templating import templates
 from shift.common.clock import parse_iso, to_tehran, utc_iso
 from shift.common.jalali import format_jalali
@@ -26,12 +27,17 @@ DeviceEnroller = Annotated[Principal, Depends(deps.require(Permission.DEVICE_ENR
 DeviceRevoker = Annotated[Principal, Depends(deps.require(Permission.DEVICE_REVOKE))]
 
 
+NO_PUBLIC_ORIGIN = "نشانی بیرونی درمانگاه هنوز تنظیم نشده است (SHIFT_PUBLIC_ORIGIN)."
+
+
 class MintRequest(BaseModel):
     """Which staff member the printed QR is for."""
 
     model_config = ConfigDict(extra="forbid")
 
     staff_id: str = Field(min_length=1, max_length=64)
+    # A phone that will be used from outside the clinic (the head, the manager) pairs on the public name.
+    remote: bool = False
 
 
 class EnrollRequest(BaseModel):
@@ -86,6 +92,7 @@ def device_admin_page(request: Request, principal: DeviceAdmin) -> HTMLResponse:
         "device_admin.html",
         {
             "csrf_token": principal.csrf_token,
+            "public_origin": request.app.state.settings.public_origin,
             "staff": [
                 {
                     "id": entry.staff_id,
@@ -117,7 +124,11 @@ def list_devices(request: Request, _: DeviceEnroller) -> list[dict[str, object]]
 @router.post("/api/v1/devices/enrollment-tokens", status_code=201, tags=["devices"])
 def mint_enrollment_token(body: MintRequest, request: Request, principal: DeviceEnroller) -> JSONResponse:
     """Mint a single-use 10-minute token and return the QR for it (shown once)."""
-    offer = _service(request).mint(staff_id=body.staff_id, created_by=principal.staff_id, origin=str(request.base_url))
+    public = request.app.state.settings.public_origin
+    if body.remote and public is None:
+        raise Conflict(NO_PUBLIC_ORIGIN)
+    origin = public if body.remote else str(request.base_url)
+    offer = _service(request).mint(staff_id=body.staff_id, created_by=principal.staff_id, origin=origin)
     return JSONResponse(
         {
             "device_id": offer.device_id,

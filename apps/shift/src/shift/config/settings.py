@@ -1,6 +1,7 @@
 """Application configuration and the per-install secret file."""
 
 import os
+import re
 import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -36,6 +37,16 @@ def _as_port(value: str) -> int:
     return port
 
 
+def _as_origin(value: str) -> str | None:
+    """An `https://host[:port]` origin with nothing after it, or None when unset."""
+    text = value.strip().rstrip("/")
+    if not text:
+        return None
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+(:\d{1,5})?", text):
+        raise ValueError(f"SHIFT_PUBLIC_ORIGIN must be https://host[:port], got {value!r}")
+    return text
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Paths and runtime switches; `from_env` is the only production constructor."""
@@ -59,6 +70,10 @@ class Settings:
     # Off by default so a test or a one-off script never starts a timer by accident; the
     # production entry point turns them on through `SHIFT_BACKGROUND_JOBS` (see `from_env`).
     background_jobs: bool = False
+    # The address the head and the manager reach from outside the clinic (the relay's public name, with
+    # its Let's Encrypt certificate). A pairing QR made "for outside" carries it; LAN phones keep the
+    # LAN address so the clinic never depends on the internet (O05).
+    public_origin: str | None = None
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "Settings":
@@ -83,6 +98,7 @@ class Settings:
             backup_keep=_as_count(env.get("SHIFT_BACKUP_KEEP", str(DEFAULT_BACKUP_KEEP))),
             photos_dir=Path(env.get("SHIFT_PHOTOS_DIR", root / "photos")).resolve(),
             background_jobs=_as_bool(env.get("SHIFT_BACKGROUND_JOBS", "1")),
+            public_origin=_as_origin(env.get("SHIFT_PUBLIC_ORIGIN", "")),
         )
 
     @property

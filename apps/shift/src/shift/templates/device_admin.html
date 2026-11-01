@@ -51,6 +51,7 @@
             {% endfor %}
           </select>
         </label>
+        {% if public_origin %}<label class="check"><input type="checkbox" name="remote" id="remote"> گوشی بیرون از درمانگاه هم کار می‌کند (رئیس، مدیر)</label>{% endif %}
         <button id="mint-button" type="submit">ساخت کد ثبت دستگاه</button>
       </form>
       <p id="message" role="status"></p>
@@ -115,7 +116,7 @@
       if (!mintForm.staff_id.value) { return; }
       mintButton.disabled = true;
       try {
-        const offer = await call("/api/v1/devices/enrollment-tokens", { staff_id: mintForm.staff_id.value });
+        const offer = await call("/api/v1/devices/enrollment-tokens", { staff_id: mintForm.staff_id.value, remote: Boolean(mintForm.remote && mintForm.remote.checked) });
         document.getElementById("enrollment-qr").src = offer.qr_svg;
         document.getElementById("enrollment-url").textContent = offer.enrollment_url;
         panel.classList.add("visible");

@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -342,3 +343,32 @@ def test_an_enrollment_row_carries_the_tehran_expiry(seeded: TestClient) -> None
 
     assert offer["expires_at_fa"].count(":") == 1
     assert row.expires_at == offer["expires_at"]
+
+
+def test_a_phone_for_outside_the_clinic_pairs_on_the_public_name(seeded: TestClient) -> None:
+    """O05: the head's and the manager's phones pair on the relay's public name; LAN phones keep the LAN."""
+    csrf = _manager(seeded)
+    headers = {"X-CSRFToken": csrf}
+    body = {"staff_id": ROLES["manager"].staff_id, "remote": True}
+
+    refused = seeded.post("/api/v1/devices/enrollment-tokens", json=body, headers=headers)
+    assert refused.status_code == 409, "no public origin configured: nothing to pair on"
+
+    seeded.app.state.settings = replace(seeded.app.state.settings, public_origin="https://shift.example.ir")
+    remote = seeded.post("/api/v1/devices/enrollment-tokens", json=body, headers=headers)
+    local = seeded.post("/api/v1/devices/enrollment-tokens", json={**body, "remote": False}, headers=headers)
+
+    assert remote.json()["enrollment_url"].startswith("https://shift.example.ir/enroll#t=")
+    assert local.json()["enrollment_url"].startswith("http://testserver/enroll#t=")
+
+
+@pytest.mark.parametrize("bad", ["http://shift.example.ir", "https://shift.example.ir/path", "shift.example.ir"])
+def test_the_public_origin_must_be_a_bare_https_origin(bad: str) -> None:
+    from shift.config.settings import Settings
+
+    with pytest.raises(ValueError):
+        Settings.from_env({"SHIFT_PUBLIC_ORIGIN": bad})
+    assert (
+        Settings.from_env({"SHIFT_PUBLIC_ORIGIN": "https://shift.example.ir/"}).public_origin
+        == "https://shift.example.ir"
+    )
