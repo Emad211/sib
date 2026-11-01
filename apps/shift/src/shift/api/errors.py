@@ -18,6 +18,7 @@ from shift.services.auth import (
     AccountLocked,
     AuthError,
     DeviceNotEnrolled,
+    DeviceProofFailed,
     DeviceRevoked,
     InvalidCredentials,
     OtpRequired,
@@ -132,6 +133,13 @@ def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] |
         return 401, "invalid_credentials", _BAD_CREDENTIALS, None
     if isinstance(exc, OtpRequired):
         return 401, "otp_required", "کد شش‌رقمی برنامهٔ تأیید (Authenticator) را بزنید.", None
+    if isinstance(exc, DeviceProofFailed):
+        return (
+            403,
+            "device_proof_failed",
+            "این گوشی تأیید نشد؛ ورود از بیرون درمانگاه فقط با همان گوشی جفت‌شده ممکن است.",
+            None,
+        )
     if isinstance(exc, TwoStepRequired):
         return (
             403,

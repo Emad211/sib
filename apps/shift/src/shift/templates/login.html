@@ -67,6 +67,43 @@
     const asciiDigits = (value) =>
       window.ShiftPWA && window.ShiftPWA.normalizeDigits ? window.ShiftPWA.normalizeDigits(value) : value;
 
+    // ADR-027: the phone signs the login with the key it made when it was paired, so a PIN and a code
+    // typed on another device are not enough from outside the clinic. No key (an older pairing) sends none.
+    function normalisedMobile(raw) {
+      let text = raw.replace(/[\s-]/g, "");
+      if (text.startsWith("+98")) text = "0" + text.slice(3);
+      else if (text.startsWith("0098")) text = "0" + text.slice(4);
+      return text;
+    }
+
+    async function deviceProof(id, mobile) {
+      try {
+        const database = await new Promise((resolve, reject) => {
+          const request = indexedDB.open("shift_identity", 1);
+          request.onupgradeneeded = () => request.result.createObjectStore("keys", { keyPath: "device_id" });
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const record = await new Promise((resolve, reject) => {
+          const read = database.transaction("keys").objectStore("keys").get(id);
+          read.onsuccess = () => resolve(read.result);
+          read.onerror = () => reject(read.error);
+        });
+        if (!record || !record.private_key) return null;
+        const key = await crypto.subtle.importKey(
+          "jwk", record.private_key, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
+        );
+        const at = new Date().toISOString();
+        const signed = new TextEncoder().encode(["shift-login", id, normalisedMobile(mobile), at].join("\n"));
+        const signature = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, signed));
+        let binary = "";
+        signature.forEach((byte) => { binary += String.fromCharCode(byte); });
+        return { at: at, signature: btoa(binary) };
+      } catch (error) {
+        return null;
+      }
+    }
+
     // Say which field is empty and put the cursor there, instead of sending the form and
     // letting the server answer «درخواست نامعتبر است.».
     function requireField(field, text) {
@@ -103,6 +140,7 @@
             pin: asciiDigits(form.pin.value),
             device_id: deviceId,
             otp: otpRow.hidden ? null : asciiDigits(form.otp.value).trim() || null,
+            proof: await deviceProof(deviceId, asciiDigits(form.mobile.value)),
           }),
         });
         const body = await response.json().catch(() => ({}));

@@ -51,6 +51,8 @@ class LoginRequest(BaseModel):
     device_id: str = Field(min_length=1, max_length=64)
     # ADR-027: the authenticator's six digits, sent once the server asked for them.
     otp: str | None = Field(default=None, max_length=12)
+    # ADR-027: the paired phone's signature of this login (`at` and the base64 P1363 signature).
+    proof: dict[str, str] | None = None
 
 
 class PinResetRequest(BaseModel):
@@ -190,7 +192,12 @@ def login(request: Request, body: LoginRequest) -> JSONResponse:
     ):
         raise TooManyAttempts(TOO_MANY_LOGINS)
     issued = deps.auth_service(request).login(
-        mobile=body.mobile, pin=body.pin, device_id=body.device_id, otp=body.otp, remote=_from_outside(request)
+        mobile=body.mobile,
+        pin=body.pin,
+        device_id=body.device_id,
+        otp=body.otp,
+        remote=_from_outside(request),
+        proof=body.proof,
     )
     response = JSONResponse(_session_payload(issued.principal), headers={"Cache-Control": "no-store"})
     _set_session_cookie(response, issued.token, request)

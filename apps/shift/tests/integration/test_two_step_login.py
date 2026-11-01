@@ -1,17 +1,21 @@
 """ADR-027: the two-step login of the head and the manager, through the real routes."""
 
+import base64
 import time
 from collections.abc import Iterator
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from auth_fixtures import PIN, ROLES, seed_roster
 from fastapi.testclient import TestClient
+from p256_signer import new_key
 
 from shift.app import create_app
 from shift.config.settings import Settings
 from shift.domain import totp
+from shift.services.auth import device_proof_message
 
 MANAGER = ROLES["manager"]
 API = "/api/v1/manager/two-step"
@@ -32,7 +36,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         yield running
 
 
-def _login(client: TestClient, *, otp: str | None = None, host: str | None = None):
+def _login(client: TestClient, *, otp: str | None = None, host: str | None = None, key=None):
     client.cookies.clear()
     client.get("/login")
     headers = {"X-CSRFToken": client.cookies.get("shift_csrf", "")}
@@ -41,6 +45,10 @@ def _login(client: TestClient, *, otp: str | None = None, host: str | None = Non
     body = {"mobile": MANAGER.mobile, "pin": PIN, "device_id": MANAGER.device_id}
     if otp is not None:
         body["otp"] = otp
+    if key is not None:
+        at = datetime.now(UTC).isoformat()
+        signed = device_proof_message(MANAGER.device_id, MANAGER.mobile, at)
+        body["proof"] = {"at": at, "signature": base64.b64encode(key.sign(signed)).decode()}
     return client.post("/api/v1/auth/login", json=body, headers=headers)
 
 
@@ -89,11 +97,18 @@ def test_the_secret_is_sealed_in_the_database(client: TestClient) -> None:
 
 def test_a_manager_from_outside_needs_the_two_step_login(client: TestClient) -> None:
     client.app.state.settings = replace(client.app.state.settings, public_origin="https://shift.example.ir")
+    key = new_key()
+    with client.app.state.database.write() as connection:
+        connection.exec_driver_sql(
+            "UPDATE devices SET pubkey = ? WHERE device_id = ?", (key.spki_b64, MANAGER.device_id)
+        )
 
-    outside = _login(client, host="shift.example.ir")
+    unsigned = _login(client, host="shift.example.ir")
+    assert unsigned.status_code == 403 and unsigned.json()["error"]["code"] == "device_proof_failed"
+    outside = _login(client, host="shift.example.ir", key=key)
     assert outside.status_code == 403 and outside.json()["error"]["code"] == "two_step_required"
     assert _login(client).status_code == 200, "inside the clinic it stays the manager's own choice"
 
     secret = _turn_on(client)
-    answer = _login(client, host="shift.example.ir", otp=_current_code(secret))
+    answer = _login(client, host="shift.example.ir", otp=_current_code(secret), key=key)
     assert answer.status_code == 200, answer.text

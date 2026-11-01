@@ -5,6 +5,7 @@ the database only their SHA-256, so a leaked database cannot be replayed as a co
 Five consecutive wrong PINs lock the account until the manager unlocks it (S4).
 """
 
+import base64
 import re
 import secrets
 from collections.abc import Mapping, Sequence
@@ -27,6 +28,7 @@ from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran, utc_iso
 from shift.common.hashing import sha256_hex
 from shift.common.ids import new_ulid
 from shift.config.logging import get_audit_logger
+from shift.domain import p256
 from shift.domain.on_shift import effective_permissions
 from shift.domain.permissions import Permission, Role, UnknownRole, parse_role
 from shift.domain.pin_policy import (
@@ -97,6 +99,10 @@ class OtpRequired(AuthError):
 
 class TwoStepRequired(AuthError):
     """A manager signing in from outside the clinic without the two-step login turned on (ADR-027)."""
+
+
+class DeviceProofFailed(AuthError):
+    """A login from outside the clinic without a valid signature of the paired phone's key (ADR-027)."""
 
 
 class SessionInvalid(AuthError):
@@ -181,6 +187,14 @@ def verify_pin(pin_hash: str, pin: str, *, pepper: str = "", hasher: PasswordHas
         return False
 
 
+DEVICE_PROOF_WINDOW = timedelta(minutes=10)
+
+
+def device_proof_message(device_id: str, mobile: str, at: str) -> bytes:
+    """What the paired phone signs at login (ADR-027); `login.html` builds the same text."""
+    return "\n".join(("shift-login", device_id, mobile, at)).encode()
+
+
 class AuthService:
     """Orchestrates staff rows, devices and sessions; no SQL and no HTTP types."""
 
@@ -211,9 +225,17 @@ class AuthService:
         # real digest keeps that path as slow as a wrong PIN, so response time does not
         # reveal which mobiles exist.
         self._decoy_hash: str | None = None
+        self._used_proofs: dict[str, datetime] = {}
 
     def login(
-        self, *, mobile: str, pin: str, device_id: str, otp: str | None = None, remote: bool = False
+        self,
+        *,
+        mobile: str,
+        pin: str,
+        device_id: str,
+        otp: str | None = None,
+        remote: bool = False,
+        proof: Mapping[str, str] | None = None,
     ) -> IssuedSession:
         """Open a session, or raise the specific `AuthError` that refused it.
 
@@ -265,6 +287,7 @@ class AuthService:
             )
             raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
         self._require_unlocked(staff, now)
+        self._require_device_proof(device, normalised_mobile, proof, remote=remote, now=now)
         if matches:
             matches = self._second_step(staff, otp=otp, remote=remote, now=now)
         outcome = self._record_attempt(staff=staff, device=device, matches=matches, now=now)
@@ -346,6 +369,41 @@ class AuthService:
         with self._database.read() as connection:
             device = self._require_usable_device(devices_repo.find_device(connection, device_id))
             return device, staff_repo.find_by_mobile(connection, mobile)
+
+    def _require_device_proof(
+        self, device: DeviceRecord, mobile: str, proof: Mapping[str, str] | None, *, remote: bool, now: datetime
+    ) -> None:
+        """ADR-027: from outside the clinic the paired phone signs the login with the key it made at pairing.
+
+        A PIN and a code typed on another device are then not enough. Inside the clinic a proof is checked
+        when the phone sends one and not required, so a phone paired before this rule keeps working there.
+        A proof is fresh (ten minutes either side) and used once.
+        """
+        if proof is None:
+            if remote:
+                raise DeviceProofFailed("a login from outside needs the paired phone's signature")
+            return
+        stamp = str(proof.get("at", ""))
+        try:
+            signed_at = parse_iso(stamp)
+            signature = base64.b64decode(str(proof.get("signature", "")), validate=True)
+        except ValueError as error:
+            raise DeviceProofFailed("unreadable device proof") from error
+        if abs((now - signed_at).total_seconds()) > DEVICE_PROOF_WINDOW.total_seconds():
+            raise DeviceProofFailed("stale device proof")
+        message = device_proof_message(device.device_id, mobile, stamp)
+        if not p256.verify(device.pubkey, message, signature) or not self._fresh_proof(signature, now):
+            raise DeviceProofFailed("device proof does not verify")
+
+    def _fresh_proof(self, signature: bytes, now: datetime) -> bool:
+        """A signature opens one login; the cache forgets what is older than the proof window."""
+        floor = now - 2 * DEVICE_PROOF_WINDOW
+        self._used_proofs = {key: at for key, at in self._used_proofs.items() if at > floor}
+        key = sha256_hex(signature)
+        if key in self._used_proofs:
+            return False
+        self._used_proofs[key] = now
+        return True
 
     def _second_step(self, staff: StaffRecord, *, otp: str | None, remote: bool, now: datetime) -> bool:
         """ADR-027: after a right PIN, the code of an account that has the two-step login on.
