@@ -24,6 +24,7 @@ from shift.adapters.db.migrations import (
     m0015_registration_first_for_phone,
     m0020_catalog_lists,
     m0021_consumption_applied,
+    m0022_two_step,
 )
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ MIGRATIONS: list[tuple[int, str, Callable[[Connection], None]]] = [
     (15, "registration_first_for_phone", m0015_registration_first_for_phone.up),
     (20, "catalog_lists", m0020_catalog_lists.up),
     (21, "consumption_applied", m0021_consumption_applied.up),
+    (22, "two_step", m0022_two_step.up),
 ]
 LATEST = MIGRATIONS[-1][0]
 

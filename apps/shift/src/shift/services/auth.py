@@ -91,6 +91,14 @@ class StaffInputError(AuthError):
         self.conflict = conflict
 
 
+class OtpRequired(AuthError):
+    """The PIN was right and this account has the two-step login on: the six-digit code comes next."""
+
+
+class TwoStepRequired(AuthError):
+    """A manager signing in from outside the clinic without the two-step login turned on (ADR-027)."""
+
+
 class SessionInvalid(AuthError):
     """No usable session for the presented cookie (`reason` says why)."""
 
@@ -185,8 +193,11 @@ class AuthService:
         session_ttl: timedelta = SESSION_TTL,
         pepper: str = "",
         audit: AuditService | None = None,
+        two_step: Any = None,
     ) -> None:
         self._database = database
+        # ADR-027: the TOTP check after the PIN; None in scripts and unit tests that never use it.
+        self._two_step = two_step
         self._clock = clock or SystemClock()
         self._hasher = hasher
         self._session_ttl = session_ttl
@@ -201,7 +212,9 @@ class AuthService:
         # reveal which mobiles exist.
         self._decoy_hash: str | None = None
 
-    def login(self, *, mobile: str, pin: str, device_id: str) -> IssuedSession:
+    def login(
+        self, *, mobile: str, pin: str, device_id: str, otp: str | None = None, remote: bool = False
+    ) -> IssuedSession:
         """Open a session, or raise the specific `AuthError` that refused it.
 
         Argon2id runs outside every transaction and runs exactly once on every path — against
@@ -252,6 +265,8 @@ class AuthService:
             )
             raise InvalidCredentials(_WRONG_MOBILE_OR_PIN)
         self._require_unlocked(staff, now)
+        if matches:
+            matches = self._second_step(staff, otp=otp, remote=remote, now=now)
         outcome = self._record_attempt(staff=staff, device=device, matches=matches, now=now)
         # Outside the transaction on purpose: the audit write takes the single writer again.
         self._note_attempt(outcome, staff=staff, device=device)
@@ -331,6 +346,26 @@ class AuthService:
         with self._database.read() as connection:
             device = self._require_usable_device(devices_repo.find_device(connection, device_id))
             return device, staff_repo.find_by_mobile(connection, mobile)
+
+    def _second_step(self, staff: StaffRecord, *, otp: str | None, remote: bool, now: datetime) -> bool:
+        """ADR-027: after a right PIN, the code of an account that has the two-step login on.
+
+        A wrong code counts as a wrong PIN (the lock covers both). A manager reaching the app from
+        outside the clinic must have it on; inside the clinic it stays the person's own choice.
+        """
+        if self._two_step is None:
+            return True
+        if not self._two_step.enabled(staff.staff_id):
+            if remote and Role.MANAGER.value in self._roles_of(staff.staff_id, now):
+                raise TwoStepRequired("a manager signs in from outside only with the two-step login")
+            return True
+        if not otp:
+            raise OtpRequired("the six-digit code is needed")
+        return bool(self._two_step.check(staff.staff_id, otp, now))
+
+    def _roles_of(self, staff_id: str, now: datetime) -> Sequence[str]:
+        with self._database.read() as connection:
+            return staff_repo.roles_for(connection, staff_id, covering(to_tehran(now)).text)
 
     def _pin_matches(self, *, staff: StaffRecord | None, pin: str) -> bool:
         """One Argon2id verification: the real digest, or the decoy when nobody owns `staff`."""

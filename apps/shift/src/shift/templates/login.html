@@ -45,6 +45,11 @@
       <label for="pin">رمز شش‌رقمی</label>
       <input id="pin" name="pin" class="form-control" type="password" dir="ltr" inputmode="numeric"
              autocomplete="current-password" enterkeyhint="go" maxlength="6" required>
+      <div id="otp-row" hidden>
+        <label for="otp">کد شش‌رقمی برنامهٔ تأیید</label>
+        <input id="otp" name="otp" class="form-control" dir="ltr" inputmode="numeric"
+               autocomplete="one-time-code" maxlength="6">
+      </div>
       <button id="submit" type="submit">ورود</button>
       <p id="message" role="status"></p>
     </form>
@@ -57,6 +62,7 @@
     const form = document.getElementById("login-form");
     const button = document.getElementById("submit");
     const message = document.getElementById("message");
+    const otpRow = document.getElementById("otp-row");
     // Persian digits are accepted everywhere on the phone; the API only sees ASCII.
     const asciiDigits = (value) =>
       window.ShiftPWA && window.ShiftPWA.normalizeDigits ? window.ShiftPWA.normalizeDigits(value) : value;
@@ -96,11 +102,17 @@
             mobile: asciiDigits(form.mobile.value),
             pin: asciiDigits(form.pin.value),
             device_id: deviceId,
+            otp: otpRow.hidden ? null : asciiDigits(form.otp.value).trim() || null,
           }),
         });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
           message.textContent = (body.error && body.error.message) || "ورود ناموفق بود.";
+          // ADR-027: the PIN was right and this account has the two-step login on.
+          if (body.error && body.error.code === "otp_required") {
+            otpRow.hidden = false;
+            form.otp.focus();
+          }
           return;
         }
         const next = document.body.dataset.next;

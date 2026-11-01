@@ -94,8 +94,9 @@ def test_login_says_which_field_is_empty_before_it_sends() -> None:
 
     assert "شمارهٔ موبایل را وارد کنید" in page
     assert "رمز شش‌رقمی را وارد کنید" in page
-    assert page.count('inputmode="numeric"') == 2
-    assert page.count('dir="ltr"') == 2
+    # Mobile, PIN and the two-step code (ADR-027) take digits, left to right.
+    assert page.count('inputmode="numeric"') == 3
+    assert page.count('dir="ltr"') == 3
     assert ".focus()" in page
 
 

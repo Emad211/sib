@@ -1215,5 +1215,61 @@
    "shift_doctor": 403,
    "storekeeper": 403
   }
+ },
+ "GET /manager/security [get_manager_security]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/begin [post_two_step_begin]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/confirm [post_two_step_confirm]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/disable [post_two_step_disable]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
  }
 }

@@ -57,6 +57,7 @@ from shift.services.rewards import RewardsService
 from shift.services.scheduler import DAILY_CARD, PolicySchedule, Scheduler
 from shift.services.settings import SettingsService
 from shift.services.shift_events import ShiftEventService
+from shift.services.two_step import TwoStepService
 
 
 def _catalog_service(request: Request) -> CatalogService:
@@ -189,7 +190,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Every audited action of the services below lands in `audit_log` and in `audit.log`.
         audit = AuditService(database, clock=clock)
         application.state.audit = audit
-        application.state.auth = AuthService(database, clock=clock, pepper=application.state.secret_key, audit=audit)
+        application.state.two_step = TwoStepService(database, key=application.state.secret_key, clock=clock)
+        application.state.auth = AuthService(
+            database,
+            clock=clock,
+            pepper=application.state.secret_key,
+            audit=audit,
+            two_step=application.state.two_step,
+        )
         application.state.devices = DeviceService(database, clock=clock, audit=audit)
         application.state.catalog = CatalogService(database, clock=clock)
         application.state.settings_service = SettingsService(database, clock=clock)

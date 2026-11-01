@@ -137,6 +137,36 @@
     });
   });
 
+  // ADR-027: the manager's own two-step login. The QR arrives once, as inline SVG made by the server;
+  // the first right code switches it on, and turning it off needs a current code.
+  var twoStep = document.getElementById("two-step");
+  if (twoStep) {
+    var codeOf = function () {
+      var field = twoStep.querySelector("[data-two-step-code]");
+      return field ? field.value.trim() : "";
+    };
+    twoStep.querySelectorAll("button[data-two-step]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var step = button.getAttribute("data-two-step");
+        if (step === "begin") {
+          button.disabled = true;
+          postJson("/api/v1/manager/two-step/begin", {})
+            .then(function (setup) {
+              twoStep.querySelector("[data-two-step-qr]").innerHTML = setup.qr_svg;
+              twoStep.querySelector("[data-two-step-secret]").textContent = setup.secret;
+              twoStep.querySelector("[data-two-step-setup]").classList.remove("hidden");
+            })
+            .catch(function (error) {
+              button.disabled = false;
+              window.alert(error.message);
+            });
+          return;
+        }
+        settle(button, postJson("/api/v1/manager/two-step/" + step, { code: codeOf() }));
+      });
+    });
+  }
+
   document.querySelectorAll("button[data-decide]").forEach(function (button) {
     button.addEventListener("click", function () {
       var approve = button.getAttribute("data-decide") === "approve";

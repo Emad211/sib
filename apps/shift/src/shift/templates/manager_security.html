@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}ورود دومرحله‌ای{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  {% include "_manager_nav.html" %}
+
+  <header class="mg-head">
+    <h1 class="mg-title">ورود دومرحله‌ای</h1>
+    <p class="mg-meta">بعد از رمز شش‌رقمی، کد شش‌رقمی برنامهٔ تأیید (Google Authenticator یا برنامهٔ مشابه) هم خواسته می‌شود.
+      {% if public_origin %}ورود مدیر از بیرون درمانگاه فقط با این ورود ممکن است.{% endif %}</p>
+  </header>
+
+  <section class="mg-section" aria-labelledby="ts-state-title" id="two-step" data-enabled="{{ 'yes' if enabled else 'no' }}">
+    <h2 id="ts-state-title" class="mg-section-title">{% if enabled %}روشن است{% else %}خاموش است{% endif %}</h2>
+    {% if enabled %}
+    <p class="mg-line">برای خاموش کردن، کد فعلی برنامه را بزنید.</p>
+    <label class="mg-line">کد شش‌رقمی <input type="text" inputmode="numeric" dir="ltr" maxlength="12" data-two-step-code></label>
+    <p class="mg-line mg-actions" dir="rtl"><button type="button" class="btn btn-secondary btn-compact" data-two-step="disable">خاموش کردن</button></p>
+    {% else %}
+    <p class="mg-line mg-actions" dir="rtl"><button type="button" class="btn btn-primary btn-compact" data-two-step="begin">روشن کردن ورود دومرحله‌ای</button></p>
+    <div class="mg-line hidden" data-two-step-setup>
+      <p>این QR را با برنامهٔ تأیید روی گوشی خودتان اسکن کنید (فقط همین یک بار نشان داده می‌شود).</p>
+      <div role="img" aria-label="QR ورود دومرحله‌ای" data-two-step-qr></div>
+      <p class="mg-muted" dir="ltr" data-two-step-secret></p>
+      <label>کد شش‌رقمی برنامه <input type="text" inputmode="numeric" dir="ltr" maxlength="12" data-two-step-code></label>
+      <p class="mg-actions" dir="rtl"><button type="button" class="btn btn-primary btn-compact" data-two-step="confirm">تأیید و روشن کردن</button></p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+<script src="/static/manager.js"></script>
+{% endblock %}

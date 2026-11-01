@@ -20,10 +20,12 @@ from shift.services.auth import (
     DeviceNotEnrolled,
     DeviceRevoked,
     InvalidCredentials,
+    OtpRequired,
     SessionInvalid,
     StaffInactive,
     StaffInputError,
     StaffNotFound,
+    TwoStepRequired,
 )
 from shift.services.devices import DeviceError, DeviceNotFound, EnrollmentRejected, UnknownStaff
 
@@ -128,6 +130,15 @@ def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] |
         # for a deactivated account would tell an enrolled phone which mobiles are staff.
         # The reason is in the audit log, where only the manager can read it.
         return 401, "invalid_credentials", _BAD_CREDENTIALS, None
+    if isinstance(exc, OtpRequired):
+        return 401, "otp_required", "کد شش‌رقمی برنامهٔ تأیید (Authenticator) را بزنید.", None
+    if isinstance(exc, TwoStepRequired):
+        return (
+            403,
+            "two_step_required",
+            "ورود از بیرون درمانگاه بدون ورود دومرحله‌ای ممکن نیست؛ آن را یک بار از داخل درمانگاه روشن کنید.",
+            None,
+        )
     if isinstance(exc, AccountLocked):
         return (
             423,

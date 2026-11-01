@@ -49,6 +49,8 @@ class LoginRequest(BaseModel):
     mobile: str = Field(min_length=1, max_length=32)
     pin: str = Field(min_length=1, max_length=32)
     device_id: str = Field(min_length=1, max_length=64)
+    # ADR-027: the authenticator's six digits, sent once the server asked for them.
+    otp: str | None = Field(default=None, max_length=12)
 
 
 class PinResetRequest(BaseModel):
@@ -162,6 +164,15 @@ def login_page(request: Request) -> HTMLResponse:
     return response
 
 
+def _from_outside(request: Request) -> bool:
+    """A login that came through the relay's public name rather than the clinic's own address (O05)."""
+    public = request.app.state.settings.public_origin
+    if not public:
+        return False
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    return host == public.split("://", 1)[1].split(":")[0].lower()
+
+
 TOO_MANY_LOGINS = "تلاش‌های ورود پشت‌سرهم زیاد بود؛ یک دقیقه بعد دوباره امتحان کنید."
 
 
@@ -178,7 +189,9 @@ def login(request: Request, body: LoginRequest) -> JSONResponse:
         "*"
     ):
         raise TooManyAttempts(TOO_MANY_LOGINS)
-    issued = deps.auth_service(request).login(mobile=body.mobile, pin=body.pin, device_id=body.device_id)
+    issued = deps.auth_service(request).login(
+        mobile=body.mobile, pin=body.pin, device_id=body.device_id, otp=body.otp, remote=_from_outside(request)
+    )
     response = JSONResponse(_session_payload(issued.principal), headers={"Cache-Control": "no-store"})
     _set_session_cookie(response, issued.token, request)
     # Expired with the same path/secure/samesite it was set with, so strict browsers accept it.

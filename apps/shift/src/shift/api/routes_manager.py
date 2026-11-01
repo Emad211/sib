@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Annotated, Any
 
+import segno
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,10 +57,13 @@ from shift.services.learning_status import learning_status
 from shift.services.manager_decisions import DecisionRefused, ManagerDecisions
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService, SettingValue
+from shift.services.two_step import TwoStepError, TwoStepService
 
 CARD_PATH = "/manager/card"
 DECISIONS_PATH = "/manager/decisions"
 DECISIONS_API = "/api/v1/manager/decisions"
+SECURITY_PATH = "/manager/security"
+TWO_STEP_API = "/api/v1/manager/two-step"
 HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
 BASELINE_PATH = "/manager/baseline"
@@ -207,6 +211,21 @@ def _stamp(at_tehran: str) -> str:
     """A Tehran instant as the manager reads it: Jalali date and the clock."""
     moment = datetime.fromisoformat(at_tehran)
     return f"{format_jalali(moment.date())} · {moment:%H:%M}"
+
+
+class CodeIn(BaseModel):
+    """Six digits from the authenticator app."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=6, max_length=12)
+
+
+def _two_step(work: Callable[[TwoStepService], None], request: Request) -> None:
+    try:
+        work(request.app.state.two_step)
+    except TwoStepError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 FLOW_NOT_WAITING = "این تحویل دیگر منتظر تأیید شما نیست؛ صفحه را تازه کنید."
@@ -481,6 +500,40 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
             request, lambda decisions: decisions.review(body.event_id, body.decision, body.note, manager)
         )
         return {"status": "recorded", "event_id": str(event_id)}
+
+    @pages.get(SECURITY_PATH, response_class=HTMLResponse, summary="The manager's two-step login")
+    def get_manager_security(request: Request, viewer: CardViewer) -> HTMLResponse:
+        """ADR-027: turn the two-step login on or off for this manager's own account."""
+        enabled = request.app.state.two_step.enabled(viewer.staff_id)
+        public = request.app.state.settings.public_origin
+        return _shell_page(
+            request, "manager_security.html", {"enabled": enabled, "public_origin": public}, cache_control=NO_STORE
+        )
+
+    @pages.post(f"{TWO_STEP_API}/begin", summary="Start the two-step setup")
+    def post_two_step_begin(request: Request, manager: DecisionMaker) -> dict[str, str]:
+        """A new secret, shown once as a QR for the authenticator app; it counts after the first code."""
+        account = next(
+            (p.full_name for p in request.app.state.auth.directory() if p.staff_id == manager.staff_id),
+            manager.staff_id,
+        )
+        setup = request.app.state.two_step.begin(manager.staff_id, account)
+        # Inline SVG markup, not a data: image: the manager pages' CSP admits images from 'self' only.
+        return {
+            "uri": setup.uri,
+            "secret": setup.secret,
+            "qr_svg": segno.make(setup.uri, error="m").svg_inline(scale=5),
+        }
+
+    @pages.post(f"{TWO_STEP_API}/confirm", summary="Confirm the two-step setup with a first code")
+    def post_two_step_confirm(body: CodeIn, request: Request, manager: DecisionMaker) -> dict[str, str]:
+        _two_step(lambda service: service.confirm(manager.staff_id, body.code), request)
+        return {"status": "enabled"}
+
+    @pages.post(f"{TWO_STEP_API}/disable", summary="Turn the two-step login off with a current code")
+    def post_two_step_disable(body: CodeIn, request: Request, manager: DecisionMaker) -> dict[str, str]:
+        _two_step(lambda service: service.disable(manager.staff_id, body.code), request)
+        return {"status": "disabled"}
 
     return pages
 
