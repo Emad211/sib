@@ -19,6 +19,7 @@ from shift.app import create_app
 from shift.common.clock import TEHRAN
 from shift.config.settings import Settings
 from shift.services.backup import BackupService
+from shift.services.login_throttle import LoginThrottle
 
 EVENTS_URL = "/api/v1/events"
 PHOTOS_URL = "/api/v1/photos"
@@ -142,3 +143,12 @@ def test_a_backup_copies_the_photos_once(staff_client: TestClient, settings: Set
 
     second = backup.create()
     assert second.photos_copied == 0, "an immutable photo is copied once, not on every snapshot"
+
+
+def test_a_flood_of_photos_from_one_person_is_refused(staff_client: TestClient) -> None:
+    """S-14: a phone sends a few photos an hour; sixty in ten minutes is a flood that would fill the disk."""
+    staff_client.app.state.photo_throttle = LoginThrottle(attempts=3)
+
+    codes = [_upload(staff_client).status_code for _ in range(5)]
+
+    assert codes == [201, 201, 201, 429, 429]

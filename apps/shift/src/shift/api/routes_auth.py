@@ -13,13 +13,20 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift.api import deps
-from shift.api.errors import BadRequest
+from shift.api.errors import BadRequest, TooManyAttempts
 from shift.api.templating import templates
 from shift.common.clock import utc_iso
 from shift.domain.on_shift import off_shift_notice
 from shift.domain.permissions import Permission, Role
+from shift.domain.pin_policy import normalise_digits
 from shift.domain.policy import PolicyError
-from shift.services.auth import SESSION_COOKIE, SESSION_TTL, Principal, StaffNotFound, StaffSummary
+from shift.services.auth import (
+    SESSION_COOKIE,
+    SESSION_TTL,
+    Principal,
+    StaffNotFound,
+    StaffSummary,
+)
 from shift.services.catalog import CatalogError
 
 router = APIRouter()
@@ -155,9 +162,22 @@ def login_page(request: Request) -> HTMLResponse:
     return response
 
 
+TOO_MANY_LOGINS = "تلاش‌های ورود پشت‌سرهم زیاد بود؛ یک دقیقه بعد دوباره امتحان کنید."
+
+
+def _throttle_key(mobile: str) -> str:
+    """The same person however the digits were typed; an invented mobile gets its own counter too."""
+    digits = "".join(ch for ch in normalise_digits(mobile) if ch.isdigit())
+    return digits or mobile.strip()
+
+
 @router.post("/api/v1/auth/login", tags=["auth"], dependencies=[Depends(deps.login_csrf)])
 def login(request: Request, body: LoginRequest) -> JSONResponse:
     """Verify mobile + PIN on an enrolled device and open a 12-hour session."""
+    if not request.app.state.login_throttle.hit(_throttle_key(body.mobile)) or not request.app.state.login_ceiling.hit(
+        "*"
+    ):
+        raise TooManyAttempts(TOO_MANY_LOGINS)
     issued = deps.auth_service(request).login(mobile=body.mobile, pin=body.pin, device_id=body.device_id)
     response = JSONResponse(_session_payload(issued.principal), headers={"Cache-Control": "no-store"})
     _set_session_cookie(response, issued.token, request)

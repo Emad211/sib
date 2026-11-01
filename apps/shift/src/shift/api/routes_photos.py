@@ -25,6 +25,7 @@ PHOTO_NOT_JPEG = "عکس رسید باید JPEG باشد."
 PHOTO_TOO_LARGE = "حجم عکس رسید بیش از حد مجاز است."
 PHOTO_HASH_MISMATCH = "هش عکس با محتوایش نمی‌خواند."
 PHOTO_NOT_FOUND = "عکس پیدا نشد."
+PHOTO_RATE = "تعداد عکس‌های فرستاده‌شده زیاد است؛ چند دقیقه بعد دوباره امتحان کنید."
 NO_PHOTO = "نقش شما اجازهٔ دیدن عکس را ندارد."
 
 
@@ -56,7 +57,7 @@ def _checked_hash(sha256: str) -> str:
 async def put_photo(
     sha256: str,
     request: Request,
-    _principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
+    principal: Annotated[Principal, Depends(require(Permission.EVENTS_APPEND))],
     store: Annotated[PhotoStore, Depends(get_photo_store)],
 ) -> PhotoOut:
     """Store the JPEG bytes when they hash to the name the phone claims; store nothing else.
@@ -65,6 +66,8 @@ async def put_photo(
     guard against a client sending a whole camera dump, not a quality setting.
     """
     _checked_hash(sha256)
+    if not request.app.state.photo_throttle.hit(principal.staff_id):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=PHOTO_RATE)
     if (request.headers.get("content-type") or "").split(";")[0].strip().lower() != "image/jpeg":
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=PHOTO_NOT_JPEG)
     declared = request.headers.get("content-length")

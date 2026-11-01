@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
@@ -48,6 +48,7 @@ from shift.services.devices import DeviceService
 from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
+from shift.services.login_throttle import LoginThrottle
 from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
 from shift.services.purchase import PurchaseService
@@ -174,6 +175,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = Database(resolved.database_path)
         database.migrate()
         application.state.clock = clock
+        application.state.login_throttle = LoginThrottle(clock=clock)
+        # Every attempt costs a 64 MB hash, so the whole clinic gets a ceiling too: a flood of invented
+        # mobiles must not exhaust the machine the handover runs on (it is far above a real morning).
+        application.state.login_ceiling = LoginThrottle(clock=clock, attempts=90)
+        # A phone sends a handful of receipt photos an hour; a flood would fill the clinic computer's disk.
+        application.state.photo_throttle = LoginThrottle(clock=clock, attempts=60, window=timedelta(minutes=10))
         application.state.database = database
         application.state.events = EventStore(database, clock=clock, hash_chain=resolved.hash_chain)
         application.state.projections = ProjectionEngine(database, clock=clock)

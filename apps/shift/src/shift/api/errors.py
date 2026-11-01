@@ -80,6 +80,11 @@ class Conflict(ApiError):
     code = "conflict"
 
 
+class TooManyAttempts(ApiError):
+    status = 429
+    code = "too_many_attempts"
+
+
 class CsrfRejected(ApiError):
     status = 403
     code = "csrf_failed"
