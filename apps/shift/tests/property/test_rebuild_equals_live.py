@@ -12,6 +12,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed
+from turns import count_on_turn
 
 from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo
@@ -115,15 +116,15 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
         caller=caller,
     ).handover_id
 
-    service.count(handover_id, cash, 990_000, caller=caller)
-    service.count(handover_id, cash, 995_000, caller=caller)
+    count_on_turn(service, handover_id, cash, 990_000, caller=caller)
+    count_on_turn(service, handover_id, cash, 995_000, caller=caller)
     service.joint(handover_id, cash, 997_000, caller=caller)
     service.advance(handover_id, caller=caller)
-    service.count(handover_id, shelf, 8, caller=caller)
-    service.count(handover_id, shelf, 12, caller=caller)
-    service.count(handover_id, shelf, 9, caller=caller)
+    count_on_turn(service, handover_id, shelf, 8, caller=caller)
+    count_on_turn(service, handover_id, shelf, 12, caller=caller)
+    count_on_turn(service, handover_id, shelf, 9, caller=caller)
     service.joint(handover_id, shelf, 9, caller=caller)
-    service.count(handover_id, diclo, 0, caller=caller)
+    count_on_turn(service, handover_id, diclo, 0, caller=caller)
     service.advance(handover_id, caller=caller)
     service.answer_checklist(handover_id, "store_lock_ok", ok=True, caller=caller)
     service.advance(handover_id, caller=caller)
@@ -188,8 +189,8 @@ def test_a_settlement_carry_rebuilds_to_the_live_cash_projection(database: Datab
     )
     projections.sync()
     cash = CountTarget(scope="cash")
-    service.count(handover_id, cash, 1_000_000, caller=caller)
-    service.count(handover_id, cash, 1_000_000, caller=caller)
+    count_on_turn(service, handover_id, cash, 1_000_000, caller=caller)
+    count_on_turn(service, handover_id, cash, 1_000_000, caller=caller)
 
     with database.read() as connection:
         live = projections_repo.cash_rows(connection)

@@ -25,6 +25,20 @@ class CountStatus(StrEnum):
     SETTLED = "settled"
 
 
+def counter_side(scope: str, status: CountStatus, *, alone: bool) -> str:
+    """Whose count a chain asks for next: `"incoming"` or `"outgoing"` (A4, H-05, H-13).
+
+    The cash box is counted by the outgoing person first and then by the incoming one, each blind to the
+    other. A shelf item is counted by the incoming person first (and again on a recount) and only then
+    by the outgoing one. When the outgoing person has left, the incoming one counts every figure alone.
+    """
+    if alone:
+        return "incoming"
+    if scope == "cash":
+        return "outgoing" if status is CountStatus.FIRST else "incoming"
+    return "outgoing" if status is CountStatus.OUTGOING else "incoming"
+
+
 @dataclass(frozen=True, slots=True)
 class _BlindChain:
     """What both chains share: the reference, who a gap lands on, and the settled figure."""

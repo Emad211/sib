@@ -237,7 +237,7 @@ def _refusal(exc: HandoverError) -> ApiError:
     return Conflict(GENERIC_REFUSAL)
 
 
-def _state(state: HandoverState) -> dict[str, Any]:
+def _state(state: HandoverState, principal: Principal | None = None) -> dict[str, Any]:
     """What a client may know: where the flow is and how each chain stands, never a figure."""
     emergency: dict[str, Any] | None = None
     if state.emergency_by is not None:
@@ -254,7 +254,19 @@ def _state(state: HandoverState) -> dict[str, Any]:
         "emergency": emergency,
         "cash_status": None if state.cash_status is None else state.cash_status.value,
         "counts": {item_id: chain.value for item_id, chain in sorted(state.item_statuses.items())},
+        "my_side": _side_of(state, principal),
     }
+
+
+def _side_of(state: HandoverState, principal: Principal | None) -> str | None:
+    """Which side of the flow the caller is (A4): the screen shows a count only to the side it belongs to."""
+    if principal is None:
+        return None
+    if principal.staff_id == state.incoming_id:
+        return "incoming"
+    if principal.staff_id == state.outgoing_id:
+        return "outgoing"
+    return None
 
 
 def _run(work: Any, *args: Any, **kwargs: Any) -> Any:
@@ -370,7 +382,7 @@ def get_handover_state(
     handover_id: str,
     request: Request,
     response: Response,
-    _principal: CountGuard,
+    principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
     """The flow as its own log rebuilt it: step, statuses, signatures and the parcels in transit.
@@ -384,7 +396,7 @@ def get_handover_state(
         {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
         for parcel in purchase.in_transit(deps.running_shift(request))
     ]
-    return {**_state(_run(service.state, handover_id)), "parcels_in_transit": parcels}
+    return {**_state(_run(service.state, handover_id), principal), "parcels_in_transit": parcels}
 
 
 @router.get("/{handover_id}/targets")

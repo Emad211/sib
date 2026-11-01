@@ -15,6 +15,7 @@ import pytest
 from clocks import FixedClock
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed
+from turns import count_on_turn
 
 from shift.adapters.db import events_repo, handover_repo, projections_repo
 from shift.adapters.db.core import Database
@@ -180,11 +181,11 @@ def test_the_first_flows_outgoing_person_is_the_custodian_and_a_close_hands_cust
         row = handover_repo.get(connection, state.handover_id)
     assert row is not None and row.outgoing_id == CUSTODIAN
 
-    service.count(state.handover_id, CASH, 1_000_000, caller=CALLER)
-    service.count(state.handover_id, CASH, 1_000_000, caller=CALLER)
+    count_on_turn(service, state.handover_id, CASH, 1_000_000, caller=CALLER)
+    count_on_turn(service, state.handover_id, CASH, 1_000_000, caller=CALLER)
     assert service.advance(state.handover_id, caller=CALLER).step is HandoverStep.SHELF
     for item, quantity in ((PARA, 10), (DICLO, 4)):
-        service.count(state.handover_id, _item(item), quantity, caller=CALLER)
+        count_on_turn(service, state.handover_id, _item(item), quantity, caller=CALLER)
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(state.handover_id, caller=CALLER).step is step
     service.sign(state.handover_id, caller=CALLER)

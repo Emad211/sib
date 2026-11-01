@@ -35,9 +35,9 @@ const STEP_LABELS = {
 // What a count tells the operator, and the only thing it tells them (R-02). The five statuses
 // named in the owner's rule are exact; `incoming` names the action for the second person.
 const STATUS_LABELS = {
-  incoming: "شمارش ثبت شد؛ نفر دوم هم بشمارد",
+  incoming: "شمارش ثبت شد؛ نفر دوم با گوشی خودش بشمارد",
   recount: "دوباره بشمارید",
-  outgoing: "گوشی را به نفر خروجی بدهید",
+  outgoing: "نوبت نفر خروجی است؛ با گوشی خودش بشمارد",
   joint: "با هم بشمارید",
   matched: "درست است",
   settled: "ثبت شد",
@@ -333,6 +333,34 @@ function advanceJob(text, label) {
   stepContainer.appendChild(job);
 }
 
+const SIDE_LABELS = { incoming: "نفر ورودی", outgoing: "نفر خروجی" };
+const WAIT_POLL_MS = 4000;
+let waitTimer = null;
+
+// A4: every count belongs to one side and is taken on that person's own phone. The other side sees
+// whose turn it is and the screen follows the flow by itself, so nobody has to pass a phone around.
+function turnOf(scope, status) {
+  if (state.emergency) return "incoming"; // the outgoing person left: the incoming one counts alone
+  if (scope === "cash") return status === "first" ? "outgoing" : "incoming";
+  return status === "outgoing" ? "outgoing" : "incoming";
+}
+
+function isOtherSidesTurn(scope, status) {
+  return Boolean(state.my_side) && turnOf(scope, status) !== state.my_side;
+}
+
+function waitingJob(scope, status) {
+  const side = turnOf(scope, status);
+  stepContainer.replaceChildren();
+  const job = element("div", "ho-job");
+  job.id = "handover-turn";
+  job.appendChild(element("h2", "ho-job-title", `نوبت ${SIDE_LABELS[side] || "نفر دیگر"} است`));
+  job.appendChild(element("p", "ho-hint", "این شمارش با گوشی خودِ او انجام می‌شود؛ این صفحه خودکار تازه می‌شود."));
+  stepContainer.appendChild(job);
+  window.clearTimeout(waitTimer);
+  waitTimer = window.setTimeout(() => guard(refresh), WAIT_POLL_MS);
+}
+
 function renderCash() {
   if (state.cash_status === "joint") {
     jointJob({ scope: "cash" });
@@ -340,6 +368,10 @@ function renderCash() {
   }
   if (DONE_STATUSES.has(state.cash_status)) {
     advanceJob("صندوق تسویه شد.", "ادامه");
+    return;
+  }
+  if (isOtherSidesTurn("cash", state.cash_status)) {
+    waitingJob("cash", state.cash_status);
     return;
   }
   numberJob(
@@ -377,6 +409,10 @@ function renderItems() {
   }
   const kicker = `قلم ${fa(pending + 1)} از ${fa(counted.length)}`;
   const target = { scope: "item", item_id: itemId, location_id: info.location_id, kicker: kicker };
+  if (status !== "joint" && isOtherSidesTurn("item", status)) {
+    waitingJob("item", status);
+    return;
+  }
   if (status === "joint") {
     jointJob(target);
     return;
@@ -643,6 +679,8 @@ function render() {
 /* ---------- flow lifecycle ---------- */
 
 async function adopt(next) {
+  // A4: only the state read carries the caller's side; an answer to a write is read once more.
+  if (next && next.handover_id && !next.my_side) next = await request(`${API}/${next.handover_id}`);
   if (state !== null && state.handover_id !== next.handover_id) answeredChecklists.clear();
   state = next;
   remember(next.flow, next.handover_id);

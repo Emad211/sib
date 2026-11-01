@@ -48,7 +48,7 @@ from shift.domain.cash_cutoff import CashMovement, signed_cash, windows
 from shift.domain.checklist_rules import Frequency
 from shift.domain.events import EventType
 from shift.domain.handover_baseline import BaselineRecorded
-from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
+from shift.domain.handover_counts import CashCount, CountStatus, ItemCount, counter_side
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, Handover, HandoverFlow, HandoverStep, Signer
 from shift.domain.handover_payloads import CountTarget
@@ -134,6 +134,9 @@ class HandoverState:
     # H-08 records the manager's phone confirmation with who and when; this is the when.
     emergency_at: datetime | None
     closed: bool
+    # The two people, so a route can tell a caller which side of the flow they are (A4).
+    outgoing_id: str = ""
+    incoming_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,6 +392,8 @@ class HandoverService:
                 chain = flow.items.get((item.item_id, location))
                 statuses[item.item_id] = chain.status if chain is not None else CountStatus.FIRST
         return HandoverState(
+            outgoing_id=flow.row.outgoing_id,
+            incoming_id=flow.row.incoming_id,
             handover_id=flow.row.handover_id,
             flow=flow.row.flow,
             shift_id=flow.row.shift_id,
@@ -411,6 +416,7 @@ class HandoverService:
             raise HandoverError("the joint count is recorded through `joint`")
         if chain.settled:
             raise HandoverError("this target is already settled")
+        _require_counter(flow.row, chain, target, caller)
         event_type = _count_event(chain.status, target)
         new_chain, status = chain.count(counted)
         events.append((event_type, _count_payload(target, counted)))
@@ -873,6 +879,14 @@ def _part_of_the_flow(row: FlowRow, caller: Caller) -> None:
     """
     if caller.actor_id not in (row.incoming_id, row.outgoing_id):
         raise NotOfTheFlow("the caller is not part of this handover")
+
+
+def _require_counter(row: FlowRow, chain: ItemCount | CashCount, target: CountTarget, caller: Caller) -> None:
+    """A4 (H-05, H-13): each count belongs to one side, so nobody counts the other person's share."""
+    side = counter_side(target.scope, chain.status, alone=chain.culprit_id is None)
+    expected = row.outgoing_id if side == "outgoing" else row.incoming_id
+    if caller.actor_id != expected:
+        raise NotOfTheFlow(f"this count is the {side} person's to take")
 
 
 def _signer_of(row: FlowRow, caller: Caller) -> Signer:

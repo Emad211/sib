@@ -410,9 +410,12 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
         outgoing.click("#handover-exists-back")
         _join(outgoing, "reception", step="cash")
 
-        # The box: the incoming person counts with Persian digits, then accepts the match.
-        _count(incoming, CASH_OPENING, persian=True)
-        incoming.wait_for_selector('#handover-message:has-text("شمارش ثبت شد")', timeout=15000)
+        # The box (A4): the outgoing person counts first, with Persian digits, on their own phone; the
+        # incoming phone shows whose turn it is and opens its count by itself, then accepts the match.
+        incoming.wait_for_selector("#handover-turn", timeout=15000)
+        _count(outgoing, CASH_OPENING, persian=True)
+        outgoing.wait_for_selector('#handover-message:has-text("شمارش ثبت شد")', timeout=15000)
+        incoming.wait_for_selector("#handover-count-input", timeout=15000)
         _count(incoming, CASH_OPENING)
         incoming.wait_for_selector('#handover-message:has-text("درست است")', timeout=15000)
         incoming.wait_for_selector("#handover-advance", timeout=15000)

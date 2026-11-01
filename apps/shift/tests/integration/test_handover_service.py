@@ -19,6 +19,7 @@ from clocks import FixedClock
 from make_synthetic_acc_db import build
 from synthetic_accounting import close_open_invoices, empty_accounting
 from synthetic_catalog import seed
+from turns import count_on_turn
 
 from event_fixtures import build_event
 from shift.adapters.accounting.views import parse_time
@@ -180,8 +181,8 @@ def _start(
 
 
 def _settle_cash(service: HandoverService, handover_id: str, counted: int) -> None:
-    assert service.count(handover_id, CASH, counted, caller=CALLER) is CountStatus.INCOMING
-    assert service.count(handover_id, CASH, counted, caller=CALLER) is CountStatus.MATCHED
+    assert count_on_turn(service, handover_id, CASH, counted, caller=CALLER) is CountStatus.INCOMING
+    assert count_on_turn(service, handover_id, CASH, counted, caller=CALLER) is CountStatus.MATCHED
 
 
 def _close_reception(
@@ -190,7 +191,7 @@ def _close_reception(
     """Walk a reception flow whose cash already settled to its closing signature."""
     assert service.advance(handover_id, caller=incoming).step is HandoverStep.SHELF
     for item in (PARA, DICLO):
-        assert service.count(handover_id, _item(item), 0, caller=incoming) is CountStatus.MATCHED
+        assert count_on_turn(service, handover_id, _item(item), 0, caller=incoming) is CountStatus.MATCHED
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=incoming).step is step
     service.sign(handover_id, caller=incoming)
@@ -224,8 +225,8 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
     assert state.step is HandoverStep.SHELF
     assert state.item_statuses == {PARA: CountStatus.FIRST, DICLO: CountStatus.FIRST}
 
-    assert service.count(handover_id, _item(PARA), 10, caller=CALLER) is CountStatus.MATCHED
-    assert service.count(handover_id, _item(DICLO), 4, caller=CALLER) is CountStatus.MATCHED
+    assert count_on_turn(service, handover_id, _item(PARA), 10, caller=CALLER) is CountStatus.MATCHED
+    assert count_on_turn(service, handover_id, _item(DICLO), 4, caller=CALLER) is CountStatus.MATCHED
     state = service.advance(handover_id, caller=CALLER)
     assert state.step is HandoverStep.CHECKLISTS
 
@@ -296,9 +297,9 @@ def test_a_mismatch_walks_to_the_joint_count_and_records_one_named_discrepancy(
     service.advance(handover_id, caller=CALLER)
 
     statuses = [
-        service.count(handover_id, _item(PARA), 8, caller=CALLER),
-        service.count(handover_id, _item(PARA), 9, caller=CALLER),
-        service.count(handover_id, _item(PARA), 7, caller=CALLER),
+        count_on_turn(service, handover_id, _item(PARA), 8, caller=CALLER),
+        count_on_turn(service, handover_id, _item(PARA), 9, caller=CALLER),
+        count_on_turn(service, handover_id, _item(PARA), 7, caller=CALLER),
         service.joint(handover_id, _item(PARA), 9, caller=CALLER),
     ]
 
@@ -341,10 +342,10 @@ def test_the_nursing_flow_has_no_cash_step(service: HandoverService, database: D
     assert (state.step, state.cash_status) == (HandoverStep.CPR_ROOM, None)
     assert state.item_statuses == {SALINE: CountStatus.FIRST, "oxygen_mask": CountStatus.FIRST}
     with pytest.raises(HandoverError, match="cash step"):
-        service.count(state.handover_id, CASH, 0, caller=CALLER)
+        count_on_turn(service, state.handover_id, CASH, 0, caller=CALLER)
     assert _payloads(database, state.handover_id, "handover.started") == [{"opening_cash": None}]
 
-    assert service.count(state.handover_id, _item(SALINE, "cpr_room"), 0, caller=CALLER) is CountStatus.MATCHED
+    assert count_on_turn(service, state.handover_id, _item(SALINE, "cpr_room"), 0, caller=CALLER) is CountStatus.MATCHED
 
 
 def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
@@ -358,14 +359,14 @@ def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
     state = service.confirm_emergency_start(handover_id, "manager-1", caller=CALLER)
     assert (state.emergency_by, state.emergency_at) == ("manager-1", clock.moment)
 
-    assert service.count(handover_id, CASH, 900_000, caller=CALLER) is CountStatus.RECOUNT
-    assert service.count(handover_id, CASH, 900_000, caller=CALLER) is CountStatus.SETTLED
+    assert count_on_turn(service, handover_id, CASH, 900_000, caller=CALLER) is CountStatus.RECOUNT
+    assert count_on_turn(service, handover_id, CASH, 900_000, caller=CALLER) is CountStatus.SETTLED
     assert _payloads(database, handover_id, "discrepancy.recorded") == [
         {"scope": "cash", "item_id": None, "location_id": None, "difference": 100_000, "culprit_id": None}
     ]
     service.advance(handover_id, caller=CALLER)
     for item in (PARA, DICLO):
-        assert service.count(handover_id, _item(item), 0, caller=CALLER) is CountStatus.MATCHED
+        assert count_on_turn(service, handover_id, _item(item), 0, caller=CALLER) is CountStatus.MATCHED
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=CALLER).step is step
 
@@ -435,7 +436,7 @@ def test_both_flows_of_one_shift_run_side_by_side(service: HandoverService) -> N
     with pytest.raises(HandoverError, match="H-12"):
         service.start(HandoverFlow.RECEPTION, incoming_id=INCOMING, caller=CALLER)
 
-    service.count(nursing.handover_id, _item(SALINE, "cpr_room"), 0, caller=CALLER)
+    count_on_turn(service, nursing.handover_id, _item(SALINE, "cpr_room"), 0, caller=CALLER)
     assert service.state(reception.handover_id).step is HandoverStep.CASH
     assert service.state(reception.handover_id).item_statuses == {}
 
@@ -549,12 +550,12 @@ def test_a_withdrawal_during_a_flow_is_carried_negatively_and_flagged_like_a_rec
     """
     clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
     handover_id = _start(service, opening_cash=1_000_000).handover_id
-    assert service.count(handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.INCOMING
+    assert count_on_turn(service, handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.INCOMING
 
     clock.moment = datetime(2026, 10, 28, 9, 31, tzinfo=TEHRAN)
     _movement(store, projections, "cash.withdrawn", 20_000, at=clock.moment)
 
-    assert service.count(handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.MATCHED
+    assert count_on_turn(service, handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.MATCHED
 
     assert _payloads(database, handover_id, "handover.count_settled")[0]["carry"] == -20_000
     assert _payloads(database, handover_id, "discrepancy.recorded") == []
@@ -588,7 +589,7 @@ def test_the_flow_log_refuses_a_step_past_the_last_one(service: HandoverService,
     _settle_cash(service, handover_id, 0)
     service.advance(handover_id, caller=CALLER)
     for item in (PARA, DICLO):
-        service.count(handover_id, _item(item), 0, caller=CALLER)
+        count_on_turn(service, handover_id, _item(item), 0, caller=CALLER)
     for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=CALLER).step is step
     store.append(
@@ -609,17 +610,17 @@ def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverSer
     with pytest.raises(HandoverError, match="counted and settled"):
         service.advance(handover_id, caller=CALLER)
 
-    service.count(handover_id, CASH, 1, caller=CALLER)  # one mismatching blind count settles nothing
+    count_on_turn(service, handover_id, CASH, 1, caller=CALLER)  # one mismatching blind count settles nothing
     with pytest.raises(HandoverError, match="counted and settled"):
         service.advance(handover_id, caller=CALLER)
 
-    assert service.count(handover_id, CASH, 1, caller=CALLER) is CountStatus.SETTLED
+    assert count_on_turn(service, handover_id, CASH, 1, caller=CALLER) is CountStatus.SETTLED
     service.advance(handover_id, caller=CALLER)
-    service.count(handover_id, _item(PARA), 10, caller=CALLER)
+    count_on_turn(service, handover_id, _item(PARA), 10, caller=CALLER)
     with pytest.raises(HandoverError, match="not counted and settled"):
         service.advance(handover_id, caller=CALLER)
 
-    service.count(handover_id, _item(DICLO), 4, caller=CALLER)
+    count_on_turn(service, handover_id, _item(DICLO), 4, caller=CALLER)
     assert service.advance(handover_id, caller=CALLER).step is HandoverStep.CHECKLISTS
 
 
@@ -627,7 +628,7 @@ def test_a_count_is_refused_on_a_step_that_does_not_own_its_target(service: Hand
     state = _start(service, opening_cash=0)
 
     with pytest.raises(HandoverError, match="current step"):
-        service.count(state.handover_id, _item(PARA), 1, caller=CALLER)
+        count_on_turn(service, state.handover_id, _item(PARA), 1, caller=CALLER)
     with pytest.raises(HandoverError, match="no joint count"):
         service.joint(state.handover_id, CASH, 0, caller=CALLER)
 

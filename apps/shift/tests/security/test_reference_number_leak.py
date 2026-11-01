@@ -393,7 +393,9 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     """Start the reception flow and walk it to a closed state; returns its id.
 
     The incoming person opens it on their phone; the outgoing person joins it through the current
-    list on their own phone, and each side signs from the phone it holds (S03 §3).
+    list on their own phone. Each count is taken on the phone of the side it belongs to: the outgoing
+    person counts the box first and a shelf item's third count, the incoming person the rest (A4), and
+    each side signs from the phone it holds (S03 §3).
     """
     started = _call(
         client, scanner, "POST", "/api/v1/handover/start", json={"flow": "reception"}, headers=_act(client, incoming)
@@ -413,7 +415,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     assert targets.status_code == 200
     assert {item["item_id"] for item in targets.json()["items"]} == {PARA, DICLO}
 
-    assert _count(client, scanner, incoming, handover_id, scope="cash", counted=CASH_FIRST) == "incoming"
+    assert _count(client, scanner, outgoing, handover_id, scope="cash", counted=CASH_FIRST) == "incoming"
     assert _read_figures(client)[0] == CASH_REFERENCE, "a blind count never moves the reference (H-11)"
     assert _count(client, scanner, incoming, handover_id, scope="cash", counted=CASH_SECOND) == "joint"
     assert _read_figures(client)[0] == CASH_REFERENCE, "two blind counts still compare against the reference"
@@ -450,7 +452,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     )
     assert (
         _count(
-            client, scanner, incoming, handover_id, scope="item", counted=DICLO_THIRD, item_id=DICLO, location_id=SHELF
+            client, scanner, outgoing, handover_id, scope="item", counted=DICLO_THIRD, item_id=DICLO, location_id=SHELF
         )
         == "joint"
     )

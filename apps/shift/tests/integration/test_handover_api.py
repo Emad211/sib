@@ -27,6 +27,7 @@ from synthetic_catalog import seed as seed_catalog
 from shift.adapters.db import handover_repo
 from shift.app import create_app
 from shift.config.settings import Settings
+from shift.domain.handover_counts import CountStatus, counter_side
 from shift.domain.handover_fsm import HandoverFlow
 from shift.services.auth import SESSION_COOKIE
 from shift.services.handover import NO_ACCOUNTING
@@ -132,6 +133,18 @@ def _start(client: TestClient, phone: Phone, flow: str = "reception") -> dict[st
     return response.json()
 
 
+def _whose_turn(client: TestClient, phone: Phone, handover_id: str, scope: str, item_id: str | None) -> Phone:
+    """A4: every count is taken on its own side's phone, so a test counts as whoever the flow asks for."""
+    state = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, phone)).json()
+    status = state["cash_status"] if scope == "cash" else state["counts"].get(item_id)
+    if status is None:
+        return phone
+    side = counter_side(scope, CountStatus(status), alone=state["emergency"] is not None)
+    if state["my_side"] and side != state["my_side"]:
+        return _phone(client, "reception" if phone.staff_id == OUTGOING else OUTGOING_ROLE)
+    return phone
+
+
 def _count(
     client: TestClient,
     phone: Phone,
@@ -146,6 +159,7 @@ def _count(
     if item_id is not None:
         body["item_id"] = item_id
         body["location_id"] = location_id
+    phone = _whose_turn(client, phone, handover_id, scope, item_id)
     return client.post(f"/api/v1/handover/{handover_id}/counts", json=body, headers=_as(client, phone))
 
 
@@ -686,3 +700,36 @@ def test_only_the_two_people_of_a_flow_may_count_advance_or_answer(client: TestC
     for step, response in refusals.items():
         assert response.status_code == 403, f"{step}: {response.text}"
         assert "دو نفرِ همین تحویل" in response.json()["error"]["message"], f"{step}: {response.text}"
+
+
+# --- whose count it is (A4) ----------------------------------------------------------------------
+
+
+def _raw_count(client: TestClient, phone: Phone, handover_id: str, counted: int, **target: Any):
+    body = {"counted": counted, **target}
+    return client.post(f"/api/v1/handover/{handover_id}/counts", json=body, headers=_as(client, phone))
+
+
+def test_every_count_is_taken_by_the_side_it_belongs_to(client: TestClient) -> None:
+    """A4: the box is counted by the outgoing person first, a shelf item by the incoming person first."""
+    incoming = _phone(client)
+    outgoing = _phone(client, OUTGOING_ROLE)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    mine = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, incoming)).json()
+    theirs = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, outgoing)).json()
+    assert (mine["my_side"], theirs["my_side"]) == ("incoming", "outgoing")
+
+    cash = {"scope": "cash"}
+    assert _raw_count(client, incoming, handover_id, CASH_OPENING, **cash).status_code == 403
+    assert _raw_count(client, outgoing, handover_id, CASH_OPENING, **cash).json() == {"status": "incoming"}
+    assert _raw_count(client, outgoing, handover_id, CASH_OPENING, **cash).status_code == 403
+    assert _raw_count(client, incoming, handover_id, CASH_OPENING, **cash).json() == {"status": "matched"}
+    _advance(client, incoming, handover_id)
+
+    item = {"scope": "item", "item_id": PARA, "location_id": SHELF}
+    assert _raw_count(client, outgoing, handover_id, 5, **item).status_code == 403
+    assert _raw_count(client, incoming, handover_id, 5, **item).json() == {"status": "recount"}
+    assert _raw_count(client, incoming, handover_id, 6, **item).json() == {"status": "outgoing"}
+    assert _raw_count(client, incoming, handover_id, 7, **item).status_code == 403
+    assert _raw_count(client, outgoing, handover_id, 7, **item).json() == {"status": "joint"}

@@ -17,6 +17,7 @@ import pytest
 from clocks import FixedClock
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed
+from turns import count_on_turn
 
 from event_fixtures import build_event
 from shift.adapters.db import projections_repo
@@ -96,8 +97,11 @@ def _start(service: HandoverService, *, opening_cash: int | None = None, incomin
 def _settle(service: HandoverService, handover_id: str, counted: int, *, actor: str = INCOMING) -> None:
     """Both counts of one flow, taken by the person who took it over (A5: only its own two people)."""
     caller = Caller(actor_id=actor, device_id="device-1")
-    assert service.count(handover_id, CASH, counted, caller=caller) is CountStatus.INCOMING
-    assert service.count(handover_id, CASH, counted, caller=caller) in {CountStatus.MATCHED, CountStatus.SETTLED}
+    assert count_on_turn(service, handover_id, CASH, counted, caller=caller) is CountStatus.INCOMING
+    assert count_on_turn(service, handover_id, CASH, counted, caller=caller) in {
+        CountStatus.MATCHED,
+        CountStatus.SETTLED,
+    }
 
 
 def _move(
