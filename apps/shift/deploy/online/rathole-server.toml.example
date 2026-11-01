@@ -1,0 +1,14 @@
+# Relay VPS (O05): the end of the tunnel the clinic PC opens outward. Copy to /etc/rathole/server.toml.
+# The token is a long random secret shared with the clinic PC only (openssl rand -hex 32); never commit it.
+[server]
+bind_addr = "0.0.0.0:2333"            # the clinic PC connects here; open this port in the VPS firewall
+default_token = "REPLACE_WITH_THE_SHARED_TOKEN"
+
+[server.transport]
+type = "noise"                       # the tunnel itself is encrypted and authenticated
+
+[server.transport.noise]
+local_private_key = "REPLACE_WITH_THE_SERVER_PRIVATE_KEY"   # rathole --genkey; the public half goes to the client
+
+[server.services.shift]
+bind_addr = "127.0.0.1:7443"          # HAProxy forwards the public name here; loopback only
