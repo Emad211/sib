@@ -183,11 +183,11 @@ def _delivery_id(event: Any) -> str | None:
 
 
 def _settled(state: DeliveryState) -> DeliveryState:
-    """P-08: a delivery is paid once its payments cover a real invoice, whatever closed it last.
+    """P-08: a delivery is paid once its payments and the vendor's credit cover a real invoice.
 
-    A parcel that went back to the vendor keeps `returned`: the money for it is the credit note, so a
-    refunded return must never read as a paid invoice.
+    A parcel that went back to the vendor keeps `returned`: its status stays the return's, so a credited
+    return never reads as a paid invoice; the credit only lowers what is still owed on it.
     """
-    if state.returned or state.invoice_total <= 0 or state.paid_total < state.invoice_total:
+    if state.returned or state.invoice_total <= 0 or state.paid_total + state.credit_total < state.invoice_total:
         return state
     return replace(state, status=PAID)

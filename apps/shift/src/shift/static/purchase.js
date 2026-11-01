@@ -1006,8 +1006,18 @@
     (invoice.receipt_photos || []).forEach(function (sha256) {
       cardBox.appendChild(photoFigure(sha256, RECEIPT_PHOTO_CAPTION));
     });
+    // A return sits as a credit on this invoice (S01 §4): once the credit is in, the rest is paid here.
+    if (invoice.returned && invoice.credit_total <= 0) {
+      cardBox.appendChild(el("p", "pu-meta", "این بار مرجوع شده است؛ اول بستانکاری را ثبت کنید، بعد ماندهٔ فاکتور پرداخت می‌شود."));
+      return cardBox;
+    }
+    if (invoice.returned && invoice.remaining > 0) {
+      cardBox.appendChild(el("p", "pu-meta", "مانده پس از بستانکاری: " + faNumber(invoice.remaining) + " تومان"));
+      cardBox.appendChild(paymentForm(invoice));
+      return cardBox;
+    }
     if (invoice.returned) {
-      cardBox.appendChild(el("p", "pu-meta", "این بار به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."));
+      cardBox.appendChild(el("p", "pu-paid", "تسویه با بستانکاری و پرداخت"));
       return cardBox;
     }
     if (invoice.lines.length === 0) {

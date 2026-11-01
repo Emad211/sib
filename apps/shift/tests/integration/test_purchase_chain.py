@@ -698,9 +698,27 @@ def test_a_vendor_return_lets_the_accountant_credit_up_to_the_invoice(desk: Desk
     _act(desk, desk.accountant, "credit.record", delivery_id=delivery_id, amount_toman=25_000, note=None)
 
     invoice = _invoice(desk, delivery_id)
-    assert (invoice["returned"], invoice["credit_total"], invoice["remaining"]) == (True, 25_000, 100_000)
+    # The credit sits on the original invoice and lowers what is still owed (S01 §4).
+    assert (invoice["returned"], invoice["credit_total"], invoice["remaining"]) == (True, 25_000, 75_000)
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE, "a return is a purchasing document (P-09)"
-    with pytest.raises(PurchaseRuleError, match="مرجوع"):
+    with pytest.raises(PurchaseRuleError, match="بیشتر"):
+        _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=75_001, method="cash")
+    _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=75_000, method="cash")
+    assert _invoice(desk, delivery_id)["remaining"] == 0
+
+
+def test_a_returned_parcel_is_paid_only_after_its_credit_is_recorded(desk: Desk) -> None:
+    """The part that went back is never paid by mistake while the credit note is still on its way."""
+    delivery_id = _digitized_delivery(desk, unit_price=25_000, quantity=4)
+    _act(
+        desk,
+        desk.storekeeper,
+        "return.record",
+        delivery_id=delivery_id,
+        lines=[{"item_id": ITEM, "quantity": 1}],
+        reason="بار شکسته بود",
+    )
+    with pytest.raises(PurchaseRuleError, match="اول بستانکاری"):
         _act(desk, desk.accountant, "payment.record", delivery_id=delivery_id, amount_toman=1_000, method="cash")
 
 

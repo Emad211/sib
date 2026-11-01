@@ -95,7 +95,7 @@ OVER_PAYMENT = "مبلغ پرداخت از ماندهٔ فاکتور بیشتر 
 CANNOT_RETURN = "مرجوعی یک بار و برای باری ثبت می‌شود که پذیرش گرفته است."
 NO_RETURN = "بستانکاری فقط بعد از ثبت مرجوعی همین بار ثبت می‌شود."
 OVER_CREDIT = "مبلغ بستانکاری از سقف فاکتور بیشتر است."
-PAYMENT_RETURNED = "بار این فاکتور به فروشنده مرجوع شده است؛ پرداخت روی آن ثبت نمی‌شود."
+PAYMENT_RETURNED = "این بار مرجوع شده است؛ اول بستانکاری مرجوعی را ثبت کنید، بعد ماندهٔ فاکتور پرداخت می‌شود."
 
 STORE_PREFIX = "store:"
 # Every action, the permission it needs and the handler that writes it; nothing else may be appended.
@@ -438,21 +438,22 @@ class PurchaseService:
         return {"status": "recorded", "event_id": event_id, "delivery_id": digitized.delivery_id}
 
     def _payment_record(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
-        """P-08: an invoice first; no payment on a returned parcel or while a flag is undecided.
+        """P-08: an invoice first, never while a flag is undecided, and never past what is still owed.
 
-        A parcel that went back to the vendor has nothing left to pay for — the credit note is the
-        accountant's record of it — so the payment door closes there as well as behind a locked flag.
+        A vendor return sits as a credit on the original invoice (S01 §4): what is still owed is the
+        invoice less the credit and the payments. After a return the credit is recorded first, so the
+        part that went back is never paid by mistake while the credit note is still on its way.
         """
         self._need_photo(data.get("receipt_photo_sha256"), required=False)
         payment = self._body(PaymentRecorded, data)
         parcel = self._require_delivery(payment.delivery_id)
         if not parcel.invoice_lines:
             raise PurchaseRuleError(NO_INVOICE)
-        if parcel.returned:
+        if parcel.returned and parcel.credit_total == 0:
             raise PurchaseRuleError(PAYMENT_RETURNED)
         if parcel.payment_locked:
             raise PurchaseRuleError(PAYMENT_LOCKED)
-        if payment.amount_toman > parcel.invoice_total - parcel.paid_total:
+        if payment.amount_toman > _still_owed(parcel):
             raise PurchaseRuleError(OVER_PAYMENT)
         event_id = self._append(EventType.PAYMENT_RECORDED, payment, principal, shift)
         return {"status": "recorded", "event_id": event_id, "delivery_id": payment.delivery_id}
@@ -718,6 +719,11 @@ class PurchaseService:
         }
 
 
+def _still_owed(parcel: DeliveryState) -> int:
+    """What the clinic still owes on one invoice: the total less the vendor's credit and the payments."""
+    return max(parcel.invoice_total - parcel.credit_total - parcel.paid_total, 0)
+
+
 def _order_payload(order: OrderState) -> dict[str, Any]:
     """An order as its own people read it: the lines, the status and who spoke, never a price."""
     return {
@@ -774,7 +780,7 @@ def _invoice_payload(parcel: DeliveryState) -> dict[str, Any]:
         "invoice_total": parcel.invoice_total,
         "paid_total": parcel.paid_total,
         "credit_total": parcel.credit_total,
-        "remaining": max(parcel.invoice_total - parcel.paid_total, 0),
+        "remaining": _still_owed(parcel),
         "invoice_photo": parcel.invoice_photo,
         "receipt_photos": list(parcel.receipt_photos),
         "lines": [
