@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from auth_fixtures import create_staff
 from clocks import FixedClock
 from make_synthetic_acc_db import build
 from synthetic_accounting import close_open_invoices, empty_accounting
@@ -351,10 +352,13 @@ def test_the_nursing_flow_has_no_cash_step(service: HandoverService, database: D
 def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
     service: HandoverService, database: Database, clock: FixedClock
 ) -> None:
+    create_staff(database, staff_id="manager-1", full_name="مدیر آزمایشی", mobile="09120000099", roles=["manager"])
     handover_id = _start(service, opening_cash=1_000_000).handover_id
     assert service.report_early_leave(handover_id, caller=CALLER).early_left is True
     with pytest.raises(HandoverError, match="H-08"):
         service.advance(handover_id, caller=CALLER)
+    with pytest.raises(HandoverError, match="مدیران فعال"):
+        service.confirm_emergency_start(handover_id, "somebody-made-up", caller=CALLER)
 
     state = service.confirm_emergency_start(handover_id, "manager-1", caller=CALLER)
     assert (state.emergency_by, state.emergency_at) == ("manager-1", clock.moment)

@@ -135,7 +135,10 @@ def _start(client: TestClient, phone: Phone, flow: str = "reception") -> dict[st
 
 def _whose_turn(client: TestClient, phone: Phone, handover_id: str, scope: str, item_id: str | None) -> Phone:
     """A4: every count is taken on its own side's phone, so a test counts as whoever the flow asks for."""
-    state = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, phone)).json()
+    answered = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, phone))
+    if answered.status_code != 200:  # a colleague of another flow reads nothing, and counts nothing either
+        return phone
+    state = answered.json()
     status = state["cash_status"] if scope == "cash" else state["counts"].get(item_id)
     if status is None:
         return phone
@@ -733,3 +736,52 @@ def test_every_count_is_taken_by_the_side_it_belongs_to(client: TestClient) -> N
     assert _raw_count(client, incoming, handover_id, 6, **item).json() == {"status": "outgoing"}
     assert _raw_count(client, incoming, handover_id, 7, **item).status_code == 403
     assert _raw_count(client, outgoing, handover_id, 7, **item).json() == {"status": "joint"}
+
+
+# --- the audit's confirmed gaps (A6) -------------------------------------------------------------
+
+
+def test_an_outsider_reads_nothing_of_a_flow_and_cannot_start_the_other_flow(client: TestClient) -> None:
+    """R-07, H-10: a colleague of another flow cannot read its state, and a role starts only its own flow."""
+    incoming = _phone(client)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    outsider = _phone(client, "nurse")
+
+    assert client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, outsider)).status_code == 403
+    assert client.get(f"/api/v1/handover/{handover_id}/targets", headers=_as(client, outsider)).status_code == 403
+    assert client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, incoming)).status_code == 200
+
+    wrong = client.post("/api/v1/handover/start", json={"flow": "nursing"}, headers=_as(client, _phone(client)))
+    assert wrong.status_code == 403
+    assert "جریان خودش" in wrong.json()["error"]["message"]
+
+
+def test_the_phone_confirmation_names_a_real_active_manager(client: TestClient) -> None:
+    """H-08, M-03: the manager the card shows is a manager, not whatever name the caller typed."""
+    incoming = _phone(client)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    client.post(f"/api/v1/handover/{handover_id}/early-leave", headers=_as(client, incoming))
+
+    for who in ("somebody-made-up", RECEPTION):
+        refused = client.post(
+            f"/api/v1/handover/{handover_id}/emergency-start", json={"manager_id": who}, headers=_as(client, incoming)
+        )
+        assert refused.status_code == 403, who
+    accepted = client.post(
+        f"/api/v1/handover/{handover_id}/emergency-start", json={"manager_id": MANAGER}, headers=_as(client, incoming)
+    )
+    assert accepted.status_code == 200
+
+
+def test_the_checklists_are_filled_by_the_incoming_person(client: TestClient) -> None:
+    incoming = _phone(client)
+    outgoing = _phone(client, OUTGOING_ROLE)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    _to_checklists(client, incoming, handover_id)
+
+    refused = _checklist(client, outgoing, handover_id, "store_lock_ok", ok=True)
+
+    assert refused.status_code == 403

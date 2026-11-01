@@ -154,7 +154,7 @@ SECTION_NAMES = (
     "overdue_faults",
     "call_sample",
 )
-LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4, 5, 6})
+LEGACY_SCHEMA_VERSIONS = frozenset({2, 3, 4, 5, 6, 7})
 
 
 @dataclass(frozen=True, slots=True)

@@ -653,7 +653,7 @@ def _assert_the_card_really_carries(card: Card) -> None:
         abs(DICLO_REFERENCE - DICLO_JOINT),
         abs(SALINE_REFERENCE - SALINE_COUNT),
     }, "the card held no gap"
-    assert [entry.recorded_by.name for entry in card.emergency_starts] == [ROLES["reception"].full_name]
+    assert [entry.recorded_by.name for entry in card.emergency_starts] == [ROLES["nurse"].full_name]
     assert [entry.manager.name for entry in card.emergency_starts] == [ROLES["manager"].full_name]
     unnamed = [entry for entry in card.discrepancies if entry.difference == abs(SALINE_REFERENCE - SALINE_COUNT)]
     assert [entry.culprit for entry in unnamed] == [None], "the emergency path's gap stays unnamed (H-08)"
@@ -798,7 +798,7 @@ def test_the_reference_never_leaves_the_server_in_a_whole_handover(
     )
 
     closed = _reception_flow(app_client, scanner, incoming, outgoing)
-    emergency = _emergency_flow(app_client, scanner, incoming)
+    emergency = _emergency_flow(app_client, scanner, _sign_in(app_client, scanner, "nurse"))
 
     other_event = _call(
         app_client,

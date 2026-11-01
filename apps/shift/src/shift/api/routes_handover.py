@@ -33,17 +33,21 @@ from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_formulas import HandoverError
 from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow
 from shift.domain.handover_payloads import CountTarget
-from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, STEP_LOCATIONS
+from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, FLOW_OWNER_ROLES, STEP_LOCATIONS
 from shift.domain.item_icons import icon_for
+from shift.domain.on_shift import held_roles
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
 from shift.services.checklists import ChecklistAsker
 from shift.services.handover import (
+    CHECKLIST_INCOMING,
     NO_ACCOUNTING,
     NO_BASELINE,
+    NOT_A_MANAGER,
     OWN_FLOW_ONLY,
+    START_OWN_FLOW,
     Caller,
     HandoverService,
     HandoverState,
@@ -223,8 +227,8 @@ def _refusal(exc: HandoverError) -> ApiError:
         return Forbidden(NOT_A_SIGNER)
     if reason == NO_ACCOUNTING:
         return Conflict(NO_ACCOUNTING)
-    if reason == OWN_FLOW_ONLY:
-        return Forbidden(OWN_FLOW_ONLY)
+    if reason in {OWN_FLOW_ONLY, NOT_A_MANAGER, START_OWN_FLOW, CHECKLIST_INCOMING}:
+        return Forbidden(reason)
     if reason == NO_BASELINE:
         return Conflict(NO_BASELINE)
     if reason.startswith("unknown handover"):
@@ -289,6 +293,8 @@ def start_handover(
     Who hands over is derived by the service (the newest flow's incoming person, else the manager's
     baseline custodian); staff never type a person or a figure into this route.
     """
+    if FLOW_OWNER_ROLES[body.flow] not in held_roles(principal.roles):
+        raise Forbidden(START_OWN_FLOW)
     state = _run(service.start, body.flow, incoming_id=principal.staff_id, caller=_caller(principal))
     _no_store(response)
     return _state(state)
@@ -396,7 +402,10 @@ def get_handover_state(
         {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
         for parcel in purchase.in_transit(deps.running_shift(request))
     ]
-    return {**_state(_run(service.state, handover_id), principal), "parcels_in_transit": parcels}
+    return {
+        **_state(_run(service.state_for, handover_id, caller=_caller(principal)), principal),
+        "parcels_in_transit": parcels,
+    }
 
 
 @router.get("/{handover_id}/targets")
@@ -404,11 +413,11 @@ def handover_targets(
     handover_id: str,
     request: Request,
     response: Response,
-    _principal: CountGuard,
+    principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
 ) -> dict[str, Any]:
     """The counted items of this flow's steps and the flow's checklists, with no quantities (H-01)."""
-    state = _run(service.state, handover_id)
+    state = _run(service.state_for, handover_id, caller=_caller(principal))
     at_shift = ShiftKey.parse(state.shift_id)
     catalog: CatalogService = request.app.state.catalog
     items: list[dict[str, str]] = []

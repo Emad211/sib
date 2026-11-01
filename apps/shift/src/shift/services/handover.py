@@ -37,7 +37,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from shift.adapters.db import events_repo, handover_repo, projections_repo
+from shift.adapters.db import events_repo, handover_repo, projections_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.adapters.db.handover_repo import FlowRow
@@ -55,6 +55,7 @@ from shift.domain.handover_payloads import CountTarget
 from shift.domain.handover_steps import FLOW_OWNER_ROLES, STEP_LOCATIONS
 from shift.domain.on_shift import held_roles
 from shift.domain.policy import ShiftKey
+from shift.domain.roles import Role
 from shift.domain.shift_clock import covering
 from shift.services.accounting_bridge import AccountingBridge
 from shift.services.audit import AuditEntry, AuditService
@@ -77,6 +78,9 @@ NO_ACCOUNTING = (
 NO_BASELINE = "مدیر باید ابتدا شمارش اولیه را ثبت کند."
 # Owner decision 9: a flow's first count belongs to the person whose role owns that flow.
 OWN_FLOW_ONLY = "شمارش اولیهٔ هر جریان را فقط نفر همان جریان ثبت می‌کند."
+NOT_A_MANAGER = "تأیید تلفنی را فقط یکی از مدیران فعال درمانگاه می‌دهد."
+START_OWN_FLOW = "هر نفر فقط تحویل جریان خودش را شروع می‌کند."
+CHECKLIST_INCOMING = "چک‌لیست را نفر ورودی پر می‌کند."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -407,6 +411,11 @@ class HandoverService:
             closed=handover.closed,
         )
 
+    def state_for(self, handover_id: str, *, caller: Caller) -> HandoverState:
+        """The flow as one of its two people sees it; a colleague of another flow reads nothing (R-07, H-10)."""
+        _part_of_the_flow(self._row(handover_id), caller)
+        return self.state(handover_id)
+
     def count(self, handover_id: str, target: CountTarget, counted: int, *, caller: Caller) -> CountStatus:
         """Take one blind count and answer with a status only; the reference stays here (R-02)."""
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
@@ -471,7 +480,10 @@ class HandoverService:
         photo_id: str | None = None,
     ) -> HandoverState:
         """Record one checklist answer on the checklists step (H-04); it changes no projection."""
-        _part_of_the_flow(self._row(handover_id), caller)
+        row = self._row(handover_id)
+        _part_of_the_flow(row, caller)
+        if caller.actor_id != row.incoming_id:
+            raise NotOfTheFlow(CHECKLIST_INCOMING)
         flow = self._require_step(handover_id, HandoverStep.CHECKLISTS)
         asked = ChecklistAsker(self._catalog, self._database).owned(flow.row.flow, ShiftKey.parse(flow.row.shift_id))
         if item_id not in {item.item_id for item in asked}:
@@ -527,9 +539,18 @@ class HandoverService:
             handover_repo.mark_early_left(connection, handover_id)
         return self.state(handover_id)
 
+    def _is_active_manager(self, staff_id: str) -> bool:
+        """True when `staff_id` is an active staff member who holds the manager role (H-08, M-03)."""
+        with self._database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+        return any(p.staff.staff_id == staff_id and p.staff.active and Role.MANAGER.value in p.roles for p in people)
+
     def confirm_emergency_start(self, handover_id: str, manager_id: str, *, caller: Caller) -> HandoverState:
         """Record the manager's phone confirmation that the incoming person finishes alone (H-08)."""
         flow = self._live(handover_id)
+        _part_of_the_flow(flow.row, caller)
+        if not self._is_active_manager(manager_id):
+            raise HandoverError(NOT_A_MANAGER)
         confirmed = flow.handover.confirm_emergency_start(manager_id)
         payload = {"manager_id": manager_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value, payload)])
