@@ -40,6 +40,19 @@ class RestockOffered(RestockConfirmed):
     """The giver's half of a shelf charge: nothing moves until the shelf's own person confirms it (G3)."""
 
 
+class ShelfReturnConfirmed(RestockConfirmed):
+    """Goods back from a shelf to the main store: stock down on the shelf and up in the store at once (A2).
+
+    The fields are the shelf charge's, read the other way round: `from_location_id` is the shelf and
+    `to_location_id` the main store. It is the `U` of the shelf reference, so the shelf's next blind
+    count is compared with a figure that already excludes what went back.
+    """
+
+
+class ShelfReturnOffered(ShelfReturnConfirmed):
+    """The giver's half of a return: nothing moves until the named confirmer counts what arrived (A2)."""
+
+
 class StoreBaselineLine(Payload):
     item_id: Identifier
     quantity: Counted

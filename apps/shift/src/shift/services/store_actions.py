@@ -40,6 +40,8 @@ from shift.domain.store_payloads import (
     DeliveryConfirmed,
     RestockOffered,
     SampleCounted,
+    ShelfReturnConfirmed,
+    ShelfReturnOffered,
     StoreBaselined,
 )
 from shift.domain.store_sample import monthly_sample
@@ -54,6 +56,7 @@ from shift.services.purchase_rules import (
     CONFIRM_OWN,
     CONFIRM_RETURNED,
     CONFIRMER_IS_GIVER,
+    ITEM_NOT_ON_SHELF,
     ITEM_NOT_THERE,
     MAIN_STORE,
     NEEDS_BASELINE,
@@ -66,6 +69,7 @@ from shift.services.purchase_rules import (
     OFFER_CLOSED,
     OFFER_COUNT,
     RESTOCK_FROM_STORE,
+    RETURN_TO_STORE,
     SAME_LOCATION,
     SAMPLE_DONE,
     SAMPLE_ROLE,
@@ -85,9 +89,18 @@ ACTIONS: Mapping[str, tuple[Permission, str]] = {
     # of the clinic's staff the giver names (reception owns a shelf and holds no restock permission).
     "restock.record": (Permission.STOCK_RESTOCK_CONFIRM, "restock_offer"),
     "restock.confirm": (Permission.EVENTS_APPEND, "restock_confirm"),
+    # A2: goods back from a shelf. Any shelf holder records it and the storekeeper (or whoever is named)
+    # counts what arrived in the store; only that confirmation moves stock.
+    "shelf_return.record": (Permission.EVENTS_APPEND, "shelf_return_offer"),
+    "shelf_return.confirm": (Permission.EVENTS_APPEND, "shelf_return_confirm"),
     "weekly.count": (Permission.STOCK_COUNT_SUBMIT, "weekly_count"),
     "store.baseline": (Permission.STOCK_COUNT_SUBMIT, "store_baseline"),
     "sample.count": (Permission.STOCK_COUNT_SUBMIT, "sample_count"),
+}
+# (offered, confirmed) event types of the two-sided shelf movements, keyed by "is it a return".
+_OFFER_TYPES = {
+    False: (EventType.RESTOCK_OFFERED, EventType.RESTOCK_CONFIRMED),
+    True: (EventType.SHELF_RETURN_OFFERED, EventType.SHELF_RETURN_CONFIRMED),
 }
 _COUNTERS = frozenset({Role.STOREKEEPER.value, Role.MANAGER.value})
 SAMPLERS = frozenset({Role.ACCOUNTANT.value, Role.MANAGER.value})
@@ -163,14 +176,16 @@ class StoreActions:
         )
         return month, items, counted
 
-    def open_offers(self, log: list[EventRecord]) -> list[EventRecord]:
-        """The shelf charges one side recorded and the other has not confirmed yet, oldest first."""
+    def open_offers(self, log: list[EventRecord], *, returns: bool = False) -> list[EventRecord]:
+        """The shelf charges (or, with `returns`, the shelf returns) one side recorded and the other has
+        not confirmed yet, oldest first."""
+        offered, confirmed = _OFFER_TYPES[returns]
         closed = {
             str(event.payload.get("offer_id"))
             for event in log
-            if event.type == EventType.RESTOCK_CONFIRMED and event.payload.get("offer_id")
+            if event.type == confirmed and event.payload.get("offer_id")
         }
-        return [event for event in log if event.type == EventType.RESTOCK_OFFERED and event.event_id not in closed]
+        return [event for event in log if event.type == offered and event.event_id not in closed]
 
     # --- the parcel: the receiver's own count ------------------------------------------------
 
@@ -249,26 +264,57 @@ class StoreActions:
 
     def restock_confirm(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
         """G3: the named person counts what arrived on the shelf; a matching count moves both ends once."""
+        return self._confirm(principal, shift, data, returns=False)
+
+    def _confirm(self, principal: Principal, shift: ShiftKey, data: dict[str, Any], *, returns: bool) -> dict[str, Any]:
+        """Close one open offer with the named person's own count; the shelf charge and the return share it."""
+        offered, confirmed = _OFFER_TYPES[returns]
         offer_id = str(data.get("offer_id") or "")
         log = self._log()
-        offer = next(
-            (event for event in log if event.event_id == offer_id and event.type == EventType.RESTOCK_OFFERED), None
-        )
+        offer = next((event for event in log if event.event_id == offer_id and event.type == offered), None)
         if offer is None:
             raise PurchaseRuleError(UNKNOWN_OFFER)
-        if offer not in self.open_offers(log):
+        if offer not in self.open_offers(log, returns=returns):
             raise PurchaseRuleError(OFFER_CLOSED)
         if str(offer.payload["confirmer_id"]) != principal.staff_id:
             raise PurchaseRuleError(NOT_THE_CONFIRMER)
         quantity = data.get("quantity")
         if isinstance(quantity, bool) or quantity != offer.payload["quantity"]:
             raise PurchaseRuleError(OFFER_COUNT)
-        payload = body(RestockConfirmed, {key: value for key, value in offer.payload.items()} | {"offer_id": offer_id})
-        record = new_event(
-            self._clock, EventType.RESTOCK_CONFIRMED, payload, principal, shift, ref_event_id=offer.event_id
-        )
+        model = ShelfReturnConfirmed if returns else RestockConfirmed
+        payload = body(model, {key: value for key, value in offer.payload.items()} | {"offer_id": offer_id})
+        record = new_event(self._clock, confirmed, payload, principal, shift, ref_event_id=offer.event_id)
         self._events.append(record)
         return {"status": "recorded", "event_id": record.client_event_id}
+
+    # --- the return: a shelf's goods back to the main store (A2) ------------------------------
+
+    def shelf_return_offer(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
+        """A2: the giver records the return and names who counts it in the store; nothing moves yet."""
+        offer = body(ShelfReturnOffered, data)
+        if offer.confirmer_id == principal.staff_id:
+            raise PurchaseRuleError(CONFIRMER_IS_GIVER)
+        if offer.from_location_id == offer.to_location_id:
+            raise PurchaseRuleError(SAME_LOCATION)
+        if offer.to_location_id != MAIN_STORE:
+            raise PurchaseRuleError(RETURN_TO_STORE)
+        places = {place.location_id for place in self._catalog.locations(shift)}
+        if offer.from_location_id not in places or offer.to_location_id not in places:
+            raise PurchaseRuleError(UNKNOWN_LOCATION)
+        if not any(
+            item.item_id == offer.item_id and item.location_id == offer.from_location_id
+            for item in self._catalog.items(shift)
+        ):
+            raise PurchaseRuleError(ITEM_NOT_ON_SHELF)
+        if not self._is_active_staff(offer.confirmer_id):
+            raise PurchaseRuleError(UNKNOWN_CONFIRMER)
+        record = new_event(self._clock, EventType.SHELF_RETURN_OFFERED, offer, principal, shift)
+        self._events.append(record)
+        return {"status": "recorded", "event_id": record.client_event_id}
+
+    def shelf_return_confirm(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
+        """A2: the named person counts what arrived in the store; a matching count moves both ends once."""
+        return self._confirm(principal, shift, data, returns=True)
 
     # --- the counts of the store --------------------------------------------------------------
 

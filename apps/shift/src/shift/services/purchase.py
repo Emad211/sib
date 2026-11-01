@@ -672,6 +672,24 @@ class PurchaseService:
             for offer in self._store.open_offers(log)
             if offer.actor_id == principal.staff_id
         ]
+        return_offers = self._store.open_offers(log, returns=True)
+        returns_mine = [
+            {
+                "offer_id": offer.event_id,
+                "item_id": str(offer.payload["item_id"]),
+                "item_name": names.get(str(offer.payload["item_id"]), ""),
+                "to_location_name": places.get(str(offer.payload["to_location_id"]), ""),
+                "from_location_name": places.get(str(offer.payload["from_location_id"]), ""),
+                "giver_id": offer.actor_id,
+            }
+            for offer in return_offers
+            if str(offer.payload["confirmer_id"]) == principal.staff_id
+        ]
+        returns_waiting = [
+            {"offer_id": offer.event_id, "item_id": str(offer.payload["item_id"])}
+            for offer in return_offers
+            if offer.actor_id == principal.staff_id
+        ]
         parcels = [
             {
                 "delivery_id": parcel.delivery_id,
@@ -685,7 +703,13 @@ class PurchaseService:
             for parcel in delivery_states(log).values()
             if parcel.awaiting_staff_id == principal.staff_id and not parcel.returned
         ]
-        return {"restock_to_confirm": mine, "restock_waiting": waiting, "parcels_to_count": parcels}
+        return {
+            "restock_to_confirm": mine,
+            "restock_waiting": waiting,
+            "return_to_confirm": returns_mine,
+            "return_waiting": returns_waiting,
+            "parcels_to_count": parcels,
+        }
 
 
 def _order_payload(order: OrderState) -> dict[str, Any]:

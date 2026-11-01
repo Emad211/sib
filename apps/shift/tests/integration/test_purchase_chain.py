@@ -1214,3 +1214,56 @@ def test_a_near_expiry_mark_is_stored_with_the_count_that_saw_it(desk: Desk) -> 
 
     flagged = _log(desk, EventType.EXPIRY_FLAGGED)
     assert [(row.payload["item_id"], row.actor_id) for row in flagged] == [(SYRINGE, desk.storekeeper.staff_id)]
+
+
+# --- the shelf return (A2) -------------------------------------------------------------------
+
+
+def _return_offer(desk: Desk, **overrides: Any) -> dict[str, Any]:
+    """The nurse sends goods from her shelf back to the main store and names the storekeeper to count them."""
+    data: dict[str, Any] = {
+        "item_id": ITEM,
+        "from_location_id": LOCATION,
+        "to_location_id": STORE,
+        "quantity": 3,
+        "confirmer_id": desk.storekeeper.staff_id,
+    }
+    return _act(desk, desk.nurse, "shelf_return.record", **(data | overrides))
+
+
+def test_a_shelf_return_needs_both_sides_and_then_moves_the_shelf_down_and_the_store_up_once(desk: Desk) -> None:
+    """A2, U in the shelf reference: the offer moves nothing; the storekeeper's count moves both ends once."""
+    offered = _return_offer(desk)
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE, SHELF_BEFORE)
+    waiting = _state(desk, desk.storekeeper)["inbox"]["return_to_confirm"]
+    assert [row["offer_id"] for row in waiting] == [offered["event_id"]]
+    assert "quantity" not in waiting[0], "the person counting in the store does not read the offered figure"
+    assert [row["offer_id"] for row in _state(desk, desk.nurse)["inbox"]["return_waiting"]] == [offered["event_id"]]
+
+    with pytest.raises(PurchaseRuleError, match="کسی که"):
+        _act(desk, desk.reception, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
+    with pytest.raises(PurchaseRuleError, match="نمی‌خواند"):
+        _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=2)
+    assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE
+
+    _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
+
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE + 3, SHELF_BEFORE - 3)
+    assert _state(desk, desk.storekeeper)["inbox"]["return_to_confirm"] == []
+    assert desk.projections.rebuild().drift == ()
+    assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE - 3
+
+
+def test_a_shelf_return_is_refused_when_it_is_not_a_return(desk: Desk) -> None:
+    with pytest.raises(PurchaseRuleError, match="کس دیگری"):
+        _return_offer(desk, confirmer_id=desk.nurse.staff_id)
+    with pytest.raises(PurchaseRuleError, match="فقط به انبار اصلی"):
+        _return_offer(desk, to_location_id=LOCATION, from_location_id=STORE)
+    with pytest.raises(PurchaseRuleError, match="کاتالوگ"):
+        _return_offer(desk, from_location_id="nowhere")
+    with pytest.raises(PurchaseRuleError, match="کارکنان فعال"):
+        _return_offer(desk, confirmer_id="staff-ghost")
+    assert _log(desk, EventType.SHELF_RETURN_OFFERED) == []
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE, SHELF_BEFORE)

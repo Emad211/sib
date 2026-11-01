@@ -127,7 +127,7 @@ def default_payload(event_type: str) -> dict[str, Any]:
         }
     if event_type == "vendor_credit":
         return {"delivery_id": "delivery-1", "amount_toman": 10_000, "note": None}
-    if event_type == "restock_confirmed":
+    if event_type in {"restock_confirmed", "shelf_return_confirmed"}:
         return {
             "item_id": "item-1",
             "from_location_id": "location-1",
@@ -139,7 +139,7 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"item_id": "item-1", "location_id": "location-1", "note": None}
     if event_type == "delivery_confirmed":
         return {"delivery_id": "delivery-1", "lines": [{"item_id": "item-1", "quantity": 3}]}
-    if event_type == "restock_offered":
+    if event_type in {"restock_offered", "shelf_return_offered"}:
         return {
             "item_id": "item-1",
             "from_location_id": "location-1",

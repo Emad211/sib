@@ -80,6 +80,8 @@ EXPECTED_EFFECTS = {
     # sets the whole store, and the giver's half of a shelf charge moves nothing until its confirmation.
     EventType.DELIVERY_CONFIRMED: ((StockOperation.ADD,), None),
     EventType.RESTOCK_OFFERED: ((), None),
+    EventType.SHELF_RETURN_OFFERED: ((), None),
+    EventType.SHELF_RETURN_CONFIRMED: ((StockOperation.SUBTRACT, StockOperation.ADD), None),
     EventType.STOCK_STORE_BASELINED: ((StockOperation.SET,), None),
     EventType.STOCK_SAMPLE_COUNT: ((), None),
     EventType.MANAGER_REVIEWED: ((), None),
@@ -319,6 +321,8 @@ def test_shift_scoped_events_match_the_table() -> None:
         EventType.EXPIRY_FLAGGED,
         EventType.DELIVERY_CONFIRMED,
         EventType.RESTOCK_OFFERED,
+        EventType.SHELF_RETURN_OFFERED,
+        EventType.SHELF_RETURN_CONFIRMED,
         EventType.STOCK_STORE_BASELINED,
         EventType.STOCK_SAMPLE_COUNT,
         EventType.MANAGER_REVIEWED,

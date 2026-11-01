@@ -85,6 +85,11 @@ class EventType(StrEnum):
     # and the manager's answer on a card row that is not an approvable record.
     DELIVERY_CONFIRMED = "delivery_confirmed"
     RESTOCK_OFFERED = "restock_offered"
+    # The mirror of a shelf charge (A2, `U` in the shelf reference): a shelf's goods go back to the main
+    # store. One side offers, the named confirmer counts what arrived, and only the confirmation moves
+    # stock, so the shelf and the store change together or not at all.
+    SHELF_RETURN_OFFERED = "shelf_return_offered"
+    SHELF_RETURN_CONFIRMED = "shelf_return_confirmed"
     STOCK_STORE_BASELINED = "stock.store_baselined"
     STOCK_SAMPLE_COUNT = "stock.sample_count"
     MANAGER_REVIEWED = "manager.reviewed"

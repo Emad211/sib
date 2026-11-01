@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from shift.domain import store_payloads as store
 from shift.domain.effects import EffectBuilder, Effects, StockEffect, StockOperation, no_effects
 from shift.domain.event_types import EventType
+from shift.domain.purchase_specs import stock_transfer
 
 
 def store_baseline(payload: Any) -> Effects:
@@ -38,6 +39,8 @@ def parcel_joins_store(payload: Any) -> Effects:
 STORE_EVENT_SPECS: Mapping[EventType, tuple[type[BaseModel], EffectBuilder]] = {
     EventType.DELIVERY_CONFIRMED: (store.DeliveryConfirmed, parcel_joins_store),
     EventType.RESTOCK_OFFERED: (store.RestockOffered, no_effects),
+    EventType.SHELF_RETURN_OFFERED: (store.ShelfReturnOffered, no_effects),
+    EventType.SHELF_RETURN_CONFIRMED: (store.ShelfReturnConfirmed, stock_transfer),
     EventType.STOCK_STORE_BASELINED: (store.StoreBaselined, store_baseline),
     EventType.STOCK_SAMPLE_COUNT: (store.SampleCounted, no_effects),
     EventType.MANAGER_REVIEWED: (store.ManagerReviewed, no_effects),

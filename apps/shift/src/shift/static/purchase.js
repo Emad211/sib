@@ -74,6 +74,7 @@
     credit: "بستانکاری ثبت شد.",
     restock: "شارژ قفسه ثبت شد.",
     offer: "شارژ قفسه برای تأیید فرستاده شد.",
+    shelfReturn: "برگشت به انبار برای تأیید فرستاده شد.",
     confirm: "تأیید ثبت شد.",
     parcelCount: "شمارش بار ثبت شد.",
     count: "شمارش هفتگی ثبت شد.",
@@ -1190,7 +1191,7 @@
   /** G3: what waits for this very person — a parcel in hand to count, a shelf charge to confirm. */
   function renderInbox() {
     var inbox = clinic.inbox;
-    var waiting = inbox !== null ? inbox.parcels_to_count.length + inbox.restock_to_confirm.length : 0;
+    var waiting = inbox !== null ? inbox.parcels_to_count.length + inbox.restock_to_confirm.length + inbox.return_to_confirm.length : 0;
     showSection("purchase-inbox", waiting > 0);
     if (waiting === 0) return;
     var box = sectionBody("purchase-inbox");
@@ -1233,6 +1234,31 @@
             MESSAGES.parcelCount
           );
         }, null, "delivery.confirm")
+      );
+      box.appendChild(card);
+    });
+    inbox.return_to_confirm.forEach(function (offer) {
+      var card = el("div", "pu-card");
+      card.appendChild(el("h3", null, offer.item_name || names[offer.item_id] || "کالا"));
+      card.appendChild(
+        el(
+          "p",
+          "pu-meta",
+          "برگشت از " + (offer.from_location_name || "قفسه") + " به " + (offer.to_location_name || "انبار اصلی")
+        )
+      );
+      var counted = numberInput(0);
+      counted.dataset.returnCount = "";
+      card.appendChild(field("شمارش", counted));
+      card.appendChild(
+        actionButton("تأیید برگشت به انبار", function () {
+          var value = Number(counted.value);
+          if (!Number.isInteger(value) || value < 0) return fail(new Error(NO_QUANTITY));
+          return run(
+            { action: "shelf_return.confirm", data: { offer_id: offer.offer_id, quantity: value } },
+            MESSAGES.confirm
+          );
+        }, null, "shelf_return.confirm")
       );
       box.appendChild(card);
     });
@@ -1358,6 +1384,68 @@
           MESSAGES.offer
         );
       }, null, "restock.record")
+    );
+    renderShelfReturn(box, chargeable, confirmer);
+  }
+
+  /**
+   * A2: goods going back from a shelf to the main store, the other way round of a charge. Two sides
+   * again: whoever records it names the person who counts it, and only that count moves stock.
+   */
+  function renderShelfReturn(box, shelfItems, confirmerTemplate) {
+    box.appendChild(el("h3", null, "برگشت از قفسه به انبار"));
+    var item = itemControl(shelfItems);
+    item.dataset.returnItem = "";
+    box.appendChild(field("کالا", item, "is-item"));
+    var from = el("p", "pu-meta", "مبدأ: —");
+    box.appendChild(from);
+    box.appendChild(el("p", "pu-meta", "مقصد: " + locationName(STORE)));
+    function showFrom() {
+      var chosen = shelfItems.filter(function (candidate) {
+        return candidate.item_id === item.value;
+      })[0];
+      from.textContent = "مبدأ: " + (chosen ? locationName(chosen.location_id) : "—");
+    }
+    item.addEventListener("change", showFrom);
+    showFrom();
+    var quantity = numberInput(1);
+    quantity.dataset.returnQuantity = "";
+    box.appendChild(field("تعداد", quantity));
+    var confirmer = confirmerTemplate.cloneNode(true);
+    confirmer.dataset.returnConfirmer = "";
+    delete confirmer.dataset.confirmer;
+    box.appendChild(field("تأییدکننده (با شمارش او)", confirmer));
+    var pending = clinic.inbox ? clinic.inbox.return_waiting : [];
+    if (pending.length > 0) {
+      var list = el("ul", "pu-lines");
+      pending.forEach(function (offer) {
+        list.appendChild(el("li", null, itemName(offer.item_id) + " · برگشت در انتظار تأیید"));
+      });
+      box.appendChild(list);
+    }
+    box.appendChild(
+      actionButton("ثبت برگشت به انبار", function () {
+        var chosen = shelfItems.filter(function (candidate) {
+          return candidate.item_id === item.value;
+        })[0];
+        if (!chosen) return fail(new Error(NO_ITEM));
+        var count = Number(quantity.value);
+        if (!Number.isInteger(count) || count < 1) return fail(new Error(NO_QUANTITY));
+        if (!confirmer.value) return fail(new Error(NO_RECIPIENT));
+        return run(
+          {
+            action: "shelf_return.record",
+            data: {
+              item_id: chosen.item_id,
+              from_location_id: chosen.location_id,
+              to_location_id: STORE,
+              quantity: count,
+              confirmer_id: confirmer.value,
+            },
+          },
+          MESSAGES.shelfReturn
+        );
+      }, null, "shelf_return.record")
     );
   }
 
