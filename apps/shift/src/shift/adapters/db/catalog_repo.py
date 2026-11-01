@@ -282,6 +282,28 @@ def list_items_effective(connection: Connection, shift_key: str) -> list[ItemRow
     return [_item(row) for row in rows]
 
 
+def find_counted_item_by_acc_code(connection: Connection, acc_code: str, shift_key: str) -> ItemRow | None:
+    """The counted, active item that owns `acc_code` at `shift_key`, or None.
+
+    One accounting code names one item for ever (`find_item_with_acc_code`), so at most one item
+    matches; a retired item no longer sits on a shelf and a checklist item has no quantity.
+    """
+    rows = _effective_rows(
+        connection,
+        "catalog_item_versions",
+        _ITEM_COLUMNS,
+        ("item_id",),
+        shift_key,
+        filter_column="acc_code",
+        filter_value=acc_code,
+    )
+    for row in rows:
+        item = _item(row)
+        if item.kind == "counted" and not item.retired:
+            return item
+    return None
+
+
 def find_item_with_acc_code(connection: Connection, acc_code: str, *, exclude_item_id: str) -> str | None:
     """The item that already owns `acc_code` anywhere in the history, retired or not.
 

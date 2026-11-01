@@ -203,6 +203,17 @@ def cash_settle_seq(connection: Connection, handover_id: str) -> int | None:
     return None if row is None else int(row[0])
 
 
+def item_settle_seq(connection: Connection, handover_id: str, item_id: str, location_id: str) -> int | None:
+    """The sequence at which a flow settled one shelf item, or None while it is still open (H-05)."""
+    row = connection.exec_driver_sql(
+        "SELECT seq FROM events WHERE handover_id = ? AND type = ? "
+        "AND json_extract(payload, '$.scope') = 'item' AND json_extract(payload, '$.item_id') = ? "
+        "AND json_extract(payload, '$.location_id') = ? ORDER BY seq LIMIT 1",
+        (handover_id, "handover.count_settled", item_id, location_id),
+    ).first()
+    return None if row is None else int(row[0])
+
+
 def last_work_date_of_item(connection: Connection, event_type: str, item_id: str) -> str | None:
     """The newest work date on which an event of `event_type` named `item_id`, or None if none did.
 

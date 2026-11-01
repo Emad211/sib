@@ -36,6 +36,8 @@ class EventType(StrEnum):
     ACC_CASH_RECEIPT = "acc.cash_receipt"
     ACC_CASH_REVERSAL = "acc.cash_reversal"
     ACC_CONSUMPTION = "acc.consumption"
+    # Accounting took a consumption back (a void, or a reopened invoice): the shelf gets it again.
+    ACC_CONSUMPTION_REVERSAL = "acc.consumption_reversal"
     # SHF-3 shift events (S01 §3): every one is recorded on the staff phone and may arrive from the
     # offline outbox (ADR-016). Only the four moving kinds carry a projection effect.
     CARD_TRANSFER_REPORTED = "card.transfer_reported"

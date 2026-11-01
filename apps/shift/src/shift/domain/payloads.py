@@ -112,6 +112,12 @@ class ConsumptionRecorded(StockDelta):
     pass
 
 
+class ConsumptionReversal(StockDelta):
+    """Compensation for a consumption accounting took back: a void or a reopened invoice (A1)."""
+
+    reason: ReversalReason
+
+
 class PresenceDeclared(Payload):
     """ADR-021: a second receptionist or the shift doctor is on shift from now until this shift ends.
 

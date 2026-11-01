@@ -38,6 +38,7 @@ EXPECTED_EFFECTS = {
     EventType.ACC_CASH_RECEIPT: ((), CashOperation.ADD),
     EventType.ACC_CASH_REVERSAL: ((), CashOperation.SUBTRACT),
     EventType.ACC_CONSUMPTION: ((StockOperation.SUBTRACT,), None),
+    EventType.ACC_CONSUMPTION_REVERSAL: ((StockOperation.ADD,), None),
     EventType.CARD_TRANSFER_REPORTED: ((), None),
     EventType.REFUND_REQUESTED: ((), None),
     EventType.CAMPAIGN_DISCOUNT_APPLIED: ((), None),

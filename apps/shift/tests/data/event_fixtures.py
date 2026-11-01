@@ -64,6 +64,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"amount": 100_000, "reason": "voided"}
     if event_type in {"handover.item_counted", "stock.weekly_count"}:
         return {"item_id": "item-1", "location_id": "location-1", "counted": 10}
+    if event_type == "acc.consumption_reversal":
+        return {"item_id": "item-1", "location_id": "location-1", "quantity": 2, "reason": "voided"}
     if event_type in {
         "stock.shelf_restocked",
         "stock.emergency_withdrawal",

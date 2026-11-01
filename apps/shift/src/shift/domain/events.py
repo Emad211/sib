@@ -44,6 +44,7 @@ from shift.domain.payloads import (
     CashReversal,
     CashWithdrawn,
     ConsumptionRecorded,
+    ConsumptionReversal,
     EmergencyWithdrawal,
     ItemCounted,
     PresenceDeclared,
@@ -100,6 +101,7 @@ BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.ACC_CASH_RECEIPT: EventSpec(CashReceipt, cash_delta(CashOperation.ADD), requires_shift=True),
     EventType.ACC_CASH_REVERSAL: EventSpec(CashReversal, cash_delta(CashOperation.SUBTRACT), requires_shift=True),
     EventType.ACC_CONSUMPTION: EventSpec(ConsumptionRecorded, stock_delta(StockOperation.SUBTRACT)),
+    EventType.ACC_CONSUMPTION_REVERSAL: EventSpec(ConsumptionReversal, stock_delta(StockOperation.ADD)),
     # F5: a record the server kept instead of dropping or applying (ADR-016). None of the three
     # changes a projection; the original event carries the movement when a manager releases it.
     EventType.EVENT_HELD: EventSpec(SubmissionHeld, no_effects, requires_shift=True),

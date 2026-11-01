@@ -87,8 +87,71 @@ def insert_cash(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> in
 
 
 def insert_consumption(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> int:
-    """Copy stock consumption per ledger line; `ledger_id` is the identity."""
-    return _insert_ignoring(connection, CONSUMPTION, rows)
+    """Copy stock consumption per ledger line; `ledger_id` is the identity.
+
+    A line accounting rewrote (same id, new close stamp or quantity) is updated in place and becomes
+    pending again: what the bridge applied for the old version stays on the row, so the reconcile step
+    reverses it before applying the new one.
+    """
+    inserted = _insert_ignoring(connection, CONSUMPTION, rows)
+    for row in rows:
+        connection.exec_driver_sql(
+            f"UPDATE {CONSUMPTION} SET closed_at = ?, quantity = ?, quantity_raw = ?, acc_code = ?, "
+            "item_name = ?, skipped = 0 WHERE ledger_id = ? AND (closed_at != ? OR quantity_raw != ?)",
+            (
+                row["closed_at"],
+                row["quantity"],
+                row["quantity_raw"],
+                row["acc_code"],
+                row["item_name"],
+                row["ledger_id"],
+                row["closed_at"],
+                row["quantity_raw"],
+            ),
+        )
+    return inserted
+
+
+def consumption_to_reconcile(connection: Connection) -> list[dict[str, Any]]:
+    """Every consumption line that may need an event, each with what accounting says about its invoice.
+
+    A line is a candidate when it has not been decided yet (no event, not counted late) or when an
+    event stands for it. `voided` and `is_open` come from the void and open-invoice mirrors, and
+    `newest_close` is the latest close stamp the mirror holds for the invoice: a line stamped earlier
+    belongs to a close that accounting reopened and closed again.
+    """
+    result = connection.exec_driver_sql(
+        "SELECT c.ledger_id, c.invoice_id, c.closed_at, c.acc_code, c.quantity, c.applied_event_id, "
+        "c.applied_key, c.skipped, "
+        f"(SELECT MAX(v.voided_at) FROM {VOID} v WHERE v.invoice_id = c.invoice_id) AS voided_at, "
+        f"EXISTS (SELECT 1 FROM {VOID} v WHERE v.invoice_id = c.invoice_id) AS voided, "
+        f"EXISTS (SELECT 1 FROM {OPEN_INVOICE} o WHERE o.invoice_id = c.invoice_id) AS is_open, "
+        f"(SELECT MAX(n.closed_at) FROM {CONSUMPTION} n WHERE n.invoice_id = c.invoice_id) AS newest_close "
+        f"FROM {CONSUMPTION} c WHERE c.applied_event_id IS NOT NULL OR c.skipped = 0 ORDER BY c.ledger_id"
+    )
+    return [dict(row) for row in result.mappings()]
+
+
+def mark_consumption_applied(connection: Connection, ledger_id: int, event_id: str | None, key: str | None) -> None:
+    """Remember the event that stands for a line, or clear it once the event was reversed."""
+    connection.exec_driver_sql(
+        f"UPDATE {CONSUMPTION} SET applied_event_id = ?, applied_key = ? WHERE ledger_id = ?",
+        (event_id, key, ledger_id),
+    )
+
+
+def mark_consumption_skipped(connection: Connection, ledger_id: int) -> None:
+    """Decide a line without an event: its shelf was already settled (H-11), or it rounds to nothing."""
+    connection.exec_driver_sql(f"UPDATE {CONSUMPTION} SET skipped = 1 WHERE ledger_id = ?", (ledger_id,))
+
+
+def unmapped_consumption_count(connection: Connection) -> int:
+    """Lines still waiting for a counted catalog item; they are retried on every poll."""
+    return int(
+        connection.exec_driver_sql(
+            f"SELECT COUNT(*) FROM {CONSUMPTION} WHERE applied_event_id IS NULL AND skipped = 0"
+        ).scalar_one()
+    )
 
 
 def insert_vitals(connection: Connection, rows: Sequence[Mapping[str, Any]]) -> int:

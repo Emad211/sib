@@ -24,10 +24,17 @@ A re-close can carry a stamp older than the cash watermark (the invoice was alre
 the cash feed re-reads a bounded trailing window instead of trusting the watermark alone. Mirror
 state is what decides whether a row is new, which keeps that re-read free of double counting.
 
-Only cash produces events today: it is the one accounting fact whose payload the event registry can
-express on its own (a Toman amount and the shift it belongs to). Consumption needs the accounting
-item code resolved to a shelf — the versioned catalog arrives with SHF-1.4 — and vitals, patient
-registrations and voids' own rows are mirrors that the handover and reward screens read directly.
+Consumption becomes stock events in a second step, after the feeds are copied (A1, `D` in the shelf
+reference `E = C0 + R - D - U - W`). Each mirrored line is resolved through its accounting code to the
+counted catalog item that owns it, and takes that item off its shelf with an `acc.consumption` event
+attributed to the shelf's own flow like any other fact. A line without a counted item stays in the
+mirror and is retried on every poll, so the manager entering the code later is enough. A line that
+accounting takes back (its invoice voided, reopened, or closed again with new lines) is given back
+with an `acc.consumption_reversal`, once. A line that reaches us after its flow already settled the
+shelf is marked and gets no event: the physical count had seen it, as with late cash (H-11).
+
+Vitals, patient registrations and the voids' own rows are mirrors that the handover and reward
+screens read directly.
 """
 
 import logging
@@ -44,13 +51,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from shift.adapters.accounting import views
 from shift.adapters.accounting.readonly import AccountingDatabase, AccountingUnavailable, open_accounting
 from shift.adapters.accounting.views import PagedRead, ViewName
-from shift.adapters.db import events_repo, handover_repo, mirror_repo, watermark_repo
+from shift.adapters.db import catalog_repo, events_repo, handover_repo, mirror_repo, watermark_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, SystemClock, utc_iso
 from shift.common.ids import new_ulid
 from shift.domain.events import EventType
 from shift.domain.handover_fsm import HandoverFlow
+from shift.domain.handover_steps import flow_for_location
 from shift.domain.policy import ShiftKey
 from shift.domain.shift_clock import covering
 from shift.services.event_store import EventStore, NewEvent
@@ -85,6 +93,11 @@ def shift_resolver(database: Database, clock_covering: Callable[[datetime], Shif
 def _cash_key(view_name: str, invoice_id: int, closed_at: str, amount: int) -> str:
     """Identity of one close: the same invoice may be closed again at a new stamp or amount."""
     return f"acc:{view_name}:{invoice_id}@{closed_at}@{amount}"
+
+
+def _consumption_key(ledger_id: int, closed_at: str, quantity: int) -> str:
+    """Identity of one consumption line at one close: a rewritten line has a different key (A1)."""
+    return f"acc:consumption:{ledger_id}@{closed_at}@{quantity}"
 
 
 def _legacy_cash_key(view_name: str, invoice_id: int) -> str:
@@ -225,6 +238,9 @@ class PollReport:
     pages: int
     open_invoices: int
     error: str | None = None
+    # Consumption lines still waiting for a counted catalog item (A1); the manager clears them by
+    # entering the accounting code on the items page.
+    unmapped_consumption: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +336,16 @@ class AccountingBridge:
         except SQLAlchemyError as exc:
             error = error or f"{ViewName.OPEN_INVOICES.value}: {exc}"
             log.warning("accounting bridge could not read %s: %s", ViewName.OPEN_INVOICES.value, exc)
+        unmapped = 0
+        if ViewName.CONSUMPTION in contract.present:
+            try:
+                events += self._reconcile_consumption()
+                unmapped = self._unmapped_consumption()
+            except SQLAlchemyError as exc:
+                error = error or f"{ViewName.CONSUMPTION.value}: {exc}"
+                log.warning("accounting bridge could not apply consumption: %s", exc)
+        if unmapped:
+            log.warning("%s consumption lines have no counted catalog item yet", unmapped)
         return PollReport(
             degraded=error is not None,
             voids_available=contract.voids_available,
@@ -328,6 +354,7 @@ class AccountingBridge:
             pages=pages,
             open_invoices=open_invoices,
             error=error,
+            unmapped_consumption=unmapped,
         )
 
     def _ingest_feed(self, accounting: AccountingDatabase, feed: Feed, until_at: datetime) -> _FeedResult:
@@ -552,6 +579,144 @@ class AccountingBridge:
             if result.created:
                 notice_late_cash(self._database, self._store, result.event, clock=self._clock)
         return sum(1 for result in results if result.created)
+
+    def _unmapped_consumption(self) -> int:
+        with self._database.read() as connection:
+            return mirror_repo.unmapped_consumption_count(connection)
+
+    def _reconcile_consumption(self) -> int:
+        """Make the stock events say what the consumption mirror and its invoices say now (A1).
+
+        A line stands while its invoice is closed, not voided, and the newest close the mirror holds;
+        otherwise accounting took it back. What stands is applied once and what does not is reversed
+        once, both under idempotency keys that name the close and the quantity, so a retry after a
+        crash finds the stored event instead of writing a second one.
+        """
+        with self._database.read() as connection:
+            lines = mirror_repo.consumption_to_reconcile(connection)
+        created = 0
+        for line in lines:
+            standing = not line["voided"] and not line["is_open"] and line["closed_at"] == line["newest_close"]
+            wanted = (
+                _consumption_key(int(line["ledger_id"]), str(line["closed_at"]), int(line["quantity"]))
+                if standing
+                else None
+            )
+            if line["applied_event_id"] is not None and line["applied_key"] != wanted:
+                created += self._reverse_consumption(line)
+                line["applied_event_id"] = None
+            if wanted is not None and line["applied_event_id"] is None and not line["skipped"]:
+                created += self._apply_consumption(line, wanted)
+        return created
+
+    def _apply_consumption(self, line: Mapping[str, Any], key: str) -> int:
+        """Take one consumption line off its shelf, or leave it waiting for a catalog item."""
+        ledger_id = int(line["ledger_id"])
+        quantity = int(line["quantity"])
+        code = line["acc_code"]
+        if quantity <= 0:
+            self._skip_consumption(ledger_id)
+            return 0
+        if code is None or not str(code).strip():
+            return 0
+        closed_at = views.parse_time(str(line["closed_at"]))
+        item = self._item_for_code(str(code), closed_at)
+        if item is None:
+            return 0
+        with self._database.read() as connection:
+            settled = self._settled_before_arrival(connection, item, closed_at)
+        if settled:
+            self._skip_consumption(ledger_id)
+            return 0
+        shift = self._resolve_shift(closed_at, flow_for_location(item.location_id))
+        result = self._store.append(
+            NewEvent(
+                client_event_id=new_ulid(closed_at),
+                type=EventType.ACC_CONSUMPTION.value,
+                payload={"item_id": item.item_id, "location_id": item.location_id, "quantity": quantity},
+                actor_id=BRIDGE_ACTOR_ID,
+                device_id=BRIDGE_DEVICE_ID,
+                work_date=shift.work_date,
+                client_at=closed_at,
+                shift_id=shift.text,
+                idempotency_key=key,
+            )
+        )
+        with self._database.write() as connection:
+            mirror_repo.mark_consumption_applied(connection, ledger_id, result.event.event_id, key)
+        return 1 if result.created else 0
+
+    def _skip_consumption(self, ledger_id: int) -> None:
+        with self._database.write() as connection:
+            mirror_repo.mark_consumption_skipped(connection, ledger_id)
+
+    def _item_for_code(self, code: str, instant: datetime) -> catalog_repo.ItemRow | None:
+        """The counted item that owns `code` at the shift the fact belongs to, by the item's own flow."""
+        shift = self._resolve_shift(instant, HandoverFlow.RECEPTION)
+        with self._database.read() as connection:
+            item = catalog_repo.find_counted_item_by_acc_code(connection, code, shift.text)
+        if item is None:
+            return None
+        flow = flow_for_location(item.location_id)
+        if flow is HandoverFlow.RECEPTION:
+            return item
+        own_shift = self._resolve_shift(instant, flow)
+        with self._database.read() as connection:
+            own = catalog_repo.find_counted_item_by_acc_code(connection, code, own_shift.text)
+        return own if own is not None else item
+
+    @staticmethod
+    def _settled_before_arrival(connection: Connection, item: catalog_repo.ItemRow, instant: datetime) -> bool:
+        """True when the flow this consumption belongs to has already settled the item's shelf (H-11)."""
+        flow = handover_repo.first_flow_at_or_after(connection, instant, flow_for_location(item.location_id))
+        if flow is None:
+            return False
+        return events_repo.item_settle_seq(connection, flow.handover_id, item.item_id, item.location_id) is not None
+
+    def _reverse_consumption(self, line: Mapping[str, Any]) -> int:
+        """Give an applied line back to its shelf, once, with the reason accounting took it back."""
+        with self._database.read() as connection:
+            applied = events_repo.find_by_event_id(connection, str(line["applied_event_id"]))
+        if applied is None:
+            log.error("consumption line %s cannot be reversed: its event is missing", line["ledger_id"])
+            return 0
+        location = str(applied.payload["location_id"])
+        if line["voided"]:
+            reason, stamp = "voided", line["voided_at"]
+        else:
+            # Reopened (the invoice is open now) or closed again; the newer close, when there is one,
+            # is the moment accounting took the old lines back.
+            reason = "reclosed"
+            stamp = line["newest_close"] if line["newest_close"] != line["closed_at"] else None
+        if stamp is not None:
+            at = views.parse_time(str(stamp))
+            shift = self._resolve_shift(at, flow_for_location(location))
+            shift_id, work_date = shift.text, shift.work_date
+        else:
+            at = views.parse_time(str(line["closed_at"]))
+            shift_id, work_date = applied.shift_id, date.fromisoformat(applied.work_date)
+        result = self._store.append(
+            NewEvent(
+                client_event_id=new_ulid(at),
+                type=EventType.ACC_CONSUMPTION_REVERSAL.value,
+                payload={
+                    "item_id": applied.payload["item_id"],
+                    "location_id": location,
+                    "quantity": applied.payload["quantity"],
+                    "reason": reason,
+                },
+                actor_id=BRIDGE_ACTOR_ID,
+                device_id=BRIDGE_DEVICE_ID,
+                work_date=work_date,
+                client_at=at,
+                shift_id=shift_id,
+                ref_event_id=applied.event_id,
+                idempotency_key=f"acc:consumption-reversal:{applied.event_id}",
+            )
+        )
+        with self._database.write() as connection:
+            mirror_repo.mark_consumption_applied(connection, int(line["ledger_id"]), None, None)
+        return 1 if result.created else 0
 
     def _refresh_open_invoices(self, accounting: AccountingDatabase) -> int:
         """Replace the open-invoice snapshot; H-03 needs it at handover time."""
