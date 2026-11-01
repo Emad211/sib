@@ -129,7 +129,7 @@ def describe_refusal(exc: Exception) -> tuple[int, str, str, dict[str, object] |
         # The reason is in the audit log, where only the manager can read it.
         return 401, "invalid_credentials", _BAD_CREDENTIALS, None
     if isinstance(exc, AccountLocked):
-        return 423, "account_locked", "حساب پس از پنج تلاش ناموفق قفل شده است؛ مدیر باید آن را باز کند.", None
+        return 423, "account_locked", "حساب پس از پنج تلاش ناموفق ۱۵ دقیقه قفل است؛ خودش باز می‌شود و مدیر هم می‌تواند زودتر باز کند.", None
     if isinstance(exc, DeviceNotEnrolled):
         return 403, "device_not_enrolled", "این گوشی برای پرسنل ثبت نشده است.", None
     if isinstance(exc, DeviceRevoked):
