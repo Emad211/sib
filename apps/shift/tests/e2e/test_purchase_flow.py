@@ -548,3 +548,32 @@ def test_the_warehouse_shelf_charge_and_the_blind_weekly_count(live_shift: LiveS
     finally:
         for context in phones:
             context.close()
+
+
+@pytest.mark.e2e
+def test_the_storekeeper_records_the_stores_opening_count_on_day_one(live_shift: LiveShift, browser: Browser) -> None:
+    """B1: before anything is in the store, the count section asks for the opening count of every item."""
+    phones: list[BrowserContext] = []
+    try:
+        storekeeper, page = _open_phone(browser)
+        phones.append(storekeeper)
+        _login(page, live_shift.base_url, STOREKEEPER)
+        page.goto(f"{live_shift.base_url}/purchase", wait_until="domcontentloaded")
+        page.wait_for_selector("#purchase-count [data-do='store.baseline']", timeout=15000)
+        assert "شمارش اولیه" in page.inner_text("#purchase-count")
+
+        page.click("#purchase-count [data-do='store.baseline']")
+        _wait_status(page, "ثبت نشد: برای همهٔ اقلام عدد بزنید؛ قلمی که نیست صفر است.")
+
+        rows = page.locator("#purchase-count .pu-count-row")
+        for index in range(rows.count()):
+            row = rows.nth(index)
+            row.locator("[data-baseline]").fill("7" if ITEM_NAME in row.inner_text() else "0")
+        page.click("#purchase-count [data-do='store.baseline']")
+        _wait_status(page, "شمارش اولیهٔ انبار ثبت شد.")
+
+        assert _stock(live_shift.database, ITEM) == (0, 7)
+        page.wait_for_selector("#purchase-count [data-do='weekly.count']", timeout=15000)
+    finally:
+        for phone in phones:
+            phone.close()

@@ -78,6 +78,7 @@
     confirm: "تأیید ثبت شد.",
     parcelCount: "شمارش بار ثبت شد.",
     count: "شمارش هفتگی ثبت شد.",
+    storeBaseline: "شمارش اولیهٔ انبار ثبت شد.",
     sample: "شمارش نمونه ثبت شد.",
     unreadable: "وضعیت خرید و انبار خوانده نشد؛ صفحه را تازه کنید.",
   };
@@ -1473,6 +1474,10 @@
     if (!visible) return;
     var box = sectionBody("purchase-count");
     box.textContent = "";
+    if (!warehouse.baseline_done) {
+      renderStoreBaseline(box, warehouse);
+      return;
+    }
     box.appendChild(el("p", "pu-meta", WEEKLY_LABELS[warehouse.weekly.state] || warehouse.weekly.state));
     box.appendChild(
       el(
@@ -1505,6 +1510,53 @@
           MESSAGES.count
         );
       }, null, "weekly.count")
+    );
+  }
+
+  /**
+   * B1, day one: the storekeeper counts the whole main store once, every item, before any weekly count
+   * has something to compare with. Every box must be answered (zero is an answer); nothing is shown.
+   */
+  function renderStoreBaseline(box, warehouse) {
+    var title = document.getElementById("purchase-count-title");
+    if (title) title.textContent = "شمارش اولیهٔ انبار اصلی";
+    box.appendChild(
+      el("p", "pu-hint", "پیش از اولین شمارش هفتگی، همهٔ اقلام انبار اصلی را یک بار بشمارید؛ برای قلمی که نیست صفر بزنید.")
+    );
+    if (warehouse.items.length === 0) {
+      box.appendChild(emptyLine(EMPTY.count));
+      return;
+    }
+    var rows = el("div", "pu-count-box");
+    warehouse.items.forEach(function (item, index) {
+      var row = el("div", "pu-count-row");
+      row.dataset.index = String(index);
+      var name = el("div", "pu-count-name");
+      name.appendChild(el("span", null, item.name));
+      name.appendChild(el("span", "pu-count-unit", " " + item.unit));
+      row.appendChild(name);
+      var quantity = numberInput(0);
+      quantity.dataset.baseline = "";
+      row.appendChild(field("شمارش", quantity));
+      rows.appendChild(row);
+    });
+    box.appendChild(rows);
+    box.appendChild(
+      actionButton("ثبت شمارش اولیهٔ انبار", function () {
+        var lines = [];
+        var missing = false;
+        Array.prototype.forEach.call(rows.querySelectorAll(".pu-count-row"), function (row) {
+          var text = row.querySelector("[data-baseline]").value.trim();
+          var counted = Number(text);
+          if (text === "" || !Number.isInteger(counted) || counted < 0) {
+            missing = true;
+            return;
+          }
+          lines.push({ item_id: warehouse.items[Number(row.dataset.index)].item_id, quantity: counted });
+        });
+        if (missing) return fail(new Error("برای همهٔ اقلام عدد بزنید؛ قلمی که نیست صفر است."));
+        return run({ action: "store.baseline", data: { lines: lines } }, MESSAGES.storeBaseline);
+      }, null, "store.baseline")
     );
   }
 
