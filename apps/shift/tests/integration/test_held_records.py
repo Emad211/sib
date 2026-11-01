@@ -14,6 +14,7 @@ from auth_fixtures import PIN, ROLES, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import status
 from fastapi.testclient import TestClient
+from photo_fixtures import RECEIPT_SHA, keep_receipt
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
@@ -58,6 +59,7 @@ def _waste(client: TestClient, session: dict[str, Any], *, occurred: datetime, q
                 "waste_kind": "broken",
                 "culprit_id": "staff-nurse",
                 "confirmer_id": "staff-store",
+                "photo_sha256": RECEIPT_SHA,
             },
             "client_at": occurred.isoformat(),
             "work_date": occurred.date().isoformat(),
@@ -78,6 +80,7 @@ def seeded(client: TestClient) -> TestClient:
     """The real app with one staff member and one phone per role, on a fixed running shift."""
     seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
     seed_catalog(client.app.state.database)
+    keep_receipt(client.app)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
     return client
 
@@ -198,7 +201,7 @@ def test_a_held_approval_keeps_its_reference_and_is_released_by_the_manager(seed
             "client_event_id": transfer,
             "idempotency_key": transfer,
             "type": "card.transfer_reported",
-            "payload": {"amount": 150_000, "admission_no": "A-1001"},
+            "payload": {"amount": 150_000, "admission_no": "A-1001", "photo_sha256": RECEIPT_SHA},
             "client_at": datetime.now(tz=TEHRAN).isoformat(),
         },
     )

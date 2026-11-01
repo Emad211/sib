@@ -35,6 +35,7 @@ import httpx
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, Seeded, seed_roster
+from photo_fixtures import RECEIPT_JPEG, RECEIPT_SHA
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed as seed_catalog
 
@@ -52,6 +53,7 @@ from shift.services.catalog import CatalogService
 from shift.services.daily_card import Card, DailyCardService
 from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
+from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
 
 playwright = pytest.importorskip("playwright")
@@ -170,6 +172,7 @@ def live_shift(tmp_path: Path) -> Generator[LiveShift]:
     finally:
         setup.close()
     _record_the_baseline(settings.database_path)
+    PhotoStore(settings.resolved_photos_dir).save(RECEIPT_JPEG)  # the receipt the events below name
 
     application = create_app(settings)
     server = _UvicornServer(application, host="127.0.0.1")
@@ -270,7 +273,7 @@ def _report_a_card_transfer(base_url: str) -> str:
             "/api/v1/events",
             json={
                 "type": "card.transfer_reported",
-                "payload": {"amount": TRANSFER_AMOUNT, "admission_no": TRANSFER_ADMISSION},
+                "payload": {"amount": TRANSFER_AMOUNT, "admission_no": TRANSFER_ADMISSION, "photo_sha256": RECEIPT_SHA},
                 "client_at": now.isoformat(),
                 "client_event_id": new_ulid(now),
             },

@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from auth_fixtures import ROLES, SPARE, seed_roster
 from clocks import FixedClock, inside_shift
+from photo_fixtures import RECEIPT_SHA
 from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
@@ -170,6 +171,7 @@ def _withdrawal(**overrides: Any) -> dict[str, Any]:
         "recipient_id": ROLES["nurse"].staff_id,
         "reason": "خرید فوری",
         "manager_id": None,
+        "photo_sha256": RECEIPT_SHA,
     }
     payload.update(overrides)
     return payload
@@ -184,6 +186,7 @@ def _waste(**overrides: Any) -> dict[str, Any]:
         "waste_kind": "broken",
         "culprit_id": SPARE.staff_id,
         "confirmer_id": ROLES["nurse"].staff_id,
+        "photo_sha256": RECEIPT_SHA,
     }
     payload.update(overrides)
     return payload

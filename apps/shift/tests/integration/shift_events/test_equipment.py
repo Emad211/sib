@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from auth_fixtures import ROLES, SPARE, Seeded, seed_roster
+from photo_fixtures import RECEIPT_SHA, with_photo
 from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
@@ -79,7 +80,7 @@ def _submission(
     event_id = new_ulid(CLIENT_AT)
     return EventSubmission(
         type=event_type,
-        payload=payload,
+        payload=with_photo(event_type, payload),
         actor_id=principal.staff_id,
         device_id=principal.device_id,
         client_at=CLIENT_AT,
@@ -160,7 +161,7 @@ def test_the_chain_records_three_notes_moves_nothing_and_never_pends(clinic: Dat
         (ASSIGNED, reported.event_id),
         (FIXED, reported.event_id),
     ]
-    assert rows[0].payload == {**FAULT, "photo_sha256": None}
+    assert rows[0].payload == {**FAULT, "photo_sha256": RECEIPT_SHA}
     assert rows[1].payload == {"assignee_id": nurse.staff_id, "due_on": WORK_DATE.isoformat()}
     assert rows[2].payload == {"note": "کابل دستگاه تعویض و دستگاه آزمایش شد"}
     # H-01, H-02: an equipment note is neither stock nor money.

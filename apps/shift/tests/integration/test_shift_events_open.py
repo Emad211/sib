@@ -13,6 +13,7 @@ from datetime import datetime
 import pytest
 from auth_fixtures import PIN, ROLES, login, seed_roster
 from fastapi.testclient import TestClient
+from photo_fixtures import keep_receipt, with_photo
 from synthetic_catalog import seed as seed_catalog
 
 from shift.app import create_app
@@ -30,6 +31,7 @@ def staff_client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as client:
         seed_roster(client.app.state.database, pepper=client.app.state.secret_key)
         seed_catalog(client.app.state.database)
+        keep_receipt(client.app)
         yield client
 
 
@@ -47,7 +49,7 @@ def _append(client: TestClient, role: str, key: str, event_type: str, payload: d
     headers = _session(client, role)
     body = {
         "type": event_type,
-        "payload": payload,
+        "payload": with_photo(event_type, payload),
         "client_event_id": key,
         "idempotency_key": key,
         "client_at": datetime.now(TEHRAN).isoformat(),

@@ -46,7 +46,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("waste_kind", "نوع", FieldKind.CHOICE, options=WASTE_KINDS),
     FieldSpec("culprit_id", "مقصر", FieldKind.STAFF),
     FieldSpec("confirmer_id", "تأییدکننده (≠ مقصر)", FieldKind.STAFF),
-    FieldSpec("photo_sha256", "عکس (اختیاری)", FieldKind.PHOTO, required=False),
+    FieldSpec("photo_sha256", "عکس", FieldKind.PHOTO),
 )
 
 # What the phone shows the person whose record was refused. No figure appears in any of them.
@@ -116,6 +116,7 @@ KIND = KindSpec(
     sample=sample,
     summarize=summarize,
     validate=validate,
+    photo_required=True,
     confirmer_field="confirmer_id",
     card_fields=("quantity", "item_id", "waste_kind", "confirmer_id", "photo_sha256"),
 )

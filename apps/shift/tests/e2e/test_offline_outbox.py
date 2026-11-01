@@ -12,12 +12,14 @@ from typing import Any
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, seed_roster
+from photo_fixtures import RECEIPT_JPEG
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
 from shift.adapters.db.core import Database
 from shift.app import create_app
 from shift.config.settings import Settings
+from shift.services.photos import PhotoStore
 
 playwright = pytest.importorskip("playwright")
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright  # noqa: E402
@@ -38,6 +40,7 @@ async () => {
       waste_kind: "broken",
       culprit_id: "staff-reception",
       confirmer_id: "staff-spare",
+      photo_sha256: "6fec7126bbeedf35a68a5737c3787e2482319da94b95f2817941cc14fe3938cb",
     },
     client_at: new Date().toISOString(),
     work_date: window.ShiftOutbox.tehranBusinessDate(),
@@ -87,6 +90,7 @@ def live_server(tmp_path: Path) -> Generator[tuple[str, Database]]:
         seed_catalog(setup)
     finally:
         setup.close()
+    PhotoStore(settings.resolved_photos_dir).save(RECEIPT_JPEG)  # the receipt the events below name
     application = create_app(settings)
     server = _UvicornServer(application, host="127.0.0.1")
     server.start()
@@ -284,6 +288,8 @@ def test_offline_submit_then_replay_records_one_principal_owned_event(
                             waste_kind: "broken",
                             culprit_id: "staff-reception",
                             confirmer_id: "staff-spare",
+                            photo_sha256: "6fec7126bbeedf35a68a5737c3787e2482319da94b95f2817941cc14fe3938cb",
+      photo_sha256: "6fec7126bbeedf35a68a5737c3787e2482319da94b95f2817941cc14fe3938cb",
                         },
                         actor_id: "staff_forged",
                         device_id: "device_forged",

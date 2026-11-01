@@ -44,14 +44,21 @@ def test_only_the_manager_may_approve_spending_and_change_the_system(role: str) 
     assert not (ROLE_PERMISSIONS[parse_role(role)] & forbidden)
 
 
-def test_purchaser_is_a_role_with_the_buying_permissions() -> None:
+def test_purchaser_only_places_the_orders_handed_to_them() -> None:
+    """Owner decision 2026-11-02: the purchaser places approved orders and sees no price or stock."""
     granted = ROLE_PERMISSIONS[Role.PURCHASER]
 
     assert Role.PURCHASER.value == "purchaser"
-    assert {Permission.PURCHASE_ORDER_DRAFT, Permission.PURCHASE_DELIVERY_RECEIVE} <= granted
-    # P-03: only the buyer hands an approved order to a vendor; deciding it stays the manager's (P-02).
     assert Permission.PURCHASE_ORDER_PLACE in granted
-    assert Permission.PURCHASE_ORDER_DECIDE not in granted, "whoever drafts must not approve"
+    for hidden in (
+        Permission.PURCHASE_ORDER_DRAFT,
+        Permission.PURCHASE_ORDER_DECIDE,
+        Permission.PURCHASE_DELIVERY_RECEIVE,
+        Permission.PURCHASE_PAYMENT_RECORD,
+        Permission.STOCK_RESTOCK_CONFIRM,
+        Permission.STOCK_COUNT_SUBMIT,
+    ):
+        assert hidden not in granted, hidden
 
 
 def test_the_counter_takes_a_delivery_in_whatever_shift_it_arrives() -> None:

@@ -1385,53 +1385,68 @@
         );
       }, null, "restock.record")
     );
-    renderShelfReturn(box, chargeable, confirmer);
   }
 
   /**
-   * A2: goods going back from a shelf to the main store, the other way round of a charge. Two sides
-   * again: whoever records it names the person who counts it, and only that count moves stock.
+   * A2: goods going back from a shelf to the main store. The store is opened by the storekeeper, so the
+   * person who answers for the shelf hands the goods over in person and names the storekeeper, who counts
+   * what arrived without seeing this number; only that count moves stock.
    */
-  function renderShelfReturn(box, shelfItems, confirmerTemplate) {
-    box.appendChild(el("h3", null, "برگشت از قفسه به انبار"));
-    var item = itemControl(shelfItems);
-    item.dataset.returnItem = "";
-    box.appendChild(field("کالا", item, "is-item"));
-    var from = el("p", "pu-meta", "مبدأ: —");
-    box.appendChild(from);
-    box.appendChild(el("p", "pu-meta", "مقصد: " + locationName(STORE)));
-    function showFrom() {
-      var chosen = shelfItems.filter(function (candidate) {
-        return candidate.item_id === item.value;
-      })[0];
-      from.textContent = "مبدأ: " + (chosen ? locationName(chosen.location_id) : "—");
+  function renderShelfReturn() {
+    var view = clinic.shelf_return;
+    showSection("purchase-shelf-return", Boolean(view));
+    if (!view) return;
+    var box = sectionBody("purchase-shelf-return");
+    box.textContent = "";
+    if (view.items.length === 0) {
+      box.appendChild(emptyLine("در قفسه‌های شما کالای شمارشی نیست."));
+      return;
     }
-    item.addEventListener("change", showFrom);
-    showFrom();
+    if (view.receivers.length === 0) {
+      box.appendChild(emptyLine("انباردار در فهرست کارمندان نیست؛ برگشت را بعداً ثبت کنید."));
+      return;
+    }
+    var item = document.createElement("select");
+    item.dataset.returnItem = "";
+    view.items.forEach(function (row) {
+      var option = document.createElement("option");
+      option.value = row.item_id;
+      option.textContent = row.name + " · " + (row.location_name || "");
+      item.appendChild(option);
+    });
+    box.appendChild(field("کالا", item, "is-item"));
     var quantity = numberInput(1);
     quantity.dataset.returnQuantity = "";
     box.appendChild(field("تعداد", quantity));
-    var confirmer = confirmerTemplate.cloneNode(true);
-    confirmer.dataset.returnConfirmer = "";
-    delete confirmer.dataset.confirmer;
-    box.appendChild(field("تأییدکننده (با شمارش او)", confirmer));
+    var receiver = document.createElement("select");
+    receiver.dataset.returnConfirmer = "";
+    view.receivers.forEach(function (person) {
+      var option = document.createElement("option");
+      option.value = person.staff_id;
+      option.textContent = person.name;
+      receiver.appendChild(option);
+    });
+    box.appendChild(field("انباردار (تحویل با شمارش او)", receiver));
     var pending = clinic.inbox ? clinic.inbox.return_waiting : [];
     if (pending.length > 0) {
       var list = el("ul", "pu-lines");
       pending.forEach(function (offer) {
-        list.appendChild(el("li", null, itemName(offer.item_id) + " · برگشت در انتظار تأیید"));
+        var row = view.items.filter(function (candidate) {
+          return candidate.item_id === offer.item_id;
+        })[0];
+        list.appendChild(el("li", null, (row ? row.name : "کالا") + " · در انتظار شمارش انباردار"));
       });
       box.appendChild(list);
     }
     box.appendChild(
       actionButton("ثبت برگشت به انبار", function () {
-        var chosen = shelfItems.filter(function (candidate) {
+        var chosen = view.items.filter(function (candidate) {
           return candidate.item_id === item.value;
         })[0];
         if (!chosen) return fail(new Error(NO_ITEM));
         var count = Number(quantity.value);
         if (!Number.isInteger(count) || count < 1) return fail(new Error(NO_QUANTITY));
-        if (!confirmer.value) return fail(new Error(NO_RECIPIENT));
+        if (!receiver.value) return fail(new Error(NO_RECIPIENT));
         return run(
           {
             action: "shelf_return.record",
@@ -1440,7 +1455,7 @@
               from_location_id: chosen.location_id,
               to_location_id: STORE,
               quantity: count,
-              confirmer_id: confirmer.value,
+              confirmer_id: receiver.value,
             },
           },
           MESSAGES.shelfReturn
@@ -1592,6 +1607,7 @@
     renderReturn();
     renderInbox();
     renderRestock();
+    renderShelfReturn();
     renderCount();
     renderSample();
   }

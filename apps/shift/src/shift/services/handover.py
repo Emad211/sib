@@ -31,17 +31,17 @@ person, or from the custody the baseline set, and refuses with a Persian message
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import Connection
 
-from shift.adapters.db import events_repo, handover_repo, projections_repo, staff_repo
+from shift.adapters.db import events_repo, handover_repo, projections_repo, sessions_repo, staff_repo
 from shift.adapters.db.core import Database
 from shift.adapters.db.events_repo import EventRecord
 from shift.adapters.db.handover_repo import FlowRow
-from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran
+from shift.common.clock import Clock, SystemClock, parse_iso, to_tehran, utc_iso
 from shift.common.ids import new_ulid
 from shift.domain.cash_box import CashBox
 from shift.domain.cash_cutoff import CashMovement, signed_cash, windows
@@ -78,6 +78,7 @@ NO_ACCOUNTING = (
 NO_BASELINE = "مدیر باید ابتدا شمارش اولیه را ثبت کند."
 # Owner decision 9: a flow's first count belongs to the person whose role owns that flow.
 OWN_FLOW_ONLY = "شمارش اولیهٔ هر جریان را فقط نفر همان جریان ثبت می‌کند."
+SESSION_GRACE = timedelta(hours=1)
 NOT_A_MANAGER = "تأیید تلفنی را فقط یکی از مدیران فعال درمانگاه می‌دهد."
 START_OWN_FLOW = "هر نفر فقط تحویل جریان خودش را شروع می‌کند."
 CHECKLIST_INCOMING = "چک‌لیست را نفر ورودی پر می‌کند."
@@ -866,6 +867,27 @@ class HandoverService:
                 updated_at=now,
                 updated_by=caller.actor_id,
             )
+            self._wind_down(connection, row.outgoing_id, now)
+
+    @staticmethod
+    def _wind_down(connection: Connection, staff_id: str, now: datetime) -> None:
+        """S02:85: closing the shift signs its person out, after a grace hour for the last small jobs.
+
+        The outgoing person may still have to confirm a shelf charge, answer a record that names them
+        or sign another flow, so the session is not cut at the signature; it ends `SESSION_GRACE` later.
+        Somebody who still holds a flow, or is one of the two people of a flow still open, keeps working:
+        their own last close is what starts the countdown.
+        """
+        if any(handover_repo.custodian(connection, flow) == staff_id for flow in HandoverFlow):
+            return
+        if any(
+            staff_id in (open_row.outgoing_id, open_row.incoming_id)
+            for open_row in handover_repo.open_flows(connection)
+        ):
+            return
+        capped = sessions_repo.cap_for_staff(connection, staff_id=staff_id, until=utc_iso(now + SESSION_GRACE))
+        if capped:
+            log.info("the shift of %s closed; %d session(s) end after the grace period", staff_id, capped)
 
     def _append(self, row: FlowRow, caller: Caller, events: Sequence[tuple[str, Mapping[str, Any]]]) -> None:
         """Append one handover batch; every event names its flow and the shift that flow closes (R-04)."""

@@ -42,7 +42,7 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec("recipient_id", "گیرنده", FieldKind.STAFF),
     FieldSpec("reason", "دلیل", FieldKind.TEXT, max_length=500),
     FieldSpec("manager_id", "مدیر تأییدکننده (بالای سقف)", FieldKind.STAFF, required=False),
-    FieldSpec("photo_sha256", "عکس رسید (اختیاری)", FieldKind.PHOTO, required=False),
+    FieldSpec("photo_sha256", "عکس رسید", FieldKind.PHOTO),
 )
 
 # What the phone shows the person whose record was refused. No figure appears in any of them.
@@ -121,6 +121,7 @@ KIND = KindSpec(
     sample=sample,
     summarize=summarize,
     validate=validate,
+    photo_required=True,
     confirmer_field="recipient_id",
     # An above-cap withdrawal is decided by the manager afterwards, from their own session; the
     # record already moved the box (ADR-019). A below-cap one names no manager and waits for nobody.

@@ -16,6 +16,7 @@ carry the flows. Every value is synthetic: staff from `tests/data/auth_fixtures.
 `tools/seed_reference_data.py`. Nothing reads `_data/` or a production database (ADR-006).
 """
 
+import base64
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -27,6 +28,7 @@ import httpx
 import pytest
 import uvicorn
 from auth_fixtures import PIN, ROLES, Seeded, seed_roster
+from photo_fixtures import RECEIPT_JPEG, RECEIPT_SHA
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo
@@ -35,6 +37,7 @@ from shift.app import create_app
 from shift.common.clock import TEHRAN
 from shift.common.ids import new_ulid
 from shift.config.settings import Settings
+from shift.services.photos import PhotoStore
 
 playwright = pytest.importorskip("playwright")
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright  # noqa: E402
@@ -93,6 +96,7 @@ def live_shift(tmp_path: Path) -> Generator[tuple[str, Database]]:
         seed_catalog(setup)
     finally:
         setup.close()
+    PhotoStore(settings.resolved_photos_dir).save(RECEIPT_JPEG)  # the receipt the transfer names
 
     application = create_app(settings)
     server = _UvicornServer(application, host="127.0.0.1")
@@ -179,7 +183,7 @@ def _receipt_for(base_url: str) -> str:
             "/api/v1/events",
             json={
                 "type": CARD_TRANSFER,
-                "payload": {"amount": TRANSFER_AMOUNT, "admission_no": ADMISSION_NO},
+                "payload": {"amount": TRANSFER_AMOUNT, "admission_no": ADMISSION_NO, "photo_sha256": RECEIPT_SHA},
                 "client_event_id": client_event_id,
                 "idempotency_key": client_event_id,
                 # The phone stamps its own instant; a fixed date would be an old queue by now (F5).
@@ -231,7 +235,18 @@ def _fill_step(page: Page, field: dict[str, Any], used_staff: list[str], actor_i
         page.fill(selector, "2026-10-28")
         return
     if field["kind"] == "photo":
-        # The receipt photo is optional (SHF-7); this journey leaves it out and answers the rest.
+        # A5: the photo is required for these kinds; the phone's own canvas draws a small JPEG to attach.
+        data_url = page.evaluate(
+            "() => { const c = document.createElement('canvas'); c.width = 40; c.height = 30;"
+            " const g = c.getContext('2d'); g.fillStyle = '#4a7'; g.fillRect(0, 0, 40, 30);"
+            " return c.toDataURL('image/jpeg', 0.8); }"
+        )
+        jpeg = base64.b64decode(data_url.split(",", 1)[1])
+        page.set_input_files(
+            '#shift-step-field input[type="file"]',
+            files=[{"name": "receipt.jpg", "mimeType": "image/jpeg", "buffer": jpeg}],
+        )
+        page.wait_for_selector('#shift-step-field .se-photo-status:has-text("عکس آماده است")', timeout=15000)
         return
     if field["kind"] in {"amount", "quantity"}:
         page.fill(selector, "2")

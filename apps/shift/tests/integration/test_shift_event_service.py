@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from auth_fixtures import ROLES, SPARE, seed_roster
+from photo_fixtures import with_photo
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
@@ -60,7 +61,7 @@ def _submission(
     event_id = new_ulid(CLIENT_AT)
     return EventSubmission(
         type=event_type,
-        payload=payload,
+        payload=with_photo(event_type, payload),
         actor_id=principal.staff_id,
         device_id=principal.device_id,
         client_at=CLIENT_AT,

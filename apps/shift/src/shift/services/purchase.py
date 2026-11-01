@@ -204,6 +204,8 @@ class PurchaseState:
     # G3: who the giver may name to confirm a shelf charge, by name and role; never an id for staff.
     directory: tuple[dict[str, Any], ...] = ()
     viewer_id: str = ""
+    # A2: the shelf holder's return form: their own shelves' items and the storekeepers who receive.
+    shelf_return: dict[str, Any] | None = None
 
     def to_payload(self) -> dict[str, Any]:
         """The JSON the route answers with; prices appear in the invoices section only."""
@@ -230,6 +232,7 @@ class PurchaseState:
             "sample": self.sample,
             "inbox": self.inbox,
             "directory": list(self.directory),
+            "shelf_return": self.shelf_return,
         }
 
 
@@ -284,9 +287,11 @@ class PurchaseService:
         items = self._counted_items(shift)
         below = self._below_minimum(items)
         can_order = Permission.PURCHASE_ORDER_DRAFT in held or Permission.PURCHASE_ORDER_DECIDE in held
+        # The purchaser places approved orders and sees their lines, never the stock behind them.
+        sees_orders = can_order or Permission.PURCHASE_ORDER_PLACE in held
         can_parcel = Permission.PURCHASE_DELIVERY_RECEIVE in held or Permission.PARCEL_HANDLE in held
         return PurchaseState(
-            orders=tuple(orders.values()) if can_order else None,
+            orders=tuple(orders.values()) if sees_orders else None,
             below_minimum=below if can_order else None,
             deliveries=tuple(parcels.values()) if can_parcel else None,
             invoices=tuple(parcels.values()) if Permission.PURCHASE_PAYMENT_RECORD in held else None,
@@ -298,6 +303,7 @@ class PurchaseService:
             inbox=self._inbox(principal, shift, log),
             directory=self._directory(principal),
             viewer_id=principal.staff_id,
+            shelf_return=self._store.shelf_return_view(principal, shift),
         )
 
     def pending(self, shift: ShiftKey) -> PendingPurchase:

@@ -8,6 +8,7 @@ from auth_fixtures import PIN, ROLES, create_device, create_staff, seed_roster
 from auth_fixtures import login as login_request
 from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
+from photo_fixtures import RECEIPT_SHA, keep_receipt
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import events_repo, projections_repo
@@ -42,6 +43,7 @@ def _event_payload(**overrides: Any) -> dict[str, Any]:
             "waste_kind": "broken",
             "culprit_id": "staff-reception",
             "confirmer_id": "staff-spare",
+            "photo_sha256": RECEIPT_SHA,
         },
         # Fresh, not pinned: the F5 hold keeps a record older than 72 hours for the manager, so a fixed
         # instant would turn this suite red three days after it was written.
@@ -74,6 +76,7 @@ def seeded(client: TestClient) -> TestClient:
     """The real app with one staff member and one phone per role, on a fixed shift."""
     seed_roster(client.app.state.database, pepper=client.app.state.secret_key, presence=True)
     seed_catalog(client.app.state.database)
+    keep_receipt(client.app)
     client.app.dependency_overrides[running_shift] = lambda: RUNNING
     return client
 
@@ -279,6 +282,7 @@ def test_ingest_updates_projections_and_replay_does_not_double_apply(seeded: Tes
             "waste_kind": "broken",
             "culprit_id": "staff-reception",
             "confirmer_id": "staff-spare",
+            "photo_sha256": RECEIPT_SHA,
         }
     )
 

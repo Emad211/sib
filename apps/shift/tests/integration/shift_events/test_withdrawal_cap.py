@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime
 import pytest
 from auth_fixtures import ROLES, Seeded, seed_roster
 from clocks import FixedClock, inside_shift
+from photo_fixtures import RECEIPT_SHA
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.db import projections_repo
@@ -85,6 +86,7 @@ def _withdraw(service: ShiftEventService, amount: int, *, manager_id: str | None
                 "recipient_id": RECIPIENT,
                 "reason": "خرید فوری",
                 "manager_id": manager_id,
+                "photo_sha256": RECEIPT_SHA,
             },
             actor_id=reception.staff_id,
             device_id=reception.device_id,

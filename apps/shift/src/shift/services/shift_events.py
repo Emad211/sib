@@ -63,6 +63,8 @@ from shift.services.outbox import EventSubmission, OutboxService, OutboxValidati
 from shift.services.projections import ProjectionEngine
 from shift.services.settings import SettingsService
 
+PHOTO_REQUIRED = "عکس این رویداد لازم است؛ اول عکس را بگیرید."
+
 
 class ShiftEventRuleError(OutboxValidationError):
     """A shift event the clinic's rules refuse; the route answers 422 with this message."""
@@ -216,6 +218,8 @@ class ShiftEventService:
         target = self._reference_target(kind, new_event.ref_event_id, happened)
         context = self._context(principal, happened, new_event.ref_event_id, target)
 
+        if kind.photo_required and getattr(payload, "photo_sha256", None) is None:
+            raise ShiftEventRuleError(PHOTO_REQUIRED)
         if is_decision(submission.type):
             self._check_decision(target, principal)
         elif kind.validate is not None:

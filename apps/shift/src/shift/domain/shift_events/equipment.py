@@ -126,7 +126,7 @@ FAULT_REPORTED = KindSpec(
         FieldSpec("device", "تجهیز", FieldKind.TEXT, max_length=200),
         FieldSpec("description", "شرح خرابی", FieldKind.TEXT, max_length=1000),
         FieldSpec("location_id", "محل", FieldKind.LOCATION, required=False),
-        FieldSpec("photo_sha256", "عکس خرابی (اختیاری)", FieldKind.PHOTO, required=False),
+        FieldSpec("photo_sha256", "عکس خرابی", FieldKind.PHOTO),
     ),
     permission=Permission.EQUIPMENT_FAULT_REPORT,
     payload_model=EquipmentFaultReported,
@@ -134,6 +134,7 @@ FAULT_REPORTED = KindSpec(
     sample=_sample_report,
     summarize=_summarise_report,
     card_fields=("device", "description", "photo_sha256"),
+    photo_required=True,
 )
 
 FAULT_ASSIGNED = KindSpec(

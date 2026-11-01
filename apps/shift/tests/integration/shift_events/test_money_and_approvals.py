@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from clocks import FixedClock, inside_shift
+from photo_fixtures import RECEIPT_SHA, with_photo
 
 from event_fixtures import build_event
 from shift.adapters.db import events_repo, projections_repo
@@ -88,7 +89,7 @@ def _record(
     return service.record(
         EventSubmission(
             type=event_type,
-            payload=payload,
+            payload=with_photo(event_type, payload),
             actor_id=actor.staff_id,
             device_id=actor.device_id,
             client_at=occurred,
@@ -142,13 +143,13 @@ def test_a_card_transfer_is_one_pending_record_for_the_accountant(database: Data
     assert (replay.created, replay.status) == (False, "replayed"), "a retried outbox item is not a second transfer"
     assert (replay.seq, replay.event_id) == (first.seq, first.event_id)
     assert [event.payload for event in _events(database, "card.transfer_reported")] == [
-        {**transfer, "photo_sha256": None}
+        {**transfer, "photo_sha256": RECEIPT_SHA}
     ], "the stored payload keeps the optional receipt slot empty"
 
     pending = {entry.event_id: entry for entry in service.pending_for(_principal(Role.ACCOUNTANT))}
     assert list(pending) == [first.event_id]
     assert (pending[first.event_id].code, pending[first.event_id].label_fa) == ("ک", "کارت‌به‌کارت")
-    assert pending[first.event_id].summary == transfer
+    assert pending[first.event_id].summary == {**transfer, "photo_sha256": RECEIPT_SHA}
     assert service.pending_for(reception) == [], "the phone that reported it holds no approval right"
     assert [entry.event_id for entry in service.pending_for(_principal(Role.MANAGER))] == [first.event_id], (
         "the manager may always decide an open record"

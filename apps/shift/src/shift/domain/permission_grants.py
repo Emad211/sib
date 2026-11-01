@@ -92,11 +92,10 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = MappingProxyType(
         Role.PURCHASER: frozenset(
             {
                 _P.EVENTS_APPEND,
-                _P.PURCHASE_ORDER_DRAFT,
-                # Only the purchaser hands an approved order to a vendor and records it (P-03).
+                # Only the purchaser hands an approved order to a vendor and records it (P-03). Owner
+                # decision 2026-11-02: that is all the purchaser does; no draft, no receipt, no payment,
+                # so no price and no stock figure ever reaches this role.
                 _P.PURCHASE_ORDER_PLACE,
-                _P.PURCHASE_DELIVERY_RECEIVE,
-                _P.PURCHASE_PAYMENT_RECORD,
                 _P.EQUIPMENT_FAULT_REPORT,
                 _P.FAULT_FIX,
                 _P.REWARD_VIEW,

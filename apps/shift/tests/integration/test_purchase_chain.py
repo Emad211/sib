@@ -908,7 +908,8 @@ def test_the_state_is_cut_down_to_what_the_callers_permissions_open(desk: Desk) 
     assert accountant["permissions"] == ["purchase.payment.record", "stock.count.submit"]
     assert (reception["orders"], reception["invoices"], reception["warehouse"]) == (None, None, None)
     assert reception["deliveries"] == []
-    assert (purchaser["orders"], purchaser["invoices"], purchaser["warehouse"]) == ([], [], None)
+    assert (purchaser["orders"], purchaser["invoices"], purchaser["warehouse"]) == ([], None, None)
+    assert purchaser["below_minimum"] is None and purchaser["price_history"] is None, "no stock, no price"
 
 
 def test_the_warehouse_section_carries_no_projected_figure(desk: Desk) -> None:
@@ -1025,7 +1026,7 @@ def test_only_the_storekeeper_records_a_vendor_return(desk: Desk) -> None:
     """P-09: the storekeeper lets the goods out, so reception and the purchaser cannot record the exit."""
     delivery_id = _received_delivery(desk, _placed_order(desk))
     for person in (desk.reception, desk.purchaser):
-        with pytest.raises(PurchaseRuleError, match="انباردار"):
+        with pytest.raises(PurchaseRuleError, match="انباردار|نقش شما"):
             _act(
                 desk,
                 person,
@@ -1221,7 +1222,7 @@ def test_a_near_expiry_mark_is_stored_with_the_count_that_saw_it(desk: Desk) -> 
 
 
 def _return_offer(desk: Desk, **overrides: Any) -> dict[str, Any]:
-    """The nurse sends goods from her shelf back to the main store and names the storekeeper to count them."""
+    """Reception sends goods from its shelf back to the main store and names the storekeeper to count them."""
     data: dict[str, Any] = {
         "item_id": ITEM,
         "from_location_id": LOCATION,
@@ -1229,7 +1230,7 @@ def _return_offer(desk: Desk, **overrides: Any) -> dict[str, Any]:
         "quantity": 3,
         "confirmer_id": desk.storekeeper.staff_id,
     }
-    return _act(desk, desk.nurse, "shelf_return.record", **(data | overrides))
+    return _act(desk, desk.reception, "shelf_return.record", **(data | overrides))
 
 
 def test_a_shelf_return_needs_both_sides_and_then_moves_the_shelf_down_and_the_store_up_once(desk: Desk) -> None:
@@ -1239,10 +1240,10 @@ def test_a_shelf_return_needs_both_sides_and_then_moves_the_shelf_down_and_the_s
     waiting = _state(desk, desk.storekeeper)["inbox"]["return_to_confirm"]
     assert [row["offer_id"] for row in waiting] == [offered["event_id"]]
     assert "quantity" not in waiting[0], "the person counting in the store does not read the offered figure"
-    assert [row["offer_id"] for row in _state(desk, desk.nurse)["inbox"]["return_waiting"]] == [offered["event_id"]]
+    assert [row["offer_id"] for row in _state(desk, desk.reception)["inbox"]["return_waiting"]] == [offered["event_id"]]
 
     with pytest.raises(PurchaseRuleError, match="کسی که"):
-        _act(desk, desk.reception, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
+        _act(desk, desk.nurse, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
     with pytest.raises(PurchaseRuleError, match="نمی‌خواند"):
         _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=2)
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE
@@ -1259,10 +1260,23 @@ def test_a_shelf_return_needs_both_sides_and_then_moves_the_shelf_down_and_the_s
 
 def test_a_shelf_return_is_refused_when_it_is_not_a_return(desk: Desk) -> None:
     with pytest.raises(PurchaseRuleError, match="کس دیگری"):
+        _return_offer(desk, confirmer_id=desk.reception.staff_id)
+    with pytest.raises(PurchaseRuleError, match="انباردار"):
         _return_offer(desk, confirmer_id=desk.nurse.staff_id)
+    with pytest.raises(PurchaseRuleError, match="آن قفسه با اوست"):
+        _act(
+            desk,
+            desk.nurse,
+            "shelf_return.record",
+            item_id=ITEM,
+            from_location_id=LOCATION,
+            to_location_id=STORE,
+            quantity=3,
+            confirmer_id=desk.storekeeper.staff_id,
+        )
     with pytest.raises(PurchaseRuleError, match="فقط به انبار اصلی"):
         _return_offer(desk, to_location_id=LOCATION, from_location_id=STORE)
-    with pytest.raises(PurchaseRuleError, match="کاتالوگ"):
+    with pytest.raises(PurchaseRuleError, match="آن قفسه با اوست"):
         _return_offer(desk, from_location_id="nowhere")
     with pytest.raises(PurchaseRuleError, match="کارکنان فعال"):
         _return_offer(desk, confirmer_id="staff-ghost")
@@ -1315,3 +1329,13 @@ def test_the_shelf_the_projection_holds_is_what_the_h_01_formula_says_of_the_eve
     )
     desk.projections.sync()
     assert _shelf(desk, ITEM, LOCATION) == expected == SHELF_BEFORE + 7 - 2 - 1 - 1 - 3 + 1
+
+
+def test_the_return_form_offers_a_shelf_holder_their_own_shelves_and_the_storekeepers(desk: Desk) -> None:
+    """A2: reception sees its shelf's items and the storekeeper to hand them to; the storekeeper gets no form."""
+    view = _state(desk, desk.reception)["shelf_return"]
+    assert view is not None
+    assert {row["location_id"] for row in view["items"]} == {LOCATION}
+    assert desk.storekeeper.staff_id in {person["staff_id"] for person in view["receivers"]}
+    assert all("quantity" not in row for row in view["items"]), "the form carries no figure"
+    assert _state(desk, desk.purchaser)["shelf_return"] is None

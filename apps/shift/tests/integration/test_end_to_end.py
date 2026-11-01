@@ -14,6 +14,7 @@ from auth_fixtures import login as login_request
 from clocks import FixedClock
 from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
+from photo_fixtures import RECEIPT_SHA, keep_receipt
 from synthetic_catalog import seed as seed_catalog
 
 from shift.adapters.accounting.views import parse_time
@@ -105,6 +106,7 @@ def test_the_whole_shift_path_from_qr_to_rebuilt_projections(client: TestClient,
     assert reused.status_code == 409
 
     nurse_session = _login(client, mobile=NURSE["mobile"], device_id=enrolled_device)
+    keep_receipt(client.app)
     shift = covering(to_tehran(client.app.state.clock.now_utc()))
     event_id = new_ulid()
     response = client.post(
@@ -120,6 +122,7 @@ def test_the_whole_shift_path_from_qr_to_rebuilt_projections(client: TestClient,
                 "waste_kind": "broken",
                 "culprit_id": "staff-e2e-nurse",
                 "confirmer_id": "staff-e2e-manager",
+                "photo_sha256": RECEIPT_SHA,
             },
             "client_at": datetime.now(UTC).isoformat(),
             "actor_id": "staff-forged",

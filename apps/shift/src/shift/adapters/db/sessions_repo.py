@@ -90,6 +90,15 @@ def revoke_for_staff(connection: Connection, *, staff_id: str, revoked_at: str, 
     return int(result.rowcount or 0)
 
 
+def cap_for_staff(connection: Connection, *, staff_id: str, until: str) -> int:
+    """End every live session of one person at `until` at the latest (the shift-close wind-down)."""
+    result = connection.exec_driver_sql(
+        "UPDATE sessions SET expires_at = ? WHERE staff_id = ? AND revoked_at IS NULL AND expires_at > ?",
+        (until, staff_id, until),
+    )
+    return int(result.rowcount or 0)
+
+
 def revoke_for_device(connection: Connection, *, device_id: str, revoked_at: str, reason: str) -> int:
     """Revoke every live session opened from one device (device revocation)."""
     result = connection.exec_driver_sql(

@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from auth_fixtures import ROLES, Seeded, seed_roster
 from clocks import FixedClock, inside_shift
+from photo_fixtures import RECEIPT_SHA, with_photo
 from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
@@ -91,7 +92,7 @@ def _record(
     return service.record(
         EventSubmission(
             type=event_type,
-            payload=payload,
+            payload=with_photo(event_type, payload),
             actor_id=principal.staff_id,
             device_id=principal.device_id,
             client_at=moment,
@@ -151,7 +152,12 @@ def test_a_night_shift_withdrawal_is_confirmed_the_next_morning(clinic: Database
     # The row names its own shift, its own author and its own summary — never the running shift.
     assert (entry.shift_id, entry.code, entry.label_fa) == (NIGHT.text, "د", "برداشت از صندوق")
     assert entry.actor["id"] == reception.staff_id
-    assert entry.summary == {"amount": 100_000, "recipient_id": nurse.staff_id, "reason": "خرید فوری"}
+    assert entry.summary == {
+        "amount": 100_000,
+        "recipient_id": nurse.staff_id,
+        "reason": "خرید فوری",
+        "photo_sha256": RECEIPT_SHA,
+    }
 
     decision = _record(service, nurse, "event.approved", {}, shift=MORNING, ref_event_id=recorded.event_id)
 

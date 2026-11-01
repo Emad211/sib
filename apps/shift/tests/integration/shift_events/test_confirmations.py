@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from auth_fixtures import ROLES, SPARE, Seeded, seed_roster
 from clocks import FixedClock, inside_shift
+from photo_fixtures import RECEIPT_SHA, with_photo
 from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
@@ -93,7 +94,7 @@ def _record(
     return service.record(
         EventSubmission(
             type=event_type,
-            payload=payload,
+            payload=with_photo(event_type, payload),
             actor_id=principal.staff_id,
             device_id=principal.device_id,
             client_at=CLIENT_AT,
@@ -191,7 +192,12 @@ def test_a_withdrawal_waits_for_its_recipient(clinic: Database) -> None:
         "actor",
         "summary",
     }
-    assert entry.summary == {"amount": 100_000, "recipient_id": nurse.staff_id, "reason": "خرید فوری"}
+    assert entry.summary == {
+        "amount": 100_000,
+        "recipient_id": nurse.staff_id,
+        "reason": "خرید فوری",
+        "photo_sha256": RECEIPT_SHA,
+    }
     assert not {"expected", "counted", "variance"} & set(entry.summary)
     assert service.pending_for(_principal(ROLES["accountant"])) == [], "the accountant approves money, not this"
     assert [entry.event_id for entry in service.pending_for(_principal(ROLES["manager"]))] == [recorded.event_id]

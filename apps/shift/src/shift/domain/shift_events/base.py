@@ -153,6 +153,10 @@ class KindSpec:
     # A reward record is never a phone button: a reward the earner could record for themselves would
     # be a self-dealing hole (SHF-5, shf5-DESIGN.md §3), so the wizard skips these kinds entirely.
     phone: bool = True
+    # Owner decision (2026-11-02, A5): a card transfer, a cash withdrawal, waste and a broken device are
+    # recorded with their photo. Checked when a record is made, never on replay, so the records kept
+    # before the decision still rebuild.
+    photo_required: bool = False
 
     @property
     def requires_approval(self) -> bool:

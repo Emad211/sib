@@ -44,7 +44,7 @@ KIND = KindSpec(
     fields=(
         FieldSpec("amount", "مبلغ (تومان)", FieldKind.AMOUNT),
         FieldSpec("admission_no", "شماره پذیرش", FieldKind.TEXT, max_length=64),
-        FieldSpec("photo_sha256", "عکس رسید (اختیاری)", FieldKind.PHOTO, required=False),
+        FieldSpec("photo_sha256", "عکس رسید", FieldKind.PHOTO),
     ),
     permission=Permission.CARD_TRANSFER_REPORT,
     payload_model=CardTransferReported,
@@ -52,6 +52,7 @@ KIND = KindSpec(
     sample=lambda: {"amount": 150_000, "admission_no": "A-1001", "photo_sha256": None},
     summarize=_summary,
     validate=_validate,
+    photo_required=True,
     approvable_by=(Role.ACCOUNTANT,),
     card_fields=("amount", "admission_no", "photo_sha256"),
 )

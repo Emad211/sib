@@ -13,7 +13,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -785,3 +785,34 @@ def test_the_checklists_are_filled_by_the_incoming_person(client: TestClient) ->
     refused = _checklist(client, outgoing, handover_id, "store_lock_ok", ok=True)
 
     assert refused.status_code == 403
+
+
+def _session_ends(client: TestClient, staff_id: str) -> list[str]:
+    with client.app.state.database.read() as connection:
+        rows = connection.exec_driver_sql(
+            "SELECT expires_at FROM sessions WHERE staff_id = ? AND revoked_at IS NULL", (staff_id,)
+        ).all()
+    return [str(row[0]) for row in rows]
+
+
+def test_closing_the_flow_ends_the_outgoing_persons_session_after_a_grace_hour(client: TestClient) -> None:
+    """S02:85: the shift's close signs its person out, but only an hour later, so last jobs still fit."""
+    incoming = _phone(client)
+    outgoing = _phone(client, OUTGOING_ROLE)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    _to_dual_sign(client, incoming, handover_id)
+    before = _session_ends(client, OUTGOING)
+    assert _sign(client, incoming, handover_id).status_code == 200
+    assert _session_ends(client, OUTGOING) == before, "a flow that is not closed yet ends nobody's session"
+
+    assert _sign(client, outgoing, handover_id).json()["closed"] is True
+
+    now = client.app.state.clock.now_utc()
+    for ends in _session_ends(client, OUTGOING):
+        left = datetime.fromisoformat(ends) - now
+        assert timedelta(minutes=55) < left <= timedelta(hours=1, minutes=1)
+    assert client.get("/api/v1/auth/me", headers=_as(client, outgoing)).status_code == 200, "the grace hour"
+    assert all(datetime.fromisoformat(ends) - now > timedelta(hours=2) for ends in _session_ends(client, RECEPTION)), (
+        "the incoming person keeps the full session"
+    )

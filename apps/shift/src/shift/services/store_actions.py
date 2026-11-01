@@ -29,6 +29,8 @@ from shift.common.clock import Clock, parse_iso, to_tehran
 from shift.domain.event_types import EventType
 from shift.domain.handover_formulas import difference
 from shift.domain.handover_payloads import DiscrepancyRecorded
+from shift.domain.handover_steps import FLOW_LOCATIONS, FLOW_OWNER_ROLES
+from shift.domain.on_shift import held_roles
 from shift.domain.payloads import WeeklyCount
 from shift.domain.permissions import Permission, Role
 from shift.domain.policy import SettingKey, ShiftKey
@@ -69,7 +71,10 @@ from shift.services.purchase_rules import (
     OFFER_CLOSED,
     OFFER_COUNT,
     RESTOCK_FROM_STORE,
+    RETURN_COUNT,
+    RETURN_OWN_SHELF,
     RETURN_TO_STORE,
+    RETURN_TO_STOREKEEPER,
     SAME_LOCATION,
     SAMPLE_DONE,
     SAMPLE_ROLE,
@@ -89,8 +94,9 @@ ACTIONS: Mapping[str, tuple[Permission, str]] = {
     # of the clinic's staff the giver names (reception owns a shelf and holds no restock permission).
     "restock.record": (Permission.STOCK_RESTOCK_CONFIRM, "restock_offer"),
     "restock.confirm": (Permission.EVENTS_APPEND, "restock_confirm"),
-    # A2: goods back from a shelf. Any shelf holder records it and the storekeeper (or whoever is named)
-    # counts what arrived in the store; only that confirmation moves stock.
+    # A2: goods back from a shelf. The store is opened by the storekeeper, so the return happens with both
+    # present: the person who answers for that shelf gives, the storekeeper counts what arrived, blind, and
+    # only that count moves stock (the shelf down and the store up together).
     "shelf_return.record": (Permission.EVENTS_APPEND, "shelf_return_offer"),
     "shelf_return.confirm": (Permission.EVENTS_APPEND, "shelf_return_confirm"),
     "weekly.count": (Permission.STOCK_COUNT_SUBMIT, "weekly_count"),
@@ -280,7 +286,7 @@ class StoreActions:
             raise PurchaseRuleError(NOT_THE_CONFIRMER)
         quantity = data.get("quantity")
         if isinstance(quantity, bool) or quantity != offer.payload["quantity"]:
-            raise PurchaseRuleError(OFFER_COUNT)
+            raise PurchaseRuleError(RETURN_COUNT if returns else OFFER_COUNT)
         model = ShelfReturnConfirmed if returns else RestockConfirmed
         payload = body(model, {key: value for key, value in offer.payload.items()} | {"offer_id": offer_id})
         record = new_event(self._clock, confirmed, payload, principal, shift, ref_event_id=offer.event_id)
@@ -298,6 +304,9 @@ class StoreActions:
             raise PurchaseRuleError(SAME_LOCATION)
         if offer.to_location_id != MAIN_STORE:
             raise PurchaseRuleError(RETURN_TO_STORE)
+        shelf_flow = FLOW_LOCATIONS.get(offer.from_location_id)
+        if shelf_flow is None or FLOW_OWNER_ROLES[shelf_flow] not in held_roles(principal.roles):
+            raise PurchaseRuleError(RETURN_OWN_SHELF)
         places = {place.location_id for place in self._catalog.locations(shift)}
         if offer.from_location_id not in places or offer.to_location_id not in places:
             raise PurchaseRuleError(UNKNOWN_LOCATION)
@@ -308,6 +317,8 @@ class StoreActions:
             raise PurchaseRuleError(ITEM_NOT_ON_SHELF)
         if not self._is_active_staff(offer.confirmer_id):
             raise PurchaseRuleError(UNKNOWN_CONFIRMER)
+        if not self._holds_store(offer.confirmer_id):
+            raise PurchaseRuleError(RETURN_TO_STOREKEEPER)
         record = new_event(self._clock, EventType.SHELF_RETURN_OFFERED, offer, principal, shift)
         self._events.append(record)
         return {"status": "recorded", "event_id": record.client_event_id}
@@ -413,6 +424,53 @@ class StoreActions:
         if state is None:
             raise PurchaseRuleError("این بار پیدا نشد.")
         return state
+
+    def _holds_store(self, staff_id: str) -> bool:
+        """The receiver of a return opens the store: an active storekeeper, or the manager as fallback."""
+        with self._database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+        return any(
+            p.staff.staff_id == staff_id
+            and p.staff.active
+            and {Role.STOREKEEPER.value, Role.MANAGER.value} & set(p.roles)
+            for p in people
+        )
+
+    def shelf_return_view(self, principal: Principal, shift: ShiftKey) -> dict[str, Any] | None:
+        """A2: what the return form needs: the caller's own shelves' items and the people who can receive.
+
+        None for somebody who answers for no shelf. No quantity travels: the storekeeper counts blind.
+        """
+        held = held_roles(principal.roles)
+        places = {place.location_id: place.name for place in self._catalog.locations(shift)}
+        # The shelves a handover counts, of the flows this person's role owns: those are the ones they
+        # answer for in a blind count, so those are the ones they hand back from.
+        own = {
+            location
+            for location, flow in FLOW_LOCATIONS.items()
+            if location in places and FLOW_OWNER_ROLES[flow] in held
+        }
+        if not own:
+            return None
+        items = [
+            {
+                "item_id": item.item_id,
+                "name": item.name,
+                "unit": item.unit,
+                "location_id": item.location_id,
+                "location_name": places.get(item.location_id, ""),
+            }
+            for item in self._catalog.items(shift)
+            if item.kind is ItemKind.COUNTED and item.location_id in own
+        ]
+        with self._database.read() as connection:
+            people = staff_repo.list_with_roles(connection)
+        receivers = [
+            {"staff_id": p.staff.staff_id, "name": p.staff.full_name}
+            for p in people
+            if p.staff.active and p.staff.staff_id != principal.staff_id and Role.STOREKEEPER.value in p.roles
+        ]
+        return {"items": items, "receivers": receivers}
 
     def _is_active_staff(self, staff_id: str) -> bool:
         with self._database.read() as connection:
