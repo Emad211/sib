@@ -34,6 +34,7 @@
       <p class="mg-amount">{{ row.amount }} <span class="mg-unit">تومان</span></p>
       <p class="mg-line">شماره پذیرش: {{ row.admission_no }}</p>
       <p class="mg-line mg-muted">گزارش‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      {% if row.photo %}<p class="mg-line"><a class="mg-photo" href="{{ row.photo }}" target="_blank" rel="noopener" data-receipt>عکس رسید</a></p>{% endif %}
       <p class="mg-pending">{{ row.state }}</p>
       {% if row.decidable %}
       <p class="mg-line mg-actions" dir="rtl">
@@ -57,6 +58,7 @@
       <p class="mg-line mg-muted">ثبت‌کننده: {{ row.actor }} · {{ row.at }}</p>
       <p class="mg-pending">{{ row.side }} · {{ row.state }}</p>
       <p class="mg-line mg-muted">سقف همان شیفت: {{ row.cap }} تومان</p>
+      {% if row.photo %}<p class="mg-line"><a class="mg-photo" href="{{ row.photo }}" target="_blank" rel="noopener" data-receipt>عکس رسید</a></p>{% endif %}
       {% if row.decidable %}
       <p class="mg-line mg-actions" dir="rtl">
         <button type="button" class="btn btn-primary btn-compact" data-decision="approve" data-event-id="{{ row.event_id }}">تأیید</button>

@@ -185,6 +185,7 @@ def _transfer_row(line: CardTransferLine) -> dict[str, Any]:
         "actor": line.actor_name,
         "at": _stamp_fa(line.at_tehran),
         "state": STATE_LABELS.get(line.status, line.status),
+        "photo": _photo_url(line.photo_sha256),
     }
 
 
@@ -201,7 +202,13 @@ def _withdrawal_row(line: WithdrawalLine) -> dict[str, Any]:
         "side": _side_fa(line.above_cap),
         "cap": UNKNOWN if line.cap_toman is None else f"{line.cap_toman:,}",
         "state": STATE_LABELS.get(line.status, line.status),
+        "photo": _photo_url(line.photo_sha256),
     }
+
+
+def _photo_url(sha256: str | None) -> str | None:
+    """The receipt behind a row, as a link the accountant opens; never a hash printed for staff (SHF-7)."""
+    return f"/api/v1/photos/{sha256}" if sha256 else None
 
 
 def _refund_row(line: RefundLine) -> dict[str, Any]:

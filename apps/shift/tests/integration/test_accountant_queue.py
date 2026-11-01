@@ -24,6 +24,7 @@ import pytest
 from auth_fixtures import PIN, ROLES, login, seed_roster
 from clocks import FixedClock
 from fastapi.testclient import TestClient
+from photo_fixtures import RECEIPT_SHA
 
 from event_fixtures import build_event
 from shift.app import create_app
@@ -106,11 +107,22 @@ def _seed(client: TestClient) -> Seeded:
     manager = ROLES["manager"].staff_id
     seeded: dict[str, str] = {}
     for key, event_type, payload, minutes in (
-        ("transfer", "card.transfer_reported", {"amount": TRANSFER, "admission_no": TRANSFER_ADMISSION}, 9),
+        (
+            "transfer",
+            "card.transfer_reported",
+            {"amount": TRANSFER, "admission_no": TRANSFER_ADMISSION, "photo_sha256": RECEIPT_SHA},
+            9,
+        ),
         (
             "below_cap",
             "cash.withdrawn",
-            {"amount": BELOW_CAP, "recipient_id": nurse, "reason": REASON, "manager_id": None},
+            {
+                "amount": BELOW_CAP,
+                "recipient_id": nurse,
+                "reason": REASON,
+                "manager_id": None,
+                "photo_sha256": RECEIPT_SHA,
+            },
             7,
         ),
         (
@@ -237,6 +249,11 @@ def test_the_queue_shows_the_open_money_work_with_its_state_and_cap(accountant_p
     assert "بالای سقف" in above, "the over-cap withdrawal is flagged, as the owner's rule asks"
     assert ABOVE_REASON in above
     assert f"سقف همان شیفت: {CAP:,} تومان" in body, "the cap is the versioned setting of that shift"
+
+    # A5: the receipt the record carries is one tap away for the accountant who matches the money.
+    assert f'href="/api/v1/photos/{RECEIPT_SHA}"' in transfer and "عکس رسید" in transfer
+    assert f'href="/api/v1/photos/{RECEIPT_SHA}"' in below
+    assert "عکس رسید" not in above, "a record without a photo shows no dead link"
 
     refund = _row(body, accountant_page.refund)
     assert REFUND_ADMISSION in refund

@@ -59,6 +59,8 @@ class CardTransferLine:
     amount_toman: int
     status: str
     decidable: bool
+    # The receipt photo reception took (A5): the accountant matches it against the bank account.
+    photo_sha256: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -69,6 +71,7 @@ class CardTransferLine:
             "amount_toman": self.amount_toman,
             "status": self.status,
             "decidable": self.decidable,
+            "photo_sha256": self.photo_sha256,
         }
 
 
@@ -86,6 +89,8 @@ class WithdrawalLine:
     above_cap: bool | None
     status: str
     decidable: bool
+    # The receipt of what the money bought (A5), shown beside the row it explains.
+    photo_sha256: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -99,6 +104,7 @@ class WithdrawalLine:
             "above_cap": self.above_cap,
             "status": self.status,
             "decidable": self.decidable,
+            "photo_sha256": self.photo_sha256,
         }
 
 
@@ -256,6 +262,7 @@ class AccountantQueueService:
                             amount_toman=int(summary.get("amount") or 0),
                             status=PENDING,
                             decidable=is_decidable,
+                            photo_sha256=event.payload.get("photo_sha256"),
                         )
                     )
                 elif event.type == WITHDRAWN:
@@ -275,6 +282,7 @@ class AccountantQueueService:
                             above_cap=is_above_cap_payload(event.payload),
                             status=PENDING,
                             decidable=is_decidable,
+                            photo_sha256=event.payload.get("photo_sha256"),
                         )
                     )
                 else:
