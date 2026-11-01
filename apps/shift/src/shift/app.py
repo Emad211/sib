@@ -1,11 +1,11 @@
 """FastAPI application factory for the shift service."""
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 from shift.__version__ import __version__
@@ -276,6 +276,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
     install_error_handlers(app)
+
+    @app.middleware("http")
+    async def default_security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Every page carries the baseline headers, so a route that forgets them (the login, the pairing
+        page, the device admin) is never framed or sniffed; a route that sets its own keeps it (S-4, S-17)."""
+        response = await call_next(request)
+        for name, value in routes_web.BASELINE_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            # The pages without their own policy (login, pairing) still run inline code, so the default
+            # only forbids framing; the full policy stays with the pages that were written for it.
+            response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        return response
+
     app.include_router(routes_auth.router)
     app.include_router(routes_devices.router)
     app.include_router(

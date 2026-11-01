@@ -27,18 +27,18 @@ router = APIRouter(tags=["web"])
 _SRC_DIR = Path(__file__).resolve().parent.parent
 _STATIC_DIR = _SRC_DIR / "static"
 
-_CSP = (
+CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; "
     "font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
 _SECURITY_HEADERS = {
-    "Content-Security-Policy": _CSP,
+    "Content-Security-Policy": CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
 }
-_BASELINE_HEADERS = {
+BASELINE_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
@@ -378,7 +378,7 @@ def get_manifest() -> FileResponse:
     return FileResponse(
         path=_STATIC_DIR / "manifest.webmanifest",
         media_type="application/manifest+json",
-        headers=_BASELINE_HEADERS,
+        headers=BASELINE_HEADERS,
         status_code=status.HTTP_200_OK,
     )
 
@@ -389,7 +389,7 @@ def get_service_worker() -> Response:
     headers = {
         "Service-Worker-Allowed": "/",
         "Cache-Control": "no-cache, no-store, must-revalidate",
-        **_BASELINE_HEADERS,
+        **BASELINE_HEADERS,
     }
     return Response(
         content=_SW_BODY,
