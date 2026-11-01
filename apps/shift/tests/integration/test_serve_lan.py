@@ -101,3 +101,96 @@ def test_the_lan_run_offers_the_root_over_http_and_the_login_page_over_https(tmp
     finally:
         process.terminate()
         process.wait(timeout=60)
+
+
+def test_the_public_name_gets_its_own_certificate_on_the_same_port(tmp_path: Path) -> None:
+    """O05: through the relay the head's phone asks for the public name and gets the public certificate;
+    a LAN phone asking for the IP still gets the clinic's own one. One port, two certificates, by SNI."""
+    public_dir = tmp_path / "public"
+    public_dir.mkdir()
+    cert, key = public_dir / "fullchain.pem", public_dir / "privkey.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "2",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-subj",
+            "/CN=shift.public.test",
+            "-addext",
+            "subjectAltName=DNS:shift.public.test",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    home = tmp_path / "home"
+    log = tmp_path / "serve_lan.log"
+    https_port, http_port = _free_port(), _free_port()
+    command = [
+        sys.executable,
+        str(SCRIPT),
+        "--home",
+        str(home),
+        "--ip",
+        LAN_IP,
+        "--name",
+        "shift.test",
+        "--https-port",
+        str(https_port),
+        "--http-port",
+        str(http_port),
+        "--public-name",
+        "shift.public.test",
+        "--public-cert",
+        str(cert),
+        "--public-key",
+        str(key),
+    ]
+    with log.open("w", encoding="utf-8") as sink:
+        process = subprocess.Popen(
+            command,
+            cwd=str(APP_ROOT),
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"},
+            stdout=sink,
+            stderr=subprocess.STDOUT,
+        )
+    try:
+        _wait_until_answering(process, f"http://127.0.0.1:{http_port}/ca.crt", log)
+        lan = ssl.create_default_context(cafile=str(home / "tls" / "ca.crt"))
+        _wait_until_answering(process, f"https://127.0.0.1:{https_port}/healthz", log, context=lan)
+
+        public = ssl.create_default_context(cafile=str(cert))
+        with socket.create_connection(("127.0.0.1", https_port), timeout=10) as raw:
+            with public.wrap_socket(raw, server_hostname="shift.public.test") as tls:
+                presented = tls.getpeercert()
+        assert ("DNS", "shift.public.test") in presented["subjectAltName"]
+
+        with socket.create_connection(("127.0.0.1", https_port), timeout=10) as raw:
+            lan.check_hostname = False
+            with lan.wrap_socket(raw, server_hostname="shift.test") as tls:
+                assert ("DNS", "shift.public.test") not in tls.getpeercert().get("subjectAltName", ())
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+def test_the_public_certificate_arguments_go_together(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--home", str(tmp_path), "--ip", LAN_IP, "--public-name", "shift.public.test"],
+        cwd=str(APP_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "go together" in result.stderr

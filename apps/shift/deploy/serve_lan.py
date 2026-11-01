@@ -25,10 +25,12 @@ import re
 import secrets
 import shutil
 import signal
+import ssl
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -417,6 +419,51 @@ def build_install_app(certificates: Certificates, *, https_url: str, https_port:
     )
 
 
+@dataclass(frozen=True)
+class PublicCertificate:
+    """The relay's public name and the certificate a public CA issued for it (O05)."""
+
+    name: str
+    cert: Path
+    key: Path
+
+
+def public_certificate(arguments: argparse.Namespace) -> PublicCertificate | None:
+    if not arguments.public_name:
+        return None
+    return PublicCertificate(arguments.public_name.lower(), Path(arguments.public_cert), Path(arguments.public_key))
+
+
+def sni_selector(public: PublicCertificate) -> Callable[[ssl.SSLObject, str | None, ssl.SSLContext], None]:
+    """Hand the public certificate to a client that asks for the public name; everyone else, the LAN one.
+
+    One port serves both: a LAN phone reaches the IP and trusts the clinic's own root; the head and
+    the manager reach the public name through the relay, which passes TLS through untouched, and get
+    the publicly trusted certificate. The private keys never leave this computer.
+    """
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    context.load_cert_chain(str(public.cert), str(public.key))
+
+    def select(connection: ssl.SSLObject, server_name: str | None, _current: ssl.SSLContext) -> None:
+        if server_name and server_name.lower() == public.name:
+            connection.context = context
+
+    return select
+
+
+class PublicNameConfig(uvicorn.Config):
+    """uvicorn's config with an SNI hook: the public name gets its own certificate on the same port."""
+
+    def __init__(self, *args: object, public: PublicCertificate | None = None, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._public = public
+
+    def load(self) -> None:
+        super().load()
+        if self._public is not None and self.ssl is not None:
+            self.ssl.sni_callback = sni_selector(self._public)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run both listeners until Ctrl+C and shut them down cleanly."""
     arguments = _parse_arguments(argv)
@@ -451,8 +498,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         ),
         uvicorn.Server(
-            uvicorn.Config(
+            PublicNameConfig(
                 create_app(settings),
+                public=public_certificate(arguments),
                 host="0.0.0.0",
                 port=arguments.https_port,
                 ssl_certfile=str(certificates.server_crt),
@@ -518,7 +566,18 @@ def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--name", default="shift.local", type=_host_name, help="a second name for the certificate")
     parser.add_argument("--https-port", default=8443, type=_port, help="HTTPS port (default 8443)")
     parser.add_argument("--http-port", default=8080, type=_port, help="plain HTTP port for /ca.crt (default 8080)")
-    return parser.parse_args(argv)
+    # O05: the relay's public name, served with its own (Let's Encrypt) certificate on the same port.
+    parser.add_argument("--public-name", type=_host_name, help="public host name reached through the relay")
+    parser.add_argument("--public-cert", type=Path, help="full-chain PEM for --public-name")
+    parser.add_argument("--public-key", type=Path, help="private key PEM for --public-name")
+    arguments = parser.parse_args(argv)
+    public = (arguments.public_name, arguments.public_cert, arguments.public_key)
+    if any(public) and not all(public):
+        parser.error("--public-name, --public-cert and --public-key go together")
+    for path in public[1:]:
+        if path is not None and not Path(path).is_file():
+            parser.error(f"not a file: {path}")
+    return arguments
 
 
 def _ip_address(value: str) -> str:
