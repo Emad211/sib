@@ -66,6 +66,28 @@ from shift.services.settings import SettingsService
 PHOTO_REQUIRED = "عکس این رویداد لازم است؛ اول عکس را بگیرید."
 
 
+def _initials(name: str) -> str:
+    """A patient name cut to its initials: enough to match the slip, not enough to read who it was."""
+    parts = [part for part in name.replace("‌", " ").split() if part]
+    return " ".join(f"{part[0]}." for part in parts) or "—"
+
+
+def _private_summary(
+    summary: dict[str, Any], event: EventRecord, shift: ShiftKey, principal: Principal, *, is_manager: bool
+) -> dict[str, Any]:
+    """R-01, E02 §1: a belonging from another shift shows its patient's initials, not the full name.
+
+    The person handing it back needs the item and the admission number (the slip and accounting say the
+    rest); the full name stays with the person who wrote it down, the shift it was written in, and the
+    manager.
+    """
+    if event.type != EventType.PATIENT_ITEM_HELD.value or "patient_name" not in summary:
+        return summary
+    if is_manager or event.actor_id == principal.staff_id or event.shift_id == shift.text:
+        return summary
+    return {**summary, "patient_name": _initials(str(summary["patient_name"]))}
+
+
 class ShiftEventRuleError(OutboxValidationError):
     """A shift event the clinic's rules refuse; the route answers 422 with this message."""
 
@@ -540,7 +562,13 @@ class ShiftEventService:
                         label_fa=kind.label_fa,
                         at_tehran=event.at_tehran,
                         actor={"id": event.actor_id, "name": names.full_name(event.actor_id)},
-                        summary=summary_for(kind, event.payload),
+                        summary=_private_summary(
+                            summary_for(kind, event.payload),
+                            event,
+                            shift,
+                            principal,
+                            is_manager=is_manager,
+                        ),
                         actions=tuple(actions),
                     )
                 )

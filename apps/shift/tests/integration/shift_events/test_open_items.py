@@ -231,6 +231,25 @@ def test_a_belonging_held_at_night_is_delivered_in_the_morning(clinic: Database)
         _record(service, nurse, "patient.item_delivered", {}, shift=MORNING, ref_event_id=held.event_id)
 
 
+def test_a_belonging_of_an_earlier_shift_shows_its_patients_initials_only(clinic: Database) -> None:
+    """R-01, E02 §1: tomorrow's desk sees the item and the admission, not the full name of the patient."""
+    service = _service(clinic)
+    nurse = _principal(ROLES["nurse"])
+    reception = _principal(ROLES["reception"])
+    manager = _principal(ROLES["manager"])
+    held = _record(service, nurse, "patient.item_held", HELD, shift=NIGHT)
+
+    def row(principal: Principal, shift: ShiftKey) -> dict:
+        return next(t.summary for t in service.open_targets(principal, shift) if t.event_id == held.event_id)
+
+    morning = row(reception, MORNING)
+    assert morning["patient_name"] == "ب. آ."
+    assert (morning["item_name"], morning["admission_no"]) == (HELD["item_name"], HELD["admission_no"])
+    assert row(reception, NIGHT)["patient_name"] == HELD["patient_name"], "its own shift reads the slip"
+    assert row(nurse, MORNING)["patient_name"] == HELD["patient_name"], "the person who wrote it reads it"
+    assert row(manager, MORNING)["patient_name"] == HELD["patient_name"]
+
+
 def test_every_other_reference_stays_inside_its_own_shift(clinic: Database) -> None:
     """A follow-up is the night shift's reading, not a bridge to tomorrow: R-01 keeps that rule."""
     service = _service(clinic)
