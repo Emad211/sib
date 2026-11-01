@@ -28,7 +28,7 @@ _SRC_DIR = Path(__file__).resolve().parent.parent
 _STATIC_DIR = _SRC_DIR / "static"
 
 _CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; "
     "font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
