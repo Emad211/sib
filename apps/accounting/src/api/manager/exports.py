@@ -309,7 +309,7 @@ def export_visits_csv():
         start_dt, end_dt = end_dt, start_dt
 
     params = {"date_from": start_dt.strftime("%Y-%m-%d"), "date_to": end_dt.strftime("%Y-%m-%d")}
-    where_clauses = ["v.work_date BETWEEN :date_from AND :date_to"]
+    where_clauses = ["v.work_date BETWEEN :date_from AND :date_to", "inv.status = 'closed'"]
     if doctor_id:
         where_clauses.append("v.doctor_id = :doctor_id")
         params["doctor_id"] = doctor_id
