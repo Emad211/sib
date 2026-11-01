@@ -53,10 +53,13 @@ from shift.services.daily_card import (
 )
 from shift.services.handover import HandoverError, HandoverService
 from shift.services.learning_status import learning_status
+from shift.services.manager_decisions import DecisionRefused, ManagerDecisions
 from shift.services.rewards import CONFIRMED, PENDING, REVOKED
 from shift.services.settings import SettingsService, SettingValue
 
 CARD_PATH = "/manager/card"
+DECISIONS_PATH = "/manager/decisions"
+DECISIONS_API = "/api/v1/manager/decisions"
 HISTORY_PATH = "/manager/cards"
 SETTINGS_PATH = "/manager/settings"
 BASELINE_PATH = "/manager/baseline"
@@ -183,6 +186,42 @@ SETTING_LABELS = {
 
 # A page guard each: a signed-out browser is sent to the login screen, a non-manager gets a 403.
 CardViewer = Annotated[Principal, Depends(deps.require_page(Permission.DAILY_CARD_VIEW))]
+DecisionMaker = Annotated[Principal, Depends(deps.require(Permission.DAILY_CARD_VIEW))]
+
+
+class ReviewIn(BaseModel):
+    """The manager's answer to one discrepancy: accepted or not, with an optional note."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: str = Field(min_length=1, max_length=64)
+    decision: str = Field(pattern="^(approved|rejected)$")
+    note: str | None = Field(default=None, max_length=500)
+
+
+def _plain(row: Any) -> dict[str, Any]:
+    return {name: getattr(row, name) for name in row.__dataclass_fields__}
+
+
+def _stamp(at_tehran: str) -> str:
+    """A Tehran instant as the manager reads it: Jalali date and the clock."""
+    moment = datetime.fromisoformat(at_tehran)
+    return f"{format_jalali(moment.date())} · {moment:%H:%M}"
+
+
+FLOW_NOT_WAITING = "این تحویل دیگر منتظر تأیید شما نیست؛ صفحه را تازه کنید."
+
+
+def _decide(request: Request, work: Callable[[ManagerDecisions], Any]) -> Any:
+    """Run one decision through the live service; a refusal is one Persian 409, never a 500."""
+    try:
+        return work(request.app.state.decisions)
+    except DecisionRefused as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except HandoverError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=FLOW_NOT_WAITING) from exc
+
+
 SettingsEditor = Annotated[Principal, Depends(deps.require_page(Permission.SETTINGS_CHANGE))]
 BaselineEditor = Annotated[Principal, Depends(deps.require_page(Permission.HANDOVER_BASELINE))]
 ItemsEditor = Annotated[Principal, Depends(deps.require_page(Permission.CATALOG_MANAGE))]
@@ -398,6 +437,50 @@ def build_manager_router(*, cards: CardsService, settings: SettingsServiceSource
         ]
         roles = [{"id": role, "label": label} for role, label in ROLE_LABELS.items()]
         return _shell_page(request, "manager_staff.html", {"staff": rows, "roles": roles}, cache_control=NO_STORE)
+
+    @pages.get(DECISIONS_PATH, response_class=HTMLResponse, summary="What waits for the manager now")
+    def get_manager_decisions(request: Request, _viewer: CardViewer) -> HTMLResponse:
+        """C1: the live list of decisions the card can only report — early leaves, gaps, faults to assign."""
+        pending = request.app.state.decisions.pending()
+        return _shell_page(
+            request,
+            "manager_decisions.html",
+            {
+                "early": [{**_plain(row), "at": _stamp(row.opened_at_tehran)} for row in pending.early_leaves],
+                "gaps": [
+                    {
+                        **_plain(row),
+                        "at": _stamp(row.at_tehran),
+                        "amount": f"{abs(row.difference):,}",
+                        "direction": "کسری" if row.difference > 0 else "اضافه",
+                    }
+                    for row in pending.discrepancies
+                ],
+                "faults": [
+                    {
+                        **_plain(row),
+                        "at": _stamp(row.at_tehran),
+                        "photo": None if not row.photo_sha256 else f"/api/v1/photos/{row.photo_sha256}",
+                    }
+                    for row in pending.faults
+                ],
+            },
+            cache_control=NO_STORE,
+        )
+
+    @pages.post(f"{DECISIONS_API}/early-leave/{{handover_id}}", summary="The manager confirms an early-leave flow")
+    def post_early_leave(handover_id: str, request: Request, manager: DecisionMaker) -> dict[str, str]:
+        """H-08 on the manager's own phone: the incoming person finishes alone, under this manager's name."""
+        _decide(request, lambda decisions: decisions.confirm_early_leave(handover_id, manager))
+        return {"status": "recorded"}
+
+    @pages.post(f"{DECISIONS_API}/review", summary="The manager answers one discrepancy")
+    def post_review(body: ReviewIn, request: Request, manager: DecisionMaker) -> dict[str, str]:
+        """One answer per discrepancy, as a `manager.reviewed` record that names it."""
+        event_id = _decide(
+            request, lambda decisions: decisions.review(body.event_id, body.decision, body.note, manager)
+        )
+        return {"status": "recorded", "event_id": str(event_id)}
 
     return pages
 

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}تصمیم‌های باز{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/manager.css">
+{% endblock %}
+
+{% block content %}
+<div class="mg-page">
+  {% include "_manager_nav.html" %}
+
+  <header class="mg-head">
+    <h1 class="mg-title">تصمیم‌های باز</h1>
+    <p class="mg-meta">کارت روزانه گزارش دیروز است؛ این صفحه همین الان را نشان می‌دهد و تصمیم را همین‌جا ثبت می‌کنید.</p>
+  </header>
+
+  <section class="mg-section" aria-labelledby="dc-early-title">
+    <h2 id="dc-early-title" class="mg-section-title">خروج زودهنگام — منتظر تأیید شما</h2>
+    {% for row in early %}
+    <article class="mg-row" data-handover-id="{{ row.handover_id }}">
+      <p class="mg-line mg-strong">{{ row.flow }} — {{ row.shift }}</p>
+      <p class="mg-line">خروجی (رفته): {{ row.outgoing }} · ورودی: {{ row.incoming }}</p>
+      <p class="mg-line mg-muted">شروع تحویل: {{ row.at }}</p>
+      <p class="mg-line">با تأیید شما نفر ورودی تحویل را تنها تمام می‌کند و مغایرت بی‌نام ثبت می‌شود.</p>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-early-leave="{{ row.handover_id }}">ادامهٔ یک‌نفره را تأیید می‌کنم</button>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">تحویلی منتظر تأیید شما نیست.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="dc-gap-title">
+    <h2 id="dc-gap-title" class="mg-section-title">مغایرت‌های بی‌پاسخ</h2>
+    <p class="mg-meta">اگر دو مغایرت به هم مربوط‌اند، هر دو اینجا هستند؛ تصمیم با شماست.</p>
+    {% for row in gaps %}
+    <article class="mg-row" data-event-id="{{ row.event_id }}">
+      <p class="mg-amount">{{ row.amount }} <span class="mg-unit">{{ row.direction }}</span></p>
+      <p class="mg-line">{{ row.what }} · {{ row.flow }} · {{ row.at }}</p>
+      <p class="mg-line mg-culprit">{% if row.culprit %}به نام {{ row.culprit }}{% else %}بدون مقصر{% endif %}</p>
+      <label class="mg-line">یادداشت (اختیاری)
+        <input type="text" maxlength="500" data-review-note="{{ row.event_id }}">
+      </label>
+      <p class="mg-line mg-actions" dir="rtl">
+        <button type="button" class="btn btn-primary btn-compact" data-review="approved" data-event-id="{{ row.event_id }}">می‌پذیرم</button>
+        <button type="button" class="btn btn-secondary btn-compact" data-review="rejected" data-event-id="{{ row.event_id }}">نمی‌پذیرم</button>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">مغایرت بی‌پاسخی نیست.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mg-section" aria-labelledby="dc-fault-title">
+    <h2 id="dc-fault-title" class="mg-section-title">خرابی‌های بدون ارجاع</h2>
+    {% for row in faults %}
+    <article class="mg-row" data-event-id="{{ row.event_id }}">
+      <p class="mg-line mg-strong">{{ row.device }}</p>
+      <p class="mg-line">{{ row.description }}</p>
+      <p class="mg-line mg-muted">گزارش‌کننده: {{ row.actor }} · {{ row.at }}</p>
+      {% if row.photo %}<p class="mg-line"><a class="mg-nav-link" href="{{ row.photo }}" target="_blank" rel="noopener">عکس خرابی</a></p>{% endif %}
+      <p class="mg-line mg-actions" dir="rtl">
+        <a class="btn btn-primary btn-compact" href="/events?kind=equipment.fault_assigned" data-assign>ارجاع با مهلت</a>
+      </p>
+    </article>
+    {% else %}
+    <p class="mg-empty">خرابی بدون ارجاعی نیست.</p>
+    {% endfor %}
+  </section>
+</div>
+<script src="/static/manager.js"></script>
+{% endblock %}

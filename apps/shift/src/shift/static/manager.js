@@ -112,6 +112,31 @@
       });
   }
 
+  // C1: the live decisions page. An early-leave flow is confirmed on the manager's own phone; a
+  // discrepancy gets one answer with an optional note. Both reload only after the server agreed.
+  document.querySelectorAll("button[data-early-leave]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var id = button.getAttribute("data-early-leave");
+      if (!id || !window.confirm("نفر ورودی تحویل را تنها تمام کند؟")) return;
+      settle(button, postJson("/api/v1/manager/decisions/early-leave/" + encodeURIComponent(id), {}));
+    });
+  });
+  document.querySelectorAll("button[data-review]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var eventId = button.getAttribute("data-event-id");
+      if (!eventId) return;
+      var note = document.querySelector("[data-review-note='" + eventId + "']");
+      settle(
+        button,
+        postJson("/api/v1/manager/decisions/review", {
+          event_id: eventId,
+          decision: button.getAttribute("data-review"),
+          note: note && note.value.trim() ? note.value.trim() : null,
+        })
+      );
+    });
+  });
+
   document.querySelectorAll("button[data-decide]").forEach(function (button) {
     button.addEventListener("click", function () {
       var approve = button.getAttribute("data-decide") === "approve";

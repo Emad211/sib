@@ -550,6 +550,14 @@ class HandoverService:
         """Record the manager's phone confirmation that the incoming person finishes alone (H-08)."""
         flow = self._live(handover_id)
         _part_of_the_flow(flow.row, caller)
+        return self._confirm_emergency(flow, manager_id, caller)
+
+    def confirm_emergency_start_as_manager(self, handover_id: str, *, caller: Caller) -> HandoverState:
+        """H-08 from the manager's own phone: the manager is the caller and the confirmation's name (C1)."""
+        return self._confirm_emergency(self._live(handover_id), caller.actor_id, caller)
+
+    def _confirm_emergency(self, flow: _Flow, manager_id: str, caller: Caller) -> HandoverState:
+        handover_id = flow.row.handover_id
         if not self._is_active_manager(manager_id):
             raise HandoverError(NOT_A_MANAGER)
         confirmed = flow.handover.confirm_emergency_start(manager_id)

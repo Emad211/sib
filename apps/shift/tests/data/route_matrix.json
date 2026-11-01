@@ -1173,5 +1173,47 @@
    "shift_doctor": 403,
    "storekeeper": 403
   }
+ },
+ "GET /manager/decisions [get_manager_decisions]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/decisions/early-leave/{handover_id} [post_early_leave]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 409,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/decisions/review [post_review]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
  }
 }

@@ -49,6 +49,7 @@ from shift.services.event_store import EventStore
 from shift.services.handover import HandoverService
 from shift.services.held_events import HeldEvents
 from shift.services.login_throttle import LoginThrottle
+from shift.services.manager_decisions import ManagerDecisions
 from shift.services.photos import PhotoStore
 from shift.services.projections import ProjectionEngine
 from shift.services.purchase import PurchaseService
@@ -253,6 +254,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             clock=clock,
             bridge=bridge,
             accounting_path=None if accounting_path is None else str(accounting_path),
+        )
+        application.state.decisions = ManagerDecisions(
+            database,
+            application.state.events,
+            application.state.handover,
+            application.state.catalog,
+            clock=clock,
         )
         jobs = _background_jobs(
             resolved,
