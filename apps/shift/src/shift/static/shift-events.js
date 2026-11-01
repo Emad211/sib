@@ -42,6 +42,9 @@
 
   var catalog = null;
   var state = { kind: null, fields: [], index: 0, values: {}, ref: null };
+  // The reading a follow-up was asked for, chosen for the nurse when the open list arrives (E1).
+  var pendingRef = null;
+  var FOLLOWUP_QUEUED = "بعد از ثبت همین عدد، مسیر پیگیری باز می‌شود";
   var openEntries = null;
 
   function el(tag, className, text) {
@@ -191,6 +194,12 @@
       button.appendChild(el("p", "se-ref-meta", "ثبت‌کننده: " + meta.join(" · ")));
       var summary = summaryText(entry.summary);
       if (summary) button.appendChild(el("p", "se-ref-summary", summary));
+      if (pendingRef && entry.event_id === pendingRef) {
+        pendingRef = null;
+        window.setTimeout(function () {
+          button.click();
+        }, 0);
+      }
       button.addEventListener("click", function () {
         state.ref = entry;
         Array.prototype.forEach.call(list.querySelectorAll("[data-event-id]"), function (other) {
@@ -266,13 +275,15 @@
     if (!input) return;
     var box = el("div", "se-suggest hidden");
     box.appendChild(el("p", "se-hint", "این عدد از آستانه‌ای که مدیر گذاشته بالاتر است."));
-    var button = el("button", "btn btn-primary", "باز کردن مسیر پیگیری");
+    var button = el("button", "btn btn-primary", state.followup ? FOLLOWUP_QUEUED : "باز کردن مسیر پیگیری");
     button.type = "button";
+    button.disabled = Boolean(state.followup);
+    // The follow-up points at the saved reading, so the reading is recorded first: the button only asks
+    // for the path to open once this record has reached the server, and the typed value stays put.
     button.addEventListener("click", function () {
-      var kind = (catalog.kinds || []).filter(function (candidate) {
-        return candidate.type === "vitals.followup_opened";
-      })[0];
-      if (kind) startKind(kind);
+      state.followup = true;
+      button.textContent = FOLLOWUP_QUEUED;
+      button.disabled = true;
     });
     box.appendChild(button);
     container.appendChild(box);
@@ -770,10 +781,32 @@
     if (state.ref) {
       event.ref_event_id = state.ref.event_id;
     }
+    if (state.followup) followAfterSent(ulid);
     // `submitShiftEvent` owns the queued/sent answer: this page never claims success itself.
     window.submitShiftEvent(event);
     state = { kind: null, fields: [], index: 0, values: {}, ref: null };
     resetPanels();
+  }
+
+  /**
+   * E1: once the reading the nurse asked a follow-up for has reached the server, open the follow-up
+   * kind with that very reading already chosen. Offline, the reading waits in the outbox and the path
+   * opens when it is sent; a wizard already in use is never interrupted.
+   */
+  function followAfterSent(eventId) {
+    function onSent(event) {
+      var detail = event.detail || {};
+      if (detail.idempotency_key !== eventId) return;
+      window.removeEventListener("outbox:sent", onSent);
+      if (state.kind) return;
+      var kind = (catalog.kinds || []).filter(function (candidate) {
+        return candidate.type === "vitals.followup_opened";
+      })[0];
+      if (!kind) return;
+      pendingRef = eventId;
+      startKind(kind);
+    }
+    window.addEventListener("outbox:sent", onSent);
   }
 
   // ---------------------------------------------------------------- approvals

@@ -20,7 +20,7 @@ import base64
 import threading
 import time
 from collections.abc import Callable, Generator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,15 +34,19 @@ from synthetic_catalog import seed as seed_catalog
 from shift.adapters.db import events_repo
 from shift.adapters.db.core import Database
 from shift.app import create_app
-from shift.common.clock import TEHRAN
+from shift.common.clock import TEHRAN, to_tehran
 from shift.common.ids import new_ulid
 from shift.config.settings import Settings
+from shift.domain.policy import SettingKey
+from shift.domain.shift_clock import covering
 from shift.services.photos import PhotoStore
+from shift.services.settings import SettingsService
 
 playwright = pytest.importorskip("playwright")
 from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright  # noqa: E402
 
 RECEPTIONIST = ROLES["reception"]
+NURSE = ROLES["nurse"]
 ACCOUNTANT = ROLES["accountant"]
 PHONE_VIEWPORT = {"width": 390, "height": 844}
 
@@ -94,6 +98,13 @@ def live_shift(tmp_path: Path) -> Generator[tuple[str, Database]]:
         setup.migrate()
         seed_roster(setup, pepper=settings.read_or_create_secret())
         seed_catalog(setup)
+        # E1: a sugar threshold, so an above-threshold reading offers the follow-up path.
+        SettingsService(setup).change(
+            SettingKey.SUGAR_THRESHOLD,
+            "200",
+            actor_id="tests",
+            running_shift=covering(to_tehran(datetime.now(UTC) - timedelta(days=1))),
+        )
     finally:
         setup.close()
     PhotoStore(settings.resolved_photos_dir).save(RECEIPT_JPEG)  # the receipt the transfer names
@@ -353,3 +364,55 @@ def test_the_accountant_approves_a_pending_card_transfer(live_shift: tuple[str, 
 def _approval_of(db: Database, target_id: str) -> Any:
     with db.read() as connection:
         return events_repo.latest_ref(connection, target_id, ("event.approved",))
+
+
+@pytest.mark.e2e
+def test_an_above_threshold_sugar_keeps_its_value_and_opens_the_follow_up_on_that_reading(
+    live_shift: tuple[str, Database], browser: Browser
+) -> None:
+    """E1: the follow-up button no longer throws the typed reading away; the path opens on the saved record."""
+    base_url, db = live_shift
+    context, page = _open_phone(browser)
+    try:
+        _login(page, base_url, NURSE)
+        page.goto(f"{base_url}/events", wait_until="domcontentloaded")
+        page.wait_for_selector('[data-kind="vitals.recorded"]', timeout=15000)
+        catalog = page.evaluate("() => JSON.parse(document.getElementById('shift-event-catalog').textContent)")
+        kind = next(entry for entry in catalog["kinds"] if entry["type"] == "vitals.recorded")
+        page.click('[data-kind="vitals.recorded"]')
+        page.wait_for_selector("#shift-event-step:not(.hidden)")
+        used: list[str] = []
+        for field in kind["fields"]:
+            if field["key"] == "sugar":
+                page.fill('#shift-step-field [data-field="sugar"]', "400")
+                page.dispatch_event('#shift-step-field [data-field="sugar"]', "input")
+                page.click("#shift-step-field .se-suggest button")
+                assert page.input_value('#shift-step-field [data-field="sugar"]') == "400", "the reading stays"
+            elif field.get("required"):
+                _fill_step(page, field, used, NURSE.staff_id)
+            page.click("#shift-step-next")
+        page.wait_for_selector("#shift-event-review:not(.hidden)")
+        assert "۴۰۰" in page.inner_text("#shift-event-review") or "400" in page.inner_text("#shift-event-review")
+        page.click("#shift-submit")
+
+        page.wait_for_selector("#shift-event-reference:not(.hidden)", timeout=20000)
+        page.wait_for_selector("#shift-ref-list .se-ref-choice.is-selected", timeout=20000)
+        with db.read() as connection:
+            readings = [e for e in events_repo.iter_events(connection) if e.type == "vitals.recorded"]
+        assert len(readings) == 1 and readings[0].payload["sugar"] == 400
+        selected = page.get_attribute("#shift-ref-list .se-ref-choice.is-selected", "data-event-id")
+        assert selected == readings[0].event_id, "the follow-up opens on the reading just saved"
+        page.click("#shift-ref-next")
+        page.fill('#shift-step-field [data-field="note"]', SYNTHETIC_TEXT)
+        page.click("#shift-step-next")
+        page.wait_for_selector("#shift-event-review:not(.hidden)")
+        page.click("#shift-submit")
+        deadline = time.time() + 20
+        followups: list = []
+        while time.time() < deadline and not followups:
+            with db.read() as connection:
+                followups = [e for e in events_repo.iter_events(connection) if e.type == "vitals.followup_opened"]
+            time.sleep(0.2)
+        assert followups and followups[0].ref_event_id == readings[0].event_id
+    finally:
+        context.close()
