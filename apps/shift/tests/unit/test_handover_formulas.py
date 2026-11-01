@@ -1,8 +1,9 @@
 """Shelf and cash references (H-01, H-02) and the discrepancy arithmetic (R-02)."""
 
 import pytest
+from handover_oracle import cash_reference, shelf_reference
 
-from shift.domain.handover_formulas import cash_reference, difference, shelf_reference
+from shift.domain.handover_formulas import difference
 
 
 def test_shelf_reference_follows_the_h_01_formula() -> None:

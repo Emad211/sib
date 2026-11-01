@@ -8,11 +8,12 @@ item gap settles only after the joint count, so no count settles an item before 
 from datetime import UTC, date, datetime
 
 import pytest
+from handover_oracle import cash_reference, shelf_reference
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from shift.domain.handover_counts import CashCount, CountStatus, ItemCount
-from shift.domain.handover_formulas import cash_reference, difference, shelf_reference
+from shift.domain.handover_formulas import difference
 from shift.domain.handover_fsm import (
     FLOW_STEPS,
     Handover,

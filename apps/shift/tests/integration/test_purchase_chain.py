@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 from auth_fixtures import ROLES, FixedClock, Seeded, create_staff
+from handover_oracle import shelf_reference
 from synthetic_catalog import seed as seed_catalog
 
 from event_fixtures import build_event
@@ -31,7 +32,7 @@ from shift.domain.permissions import permissions_for
 from shift.domain.policy import ShiftKey
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
-from shift.services.event_store import EventStore
+from shift.services.event_store import EventStore, NewEvent
 from shift.services.outbox import EventSubmission
 from shift.services.projections import ProjectionEngine
 from shift.services.purchase import PurchaseRuleError, PurchaseService
@@ -1267,3 +1268,50 @@ def test_a_shelf_return_is_refused_when_it_is_not_a_return(desk: Desk) -> None:
         _return_offer(desk, confirmer_id="staff-ghost")
     assert _log(desk, EventType.SHELF_RETURN_OFFERED) == []
     assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE, SHELF_BEFORE)
+
+
+def test_the_shelf_the_projection_holds_is_what_the_h_01_formula_says_of_the_event_log(desk: Desk) -> None:
+    """A3: one source for the reference. The projection is it, and `E = C0 + R - D - U - W` read off the
+    real events (a charge, a return, an emergency withdrawal, waste, consumption and its reversal) agrees."""
+
+    def record(event_type: EventType, key: str, quantity: int, **extra: Any) -> None:
+        payload = {"item_id": ITEM, "location_id": LOCATION, "quantity": quantity, **extra}
+        desk.store.append(
+            NewEvent(
+                client_event_id=new_ulid(),
+                type=event_type.value,
+                payload=payload,
+                actor_id="accounting-bridge",
+                device_id="accounting-bridge",
+                work_date=date(2026, 10, 28),
+                client_at=desk.clock.now_utc(),
+                shift_id=desk.shift.text,
+                idempotency_key=key,
+            )
+        )
+
+    _charge(desk, quantity=7)
+    offered = _return_offer(desk, quantity=2)
+    _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=2)
+    record(EventType.STOCK_EMERGENCY_WITHDRAWAL, "a3-emergency", 1)
+    record(EventType.STOCK_WASTE_REPORTED, "a3-waste", 1)
+    record(EventType.ACC_CONSUMPTION, "a3-consumption", 3)
+    record(EventType.ACC_CONSUMPTION_REVERSAL, "a3-reversal", 1, reason="voided")
+
+    def total(event_type: EventType, side: str = "to_location_id") -> int:
+        return sum(
+            int(event.payload["quantity"])
+            for event in _log(desk, event_type)
+            if event.payload.get(side, event.payload.get("location_id")) == LOCATION
+        )
+
+    expected = shelf_reference(
+        last_count=SHELF_BEFORE,
+        restocked=total(EventType.RESTOCK_CONFIRMED),
+        consumed=total(EventType.ACC_CONSUMPTION) - total(EventType.ACC_CONSUMPTION_REVERSAL),
+        emergency=total(EventType.STOCK_EMERGENCY_WITHDRAWAL)
+        + total(EventType.SHELF_RETURN_CONFIRMED, side="from_location_id"),
+        waste=total(EventType.STOCK_WASTE_REPORTED),
+    )
+    desk.projections.sync()
+    assert _shelf(desk, ITEM, LOCATION) == expected == SHELF_BEFORE + 7 - 2 - 1 - 1 - 3 + 1
