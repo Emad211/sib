@@ -34,7 +34,8 @@ LOCATION_ROLES: dict[str, Role] = {
     "main_store": Role.STOREKEEPER,
 }
 FLOW_ROLES: dict[HandoverFlow, Role] = {HandoverFlow.RECEPTION: Role.RECEPTION, HandoverFlow.NURSING: Role.NURSE}
-# Only these three roles can own a line of a list (S01 §2): the storekeeper's lines never come up in a handover.
+# Only these three roles can own a line of a list (S01 §2); the manager owns none. The storekeeper's lines are
+# answered by the incoming person of the reception flow, since the store is handed over with the reception shift.
 LIST_ROLES = (Role.RECEPTION, Role.NURSE, Role.STOREKEEPER)
 
 
@@ -44,8 +45,8 @@ def default_role(location_id: str) -> Role:
 
 
 def asked_in_flow(role: Role, flow: HandoverFlow) -> bool:
-    """True when `flow` is the one whose people answer for `role`."""
-    return FLOW_ROLES[flow] is role
+    """True when `flow` is the one whose incoming person answers for `role` (ADR-035)."""
+    return FLOW_ROLES[flow] is role or (flow is HandoverFlow.RECEPTION and role is Role.STOREKEEPER)
 
 
 def period_start(frequency: Frequency, work_date: date) -> date | None:

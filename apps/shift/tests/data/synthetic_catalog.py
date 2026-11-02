@@ -67,7 +67,7 @@ ITEMS: tuple[ItemSeed, ...] = (
     ItemSeed("fridge_temperature", "دمای یخچال دارو", ItemKind.READING, "main_store", "درجه", 0, None, 1, "reception"),
     ItemSeed("store_lock_ok", "قفل انبار سالم است", ItemKind.YES_NO, "main_store", "وضعیت", 0, None, 1, "reception"),
     # A3: the trolley checklist belongs to the nursing flow (owner decision 8), so these two are the
-    # nursing lines the handover asks; the storekeeper's lines never come up in a handover.
+    # nursing lines the handover asks; the storekeeper's lines come up in the reception handover (ADR-035).
     ItemSeed("trolley_seal_ok", "پلمب ترالی سالم است", ItemKind.YES_NO, "trolley", "وضعیت", 0, None, 1, "nurse"),
     ItemSeed(
         "oxygen_pressure_trolley", "فشار کپسول اکسیژن ترالی", ItemKind.READING, "trolley", "عدد", 0, None, 1, "nurse"

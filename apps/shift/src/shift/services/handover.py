@@ -148,6 +148,8 @@ class HandoverState:
     incoming_name: str = ""
     # Whether the outgoing person already sent the card reader's receipt photo (reception flow only, ADR-034).
     card_receipt: bool = False
+    # Which checklist lines the incoming person already answered, so both phones show the same progress.
+    answered_checklists: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +196,7 @@ class _Flow:
     start_seq: int = 0
     adjustment: int = 0
     card_receipt: bool = False
+    answered_checklists: tuple[str, ...] = ()
 
 
 class HandoverService:
@@ -420,6 +423,7 @@ class HandoverService:
             emergency_at=flow.emergency_at,
             closed=handover.closed,
             card_receipt=flow.card_receipt,
+            answered_checklists=flow.answered_checklists,
         )
 
     def _full_name(self, staff_id: str) -> str:
@@ -864,7 +868,10 @@ class HandoverService:
         start_seq = 0
         adjustment = 0
         card_receipt = False
+        answered: dict[str, None] = {}
         for event in events_repo.iter_handover_events(connection, row.handover_id):
+            if event.type == EventType.HANDOVER_CHECKLIST_ANSWERED.value:
+                answered[str(event.payload["item_id"])] = None
             card_receipt = card_receipt or event.type == EventType.HANDOVER_CARD_RECEIPT_SENT.value
             if start_seq == 0 and event.type == EventType.HANDOVER_STARTED.value:
                 # The freeze point: money appended after this row is what the settle has to place.
@@ -875,7 +882,9 @@ class HandoverService:
             if event.type == EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value:
                 # H-08 records who confirmed the emergency start and when; the when is its server stamp.
                 emergency_at = parse_iso(event.server_at)
-        return _Flow(row, handover, references, cash, items, emergency_at, start_seq, adjustment, card_receipt)
+        return _Flow(
+            row, handover, references, cash, items, emergency_at, start_seq, adjustment, card_receipt, tuple(answered)
+        )
 
     def _references_of(self, handover_id: str) -> _References:
         """Read the references frozen at `start` back from the audit trail (R-02 allows them nowhere else)."""

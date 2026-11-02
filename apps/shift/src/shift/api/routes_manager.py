@@ -100,7 +100,7 @@ FREQUENCY_LABELS = {
     Frequency.DAILY: "روزانه",
     Frequency.WEEKLY: "هفتگی",
 }
-# Only these three roles answer a checklist; the storekeeper's lines never come up in a handover.
+# Only these three roles own a checklist line; the storekeeper's lines are answered in the reception handover.
 LIST_ROLE_CHOICES = (Role.RECEPTION, Role.NURSE, Role.STOREKEEPER)
 BASELINE_ALREADY = "شمارش اولیهٔ این جریان قبلاً ثبت شده است."
 BASELINE_REFUSED = "شمارش اولیه ثبت نشد: "

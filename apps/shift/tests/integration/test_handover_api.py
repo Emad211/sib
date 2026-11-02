@@ -835,6 +835,20 @@ def test_the_checklists_are_filled_by_the_incoming_person(client: TestClient) ->
     assert refused.status_code == 403
 
 
+def test_both_phones_see_which_checklist_lines_were_answered(client: TestClient) -> None:
+    """The outgoing phone follows the incoming person's progress from the flow's own state."""
+    incoming = _phone(client)
+    outgoing = _phone(client, OUTGOING_ROLE)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    _to_checklists(client, incoming, handover_id)
+    assert _checklist(client, incoming, handover_id, "store_lock_ok", ok=True).status_code == 200
+
+    for phone in (incoming, outgoing):
+        state = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, phone)).json()
+        assert state["answered_checklists"] == ["store_lock_ok"]
+
+
 def _session_ends(client: TestClient, staff_id: str) -> list[str]:
     with client.app.state.database.read() as connection:
         rows = connection.exec_driver_sql(

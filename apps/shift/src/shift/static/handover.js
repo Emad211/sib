@@ -192,6 +192,7 @@ function flowSignature(flowState) {
     flowState.step,
     flowState.cash_status,
     flowState.card_receipt,
+    flowState.answered_checklists,
     flowState.counts,
     flowState.signed,
     flowState.closed,
@@ -562,7 +563,7 @@ function checklistRow(row) {
   const item = element("li", "ho-checklist-item");
   item.dataset.itemId = row.item_id;
   item.appendChild(element("p", "ho-checklist-name", `${iconFor(row.icon)} ${row.name}`));
-  if (answeredChecklists.has(row.item_id)) {
+  if (isAnswered(row.item_id)) {
     item.appendChild(element("p", "ho-answered", "پاسخ ثبت شد."));
     return item;
   }
@@ -590,23 +591,51 @@ function checklistRow(row) {
   return item;
 }
 
+// The server's answered list is the truth for both phones; the local set only bridges the moment between a
+// press and the refresh.
+function isAnswered(itemId) {
+  return answeredChecklists.has(itemId) || ((state && state.answered_checklists) || []).includes(itemId);
+}
+
 function renderChecklists() {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("h2", "ho-job-title", "چک‌لیست"));
-  job.appendChild(element("p", "ho-hint", "هر مورد را پاسخ بدهید؛ تا پاسخ همهٔ موارد، ادامه فعال نمی‌شود."));
+  const mine = state.my_side !== "outgoing";
+  job.appendChild(
+    element(
+      "p",
+      "ho-hint",
+      mine
+        ? "هر مورد را پاسخ بدهید؛ تا پاسخ همهٔ موارد، ادامه فعال نمی‌شود."
+        : `چک‌لیست را ${sideName("incoming")} پر می‌کند؛ همین‌جا پیشرفتش را می‌بینید.`
+    )
+  );
   const list = element("ul", "ho-checklist");
   list.id = "handover-checklist-list";
   const rows = (targets && targets.checklists) || [];
-  for (const row of rows) list.appendChild(checklistRow(row));
+  for (const row of rows) list.appendChild(mine ? checklistRow(row) : checklistStatus(row));
   job.appendChild(list);
-  if (!rows.length) {
+  if (!mine) {
+    if (rows.length && rows.every((row) => isAnswered(row.item_id))) {
+      job.appendChild(element("p", "ho-text", "همهٔ موارد پاسخ داده شد؛ منتظر ادامهٔ همکارتان باشید."));
+    }
+    window.clearTimeout(waitTimer);
+    waitTimer = window.setTimeout(() => guard(refresh), WAIT_POLL_MS);
+  } else if (!rows.length) {
     job.appendChild(element("p", "ho-text", "چک‌لیستی برای این تحویل ثبت نشده است."));
     job.appendChild(advanceButton("ادامه"));
-  } else if (rows.every((row) => answeredChecklists.has(row.item_id))) {
+  } else if (rows.every((row) => isAnswered(row.item_id))) {
     job.appendChild(advanceButton("ادامه"));
   }
   stepContainer.appendChild(job);
+}
+
+function checklistStatus(row) {
+  const item = element("li", "ho-checklist-item");
+  item.appendChild(element("p", "ho-checklist-name", `${iconFor(row.icon)} ${row.name}`));
+  item.appendChild(element("p", isAnswered(row.item_id) ? "ho-answered" : "ho-hint", isAnswered(row.item_id) ? "پاسخ داده شد." : "منتظر پاسخ"));
+  return item;
 }
 
 async function answerChecklist(itemId, ok, input) {

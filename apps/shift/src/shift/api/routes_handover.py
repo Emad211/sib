@@ -270,6 +270,7 @@ def _state(state: HandoverState, principal: Principal | None = None) -> dict[str
         "outgoing_name": state.outgoing_name,
         "incoming_name": state.incoming_name,
         "card_receipt": state.card_receipt,
+        "answered_checklists": list(state.answered_checklists),
     }
 
 
