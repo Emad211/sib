@@ -402,10 +402,12 @@ def get_handover_state(
         {"parcel_id": parcel.delivery_id, "packages": parcel.packages, "invoice_reference": parcel.invoice_reference}
         for parcel in purchase.in_transit(deps.running_shift(request))
     ]
-    return {
-        **_state(_run(service.state_for, handover_id, caller=_caller(principal)), principal),
-        "parcels_in_transit": parcels,
-    }
+    # The manager reads every flow's status as the admin of the clinic; counting stays the two people's.
+    if Role.MANAGER.value in principal.roles:
+        state = _run(service.state, handover_id)
+    else:
+        state = _run(service.state_for, handover_id, caller=_caller(principal))
+    return {**_state(state, principal), "parcels_in_transit": parcels}
 
 
 @router.get("/{handover_id}/targets")

@@ -1405,3 +1405,23 @@ def test_a_confirmed_offer_cannot_be_withdrawn(desk: Desk) -> None:
     with pytest.raises(PurchaseRuleError, match="قبلاً"):
         _act(desk, desk.reception, "offer.withdraw", offer_id=offered["event_id"])
     assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE - 3
+
+
+def test_the_manager_gives_back_from_any_shelf_and_sees_every_shelf_in_the_form(desk: Desk) -> None:
+    """The admin acts in place of the shelf holder; the storekeeper still counts what arrived, blind."""
+    view = desk.service.state(desk.manager, desk.shift).to_payload()["shelf_return"]
+    assert view is not None
+    assert {row["item_id"] for row in view["items"]} >= {ITEM}
+
+    offered = _act(
+        desk,
+        desk.manager,
+        "shelf_return.record",
+        item_id=ITEM,
+        from_location_id=LOCATION,
+        to_location_id=STORE,
+        quantity=2,
+        confirmer_id=desk.storekeeper.staff_id,
+    )
+    _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=2)
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE + 2, SHELF_BEFORE - 2)

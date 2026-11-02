@@ -193,3 +193,21 @@ def test_the_shift_doctor_declares_presence_and_nobody_else_does(off_shift_clien
         headers={"X-CSRFToken": nurse_session.json()["csrf_token"]},
     )
     assert refused.status_code == 403, "a nurse comes on shift by taking over, not by a button"
+
+
+def test_the_manager_home_lists_every_manager_page_and_the_nurse_home_none_of_them(on_shift_client: TestClient) -> None:
+    """The admin phone opens everything from the home screen, including the decisions and two-step pages."""
+    _session(on_shift_client, "manager")
+    manager_home = on_shift_client.get("/").text
+    for path in ("/manager/decisions", "/manager/security", "/manager/card", "/admin/devices", "/purchase", "/events"):
+        assert f'href="{path}"' in manager_home, path
+
+    on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
+    _session(on_shift_client, "nurse")
+    nurse_home = on_shift_client.get("/").text
+    assert 'href="/manager/decisions"' not in nurse_home
+    assert 'href="/manager/security"' not in nurse_home
+
+
+def _headers(client: TestClient) -> dict[str, str]:
+    return {"X-CSRFToken": client.cookies.get("shift_csrf", "")}

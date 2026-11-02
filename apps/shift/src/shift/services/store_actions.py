@@ -28,6 +28,7 @@ from shift.adapters.db.events_repo import EventRecord
 from shift.common.clock import Clock, parse_iso, to_tehran
 from shift.domain.event_types import EventType
 from shift.domain.handover_formulas import difference
+from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.handover_payloads import DiscrepancyRecorded
 from shift.domain.handover_steps import FLOW_LOCATIONS, FLOW_OWNER_ROLES
 from shift.domain.on_shift import held_roles
@@ -328,7 +329,7 @@ class StoreActions:
         if offer.to_location_id != MAIN_STORE:
             raise PurchaseRuleError(RETURN_TO_STORE)
         shelf_flow = FLOW_LOCATIONS.get(offer.from_location_id)
-        if shelf_flow is None or FLOW_OWNER_ROLES[shelf_flow] not in held_roles(principal.roles):
+        if shelf_flow is None or not _answers_for(principal, shelf_flow):
             raise PurchaseRuleError(RETURN_OWN_SHELF)
         places = {place.location_id for place in self._catalog.locations(shift)}
         if offer.from_location_id not in places or offer.to_location_id not in places:
@@ -465,13 +466,14 @@ class StoreActions:
         None for somebody who answers for no shelf. No quantity travels: the storekeeper counts blind.
         """
         held = held_roles(principal.roles)
+        is_admin = Role.MANAGER in held
         places = {place.location_id: place.name for place in self._catalog.locations(shift)}
         # The shelves a handover counts, of the flows this person's role owns: those are the ones they
         # answer for in a blind count, so those are the ones they hand back from.
         own = {
             location
             for location, flow in FLOW_LOCATIONS.items()
-            if location in places and FLOW_OWNER_ROLES[flow] in held
+            if location in places and (is_admin or FLOW_OWNER_ROLES[flow] in held)
         }
         if not own:
             return None
@@ -499,6 +501,12 @@ class StoreActions:
         with self._database.read() as connection:
             person = staff_repo.find(connection, staff_id)
         return person is not None and person.active
+
+
+def _answers_for(principal: Principal, flow: HandoverFlow) -> bool:
+    """Whoever's role owns the flow answers for its shelf; the manager acts in place of any of them."""
+    held = held_roles(principal.roles)
+    return Role.MANAGER in held or FLOW_OWNER_ROLES[flow] in held
 
 
 def _mismatch(arrived: Mapping[str, int], counted: Mapping[str, int]) -> str | None:

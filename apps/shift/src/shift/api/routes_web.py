@@ -197,6 +197,20 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
         "hint": "بازهٔ تخفیف و مبلغ هر کمپین",
     },
     {
+        "needs": frozenset({Permission.DAILY_CARD_VIEW}),
+        "href": "/manager/decisions",
+        "icon": "✅",
+        "title": "تصمیم‌های باز",
+        "hint": "تحویل زودتر رفته، مغایرت‌ها و خرابی‌ها",
+    },
+    {
+        "needs": frozenset({Permission.DAILY_CARD_VIEW}),
+        "href": "/manager/security",
+        "icon": "🔐",
+        "title": "ورود دومرحله‌ای",
+        "hint": "کد برنامهٔ تأیید برای ورود از بیرون",
+    },
+    {
         "needs": frozenset({Permission.DEVICE_ENROLL}),
         "href": "/admin/devices",
         "icon": "📱",

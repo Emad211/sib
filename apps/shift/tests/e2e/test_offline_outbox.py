@@ -332,6 +332,7 @@ def test_cold_offline_launch_of_a_guest_gets_the_offline_page_not_a_stored_guest
 
         for path in ("/?src=pwa", "/"):
             page.goto(f"{base_url}{path}", wait_until="domcontentloaded")
+            page.wait_for_selector("text=ارتباط با سرور درمانگاه قطع است", timeout=15000)
             assert page.locator("text=ارتباط با سرور درمانگاه قطع است").count() == 1
             assert page.locator("#shift-overview-title").count() == 0
     finally:
