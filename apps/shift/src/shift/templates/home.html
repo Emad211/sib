@@ -24,17 +24,23 @@
 
 {% if tiles %}
 <h1 class="home-title">کارهای من</h1>
-<nav class="home-tiles" aria-label="کارهای من">
-  {% for tile in tiles %}
-  <a class="home-tile" href="{{ tile.href }}">
-    <span class="home-tile-icon" aria-hidden="true">{{ tile.icon }}</span>
-    <span class="home-tile-text">
-      <span class="home-tile-title">{{ tile.title }}</span>
-      <span class="home-tile-hint">{{ tile.hint }}</span>
-    </span>
-  </a>
-  {% endfor %}
-</nav>
+{% for group in tile_groups %}
+<section class="home-group" data-group="{{ group.id }}" aria-labelledby="group-{{ group.id }}">
+  <h2 id="group-{{ group.id }}" class="home-group-title">{{ group.title }}</h2>
+  <p class="home-group-hint">{{ group.hint }}</p>
+  <nav class="home-tiles" aria-label="{{ group.title }}">
+    {% for tile in group.tiles %}
+    <a class="home-tile" href="{{ tile.href }}">
+      <span class="home-tile-icon" aria-hidden="true">{{ tile.icon }}</span>
+      <span class="home-tile-text">
+        <span class="home-tile-title">{{ tile.title }}</span>
+        <span class="home-tile-hint">{{ tile.hint }}</span>
+      </span>
+    </a>
+    {% endfor %}
+  </nav>
+</section>
+{% endfor %}
 {% else %}
 <section class="card" aria-labelledby="shift-overview-title">
   <h1 id="shift-overview-title" class="card-title">شیفت</h1>

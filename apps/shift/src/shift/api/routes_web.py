@@ -96,6 +96,34 @@ def _shell_page(
     return response
 
 
+# The home page names who each group of jobs is for, so nobody has to guess which button is theirs.
+HOME_GROUPS: tuple[tuple[str, str, str], ...] = (
+    ("shift", "کار شیفت", "پذیرش، پرستار و پزشک شیفت"),
+    ("store", "انبار و خرید", "انباردار و مسئول خرید؛ پذیرش و پرستار فقط تحویل بار"),
+    ("accountant", "حسابدار", "صف حسابدار، قیمت‌ها و گزارش کمپین"),
+    ("manager", "مدیر و ادمین", "فقط مدیر؛ مدیر همهٔ بخش‌های بالا را هم می‌بیند"),
+)
+_GROUP_OF = {
+    "/handover": "shift",
+    "/handover/baseline": "shift",
+    "/events": "shift",
+    "/rewards": "shift",
+    "/purchase": "store",
+    "/accountant/queue": "accountant",
+    "/accountant/prices": "accountant",
+    "/accountant/campaigns": "accountant",
+}
+
+
+def _grouped(tiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The visible tiles under their group headings, in the clinic's order; unlisted pages are the manager's."""
+    return [
+        {"id": group_id, "title": title, "hint": hint, "tiles": members}
+        for group_id, title, hint in HOME_GROUPS
+        if (members := [tile for tile in tiles if _GROUP_OF.get(tile["href"], "manager") == group_id])
+    ]
+
+
 # One big button per job on the home page, in the order of a shift (R-10). Permissions decide, never role names (R-07).
 HOME_TILES: tuple[dict[str, Any], ...] = (
     {
@@ -158,7 +186,7 @@ HOME_TILES: tuple[dict[str, Any], ...] = (
         "needs": frozenset({Permission.HANDOVER_BASELINE}),
         "href": "/manager/baseline",
         "icon": "🧮",
-        "title": "شمارش اولیه",
+        "title": "شمارش اولیهٔ درمانگاه",
         "hint": "شروع کار: صندوق و اقلام هر جریان",
     },
     {
@@ -298,6 +326,7 @@ def get_home(request: Request) -> HTMLResponse:
         "home.html",
         {
             "tiles": tiles,
+            "tile_groups": _grouped(tiles),
             "shift_notice": notice,
             # ADR-021: the second receptionist and the shift doctor come on shift with one button.
             "presence_options": _presence_options(principal),

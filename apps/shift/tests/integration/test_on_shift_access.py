@@ -211,3 +211,19 @@ def test_the_manager_home_lists_every_manager_page_and_the_nurse_home_none_of_th
 
 def _headers(client: TestClient) -> dict[str, str]:
     return {"X-CSRFToken": client.cookies.get("shift_csrf", "")}
+
+
+def test_the_home_screen_groups_the_tiles_by_who_uses_them(on_shift_client: TestClient) -> None:
+    """A tester told «همه‌چیز یک‌جا» cannot tell which job is whose: each group says which roles it is for."""
+    _session(on_shift_client, "manager")
+    manager_home = on_shift_client.get("/").text
+    for group in ("shift", "store", "accountant", "manager"):
+        assert f'data-group="{group}"' in manager_home, group
+    assert manager_home.index('data-group="shift"') < manager_home.index('data-group="manager"')
+
+    on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
+    _session(on_shift_client, "nurse")
+    nurse_home = on_shift_client.get("/").text
+    assert 'data-group="shift"' in nurse_home
+    for group in ("accountant", "manager"):  # she takes in parcels, so the store group stays
+        assert f'data-group="{group}"' not in nurse_home, group

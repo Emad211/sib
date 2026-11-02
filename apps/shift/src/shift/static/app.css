@@ -443,6 +443,9 @@ textarea:focus-visible,
 
 /* Home: one big button per job the person can do. */
 .home-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 0.75rem; }
+.home-group { margin: 0 0 1.25rem; }
+.home-group-title { font-size: 1rem; font-weight: 700; margin: 0.25rem 0 0.125rem; color: var(--color-primary); }
+.home-group-hint { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0 0 0.5rem; }
 .home-tiles { display: grid; gap: 0.75rem; margin-bottom: 1rem; }
 .home-tile {
   display: flex;
