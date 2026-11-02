@@ -186,10 +186,13 @@ def _wait_for_shell(page: Page, *, signed_in: bool = False) -> None:
 
 
 def _wait_for_service_worker(page: Page) -> None:
-    page.wait_for_function("() => !!navigator.serviceWorker.controller", timeout=15000)
+    """A first visit is controlled only once the worker has installed and activated; a phone gets there on its next load."""
     page.evaluate(
         "async () => { const reg = await navigator.serviceWorker.ready; if (!reg.active) throw new Error('inactive'); }"
     )
+    if not page.evaluate("() => !!navigator.serviceWorker.controller"):
+        page.reload(wait_until="domcontentloaded")
+    page.wait_for_function("() => !!navigator.serviceWorker.controller", timeout=15000)
 
 
 def _login(page: Page, base_url: str) -> None:
@@ -289,7 +292,6 @@ def test_offline_submit_then_replay_records_one_principal_owned_event(
                             culprit_id: "staff-reception",
                             confirmer_id: "staff-spare",
                             photo_sha256: "6fec7126bbeedf35a68a5737c3787e2482319da94b95f2817941cc14fe3938cb",
-      photo_sha256: "6fec7126bbeedf35a68a5737c3787e2482319da94b95f2817941cc14fe3938cb",
                         },
                         actor_id: "staff_forged",
                         device_id: "device_forged",
