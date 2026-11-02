@@ -82,6 +82,7 @@ SESSION_GRACE = timedelta(hours=1)
 NOT_A_MANAGER = "تأیید تلفنی را فقط یکی از مدیران فعال درمانگاه می‌دهد."
 START_OWN_FLOW = "هر نفر فقط تحویل جریان خودش را شروع می‌کند."
 CHECKLIST_INCOMING = "چک‌لیست را نفر ورودی پر می‌کند."
+ADVANCE_INCOMING = "ادامهٔ مرحله با نفر ورودی است؛ منتظر او بمانید."
 CARD_RECEIPT_OUTGOING = "عکس رسید کارتخوان را نفر خروجی می‌فرستد."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
@@ -489,6 +490,8 @@ class HandoverService:
         """
         flow = self._live(handover_id)
         _part_of_the_flow(flow.row, caller)
+        if caller.actor_id == flow.row.outgoing_id and flow.handover.emergency_by is None:
+            raise NotOfTheFlow(ADVANCE_INCOMING)
         if from_step is not None and flow.handover.step is not from_step:
             return self.state(handover_id)
         advanced = flow.handover.advance()  # the domain refuses a closed flow, a skipped sign or H-08

@@ -849,6 +849,19 @@ def test_both_phones_see_which_checklist_lines_were_answered(client: TestClient)
         assert state["answered_checklists"] == ["store_lock_ok"]
 
 
+def test_only_the_incoming_person_moves_the_flow_on(client: TestClient) -> None:
+    """The outgoing person waits; a button of theirs would only ever do nothing."""
+    incoming = _phone(client)
+    outgoing = _phone(client, OUTGOING_ROLE)
+    _baseline(client)
+    handover_id = _start(client, incoming)["handover_id"]
+    _settle_cash(client, incoming, handover_id)
+
+    refused = _advance(client, outgoing, handover_id)
+    assert refused.status_code == 403
+    assert _advance(client, incoming, handover_id).json()["step"] == "shelf"
+
+
 def _session_ends(client: TestClient, staff_id: str) -> list[str]:
     with client.app.state.database.read() as connection:
         rows = connection.exec_driver_sql(

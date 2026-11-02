@@ -377,7 +377,28 @@ function advanceButton(label) {
   return button;
 }
 
+// Only the incoming person moves the flow on. The outgoing person, whose part of the step is done, gets a waiting
+// page (no button that would do nothing) that follows the flow by itself.
+function waitsForColleague() {
+  return state.my_side === "outgoing" && !state.emergency;
+}
+
+function waitingForNext(text) {
+  stepContainer.replaceChildren();
+  const job = element("div", "ho-job");
+  job.id = "handover-turn";
+  job.appendChild(element("h2", "ho-job-title", `منتظر ${sideName("incoming")} باشید`));
+  job.appendChild(element("p", "ho-hint", `${text} وقتی ${sideName("incoming")} ادامه بدهد، این صفحه خودکار می‌رود.`));
+  stepContainer.appendChild(job);
+  window.clearTimeout(waitTimer);
+  waitTimer = window.setTimeout(() => guard(refresh), WAIT_POLL_MS);
+}
+
 function advanceJob(text, label) {
+  if (waitsForColleague()) {
+    waitingForNext(text);
+    return;
+  }
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.appendChild(element("p", "ho-text", text));

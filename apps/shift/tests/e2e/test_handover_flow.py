@@ -404,7 +404,8 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
         outgoing.wait_for_selector("#handover-joint-input", timeout=15000)
         outgoing.fill("#handover-joint-input", _persian(CASH_OPENING))
         outgoing.click("#handover-joint-submit")
-        outgoing.wait_for_selector("#handover-advance", timeout=15000)
+        outgoing.wait_for_selector("#handover-turn", timeout=15000)  # no button that does nothing: she waits
+        assert outgoing.locator("#handover-advance").count() == 0
         incoming.wait_for_selector("#handover-advance", timeout=15000)
         _advance(incoming, "shelf")
 
