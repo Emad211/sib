@@ -716,6 +716,26 @@ def test_the_manager_does_not_read_a_flow_of_two_other_people(client: TestClient
     assert _item(client, manager, handover_id, PARA, 0).status_code == 403
 
 
+def test_the_state_names_the_two_people_and_the_other_phone_is_told_who_started(client: TestClient) -> None:
+    """Screens say «نوبت پذیرش یک است», not «نفر خروجی», and the outgoing phone is told on any page."""
+    _baseline(client)
+    incoming = _phone(client, "reception")
+    started = _start(client, incoming)
+    assert started["incoming_name"] == ROLES["reception"].full_name
+    assert started["outgoing_name"] == ROLES[OUTGOING_ROLE].full_name
+
+    outgoing = _phone(client, OUTGOING_ROLE)
+    told = client.get("/api/v1/shift/now", headers=_as(client, outgoing)).json()["handover"]
+    assert told == {
+        "handover_id": started["handover_id"],
+        "flow": "reception",
+        "flow_label": "پذیرش",
+        "with": ROLES["reception"].full_name,
+    }
+    starter = client.get("/api/v1/shift/now", headers=_as(client, incoming)).json()["handover"]
+    assert starter is None, "the person who started it is not told about it"
+
+
 # --- whose count it is (A4) ----------------------------------------------------------------------
 
 

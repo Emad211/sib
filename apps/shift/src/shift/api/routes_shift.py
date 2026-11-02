@@ -27,6 +27,22 @@ ROLE_LABELS = {"reception": "پذیرش", "nurse": "پرستار", "shift_doctor
 _ROLE_ORDER = {role: index for index, role in enumerate(ROLE_LABELS)}
 
 
+_FLOW_LABELS = {"reception": "پذیرش", "nursing": "پرستاری"}
+
+
+def _told_about_a_handover(request: Request, principal: Principal, shift_id: str) -> dict[str, str] | None:
+    """The open handover somebody else started with this person as the outgoing side, so their phone can say so."""
+    for flow in request.app.state.handover.open_flows(shift_id):
+        if flow.outgoing_id == principal.staff_id and flow.incoming_id != principal.staff_id and not flow.closed:
+            return {
+                "handover_id": flow.handover_id,
+                "flow": flow.flow.value,
+                "flow_label": _FLOW_LABELS[flow.flow.value],
+                "with": flow.incoming_name,
+            }
+    return None
+
+
 def _clock(rank: int) -> str:
     start = SHIFT_START_TIMES[rank]
     return f"{start.hour:02d}:{start.minute:02d}"
@@ -58,6 +74,7 @@ def shift_now(request: Request, response: Response, principal: SessionUser) -> d
     for entry in people:
         del entry["_order"]
     return {
+        "handover": _told_about_a_handover(request, principal, shift.text),
         "shift": {
             "rank": shift.rank,
             "name": SHIFT_NAMES[shift.rank],

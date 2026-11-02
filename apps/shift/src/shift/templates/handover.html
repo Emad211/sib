@@ -18,9 +18,14 @@
 
   <section id="handover-start" class="ho-screen" aria-labelledby="handover-start-title">
     <h1 id="handover-start-title" class="ho-title">تحویل شیفت</h1>
-    <p class="ho-text">کدام تحویل را برمی‌دارید؟</p>
-    <button id="handover-start-reception" class="ho-action ho-action-primary" type="button">تحویل پذیرش</button>
-    <button id="handover-start-nursing" class="ho-action ho-action-primary" type="button">تحویل پرستاری</button>
+    <div id="handover-choose" class="hidden">
+      <p class="ho-text">کدام تحویل را برمی‌دارید؟</p>
+      <button id="handover-start-reception" class="ho-action ho-action-primary" type="button">تحویل پذیرش</button>
+      <button id="handover-start-nursing" class="ho-action ho-action-primary" type="button">تحویل پرستاری</button>
+    </div>
+    <div id="handover-await" class="hidden" role="status">
+      <p id="handover-await-text" class="ho-text"></p>
+    </div>
     <!-- S03 §3: a second phone joins the flow instead of needing the phone that opened it. -->
     <section id="handover-open" class="ho-open hidden" aria-labelledby="handover-open-title">
       <h2 id="handover-open-title" class="ho-job-title">تحویل باز</h2>

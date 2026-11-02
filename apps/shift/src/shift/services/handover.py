@@ -142,6 +142,9 @@ class HandoverState:
     # The two people, so a route can tell a caller which side of the flow they are (A4).
     outgoing_id: str = ""
     incoming_id: str = ""
+    # Their names, so a screen says whose turn it is instead of «نفر خروجی».
+    outgoing_name: str = ""
+    incoming_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -399,6 +402,8 @@ class HandoverService:
         return HandoverState(
             outgoing_id=flow.row.outgoing_id,
             incoming_id=flow.row.incoming_id,
+            outgoing_name=self._full_name(flow.row.outgoing_id),
+            incoming_name=self._full_name(flow.row.incoming_id),
             handover_id=flow.row.handover_id,
             flow=flow.row.flow,
             shift_id=flow.row.shift_id,
@@ -411,6 +416,11 @@ class HandoverService:
             emergency_at=flow.emergency_at,
             closed=handover.closed,
         )
+
+    def _full_name(self, staff_id: str) -> str:
+        with self._database.read() as connection:
+            person = staff_repo.find(connection, staff_id)
+        return "" if person is None else person.full_name
 
     def state_for(self, handover_id: str, *, caller: Caller) -> HandoverState:
         """The flow as one of its two people sees it; a colleague of another flow reads nothing (R-07, H-10)."""

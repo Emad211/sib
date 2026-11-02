@@ -6,7 +6,7 @@
 (function () {
   "use strict";
 
-  var REFRESH_MS = 30000;
+  var REFRESH_MS = 8000;
   var brandShift = document.getElementById("brand-shift");
   var strip = document.getElementById("shift-strip");
   if (!brandShift && !strip) return;
@@ -38,7 +38,38 @@
     return item;
   }
 
+  // Somebody started a handover with you as the outgoing side: say so on any page, with one button in.
+  var alertBox = null;
+  var alertedFor = "";
+
+  function handoverAlert(info) {
+    if (!info || window.location.pathname === "/handover") {
+      if (alertBox) alertBox.classList.add("hidden");
+      return;
+    }
+    if (!alertBox) {
+      alertBox = document.createElement("div");
+      alertBox.id = "handover-alert";
+      alertBox.className = "handover-alert";
+      alertBox.setAttribute("role", "alert");
+      alertBox.appendChild(document.createElement("span"));
+      var go = document.createElement("a");
+      go.className = "handover-alert-go";
+      go.textContent = "ورود به تحویل";
+      alertBox.appendChild(go);
+      document.body.appendChild(alertBox);
+    }
+    alertBox.firstChild.textContent = info.with + " تحویل " + info.flow_label + " را شروع کرد";
+    alertBox.lastChild.setAttribute("href", "/handover?join=" + encodeURIComponent(info.handover_id));
+    alertBox.classList.remove("hidden");
+    if (alertedFor !== info.handover_id) {
+      alertedFor = info.handover_id;
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    }
+  }
+
   function paint(card) {
+    handoverAlert(card.handover);
     var shift = card.shift;
     var hours = fa(shift.from) + " تا " + fa(shift.to);
     if (brandShift) brandShift.textContent = shift.name + " · " + hours;

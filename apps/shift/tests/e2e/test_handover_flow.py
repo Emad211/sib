@@ -228,20 +228,20 @@ def _login(page: Page, base_url: str, person: Seeded) -> None:
 
 
 def _open_handover(page: Page, base_url: str) -> None:
+    """«تحویل شیفت» takes a person with one job straight into their own handover: the wizard, the waiting note or the chooser."""
     page.goto(f"{base_url}/handover", wait_until="domcontentloaded")
-    page.wait_for_selector("#handover-start:not(.hidden)", timeout=15000)
+    page.wait_for_selector(
+        "#handover-wizard:not(.hidden), #handover-await:not(.hidden), #handover-choose:not(.hidden)", timeout=15000
+    )
 
 
 def _start(page: Page, flow: str, *, step: str) -> None:
-    page.click(f"#handover-start-{flow}")
+    """The person who is not on shift yet had the handover started for them by opening the screen."""
     page.wait_for_selector(f'#handover-wizard[data-step="{step}"]', timeout=15000)
 
 
 def _join(page: Page, flow: str, *, step: str) -> None:
-    """The second phone finds the open flow in «تحویل باز» and takes the same flow over."""
-    page.wait_for_selector("#handover-open:not(.hidden)", timeout=15000)
-    assert "تحویل باز" in page.inner_text("#handover-open")
-    page.click(f"#handover-join-{flow}")
+    """The person who holds the shift joins the open handover by themselves (no menu, no button)."""
     page.wait_for_selector(f'#handover-wizard[data-step="{step}"]', timeout=15000)
     page.wait_for_timeout(100)
 
@@ -393,21 +393,14 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
         incoming.evaluate("window.dispatchEvent(new Event('offline'))")
         incoming.wait_for_selector("#handover-offline:not(.hidden)", timeout=15000)
         assert OFFLINE_GATE in incoming.inner_text("#handover-offline")
-        assert incoming.locator("#handover-start-reception").is_hidden()
+        assert incoming.locator("#handover-wizard").is_hidden()
         incoming_context.set_offline(False)
         incoming.evaluate("window.dispatchEvent(new Event('online'))")
-        incoming.wait_for_selector("#handover-start:not(.hidden)", timeout=15000)
 
         _start(incoming, "reception", step="cash")
 
-        # The second person opens the screen after the flow exists: H-10 still refuses a start,
-        # and the open list is how they join instead.
+        # The second person opens the screen after the flow exists and goes straight into it.
         _open_handover(outgoing, base_url)
-        outgoing.click("#handover-start-reception")
-        outgoing.wait_for_selector("#handover-exists:not(.hidden)", timeout=15000)
-        assert ALREADY_OPEN in outgoing.inner_text("#handover-exists")
-        assert "فقط مسئول" in outgoing.inner_text("#handover-exists")
-        outgoing.click("#handover-exists-back")
         _join(outgoing, "reception", step="cash")
 
         # The box (A4): the outgoing person counts first, with Persian digits, on their own phone; the
@@ -577,28 +570,22 @@ def test_emergency_start_finishes_alone_after_the_manager_confirms_by_phone(
 
 
 @pytest.mark.e2e
-def test_a_fresh_visit_shows_the_choice_and_only_a_reload_goes_back_into_the_flow(
+def test_the_handover_button_takes_a_nurse_straight_into_the_nursing_handover(
     live_server: tuple[str, Database],
     browser: Browser,
 ) -> None:
-    """Opening «تحویل شیفت» from home asks which handover; the open one is offered, not forced on the person."""
+    """A nurse never sees a menu: opening «تحویل شیفت» starts (or rejoins) her own handover, from home too."""
     base_url, _db = live_server
     context, page = _open_phone(browser)
     try:
         _login(page, base_url, INCOMING_NURSE)
         _open_handover(page, base_url)
         _start(page, "nursing", step="cpr_room")
+        assert page.locator("#handover-choose").is_hidden(), "no menu between her and her work"
 
         page.goto(f"{base_url}/", wait_until="domcontentloaded")
         _open_handover(page, base_url)
-        page.wait_for_selector("#handover-open:not(.hidden)", timeout=15000)
-        assert page.locator("#handover-wizard").is_hidden(), "a fresh visit must not drop into the open flow"
-        assert page.locator("#handover-start-reception").is_visible()
-        assert page.locator("#handover-join-nursing").is_visible()
-
-        page.click("#handover-join-nursing")
         page.wait_for_selector('#handover-wizard[data-step="cpr_room"]', timeout=15000)
-        page.reload(wait_until="domcontentloaded")
-        page.wait_for_selector('#handover-wizard[data-step="cpr_room"]', timeout=15000)
+        assert page.locator("#handover-choose").is_hidden()
     finally:
         context.close()

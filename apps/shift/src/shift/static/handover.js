@@ -21,9 +21,11 @@ const STORAGE_KEY = "shift:handover";
 const FLOWS = ["reception", "nursing"];
 
 const FLOW_LABELS = { reception: "پذیرش", nursing: "پرستاری" };
+// The role that answers for each flow: a person with exactly one of them goes straight into that handover.
+const FLOW_ROLE = { reception: "reception", nursing: "nurse" };
 
 const STEP_LABELS = {
-  cash: "صندوق",
+  cash: "جمع صندوق",
   shelf: "قفسهٔ پذیرش",
   cpr_room: "اتاق CPR",
   trolley: "ترالی",
@@ -35,9 +37,7 @@ const STEP_LABELS = {
 // What a count tells the operator, and the only thing it tells them (R-02). The five statuses
 // named in the owner's rule are exact; `incoming` names the action for the second person.
 const STATUS_LABELS = {
-  incoming: "شمارش ثبت شد؛ نفر دوم با گوشی خودش بشمارد",
   recount: "دوباره بشمارید",
-  outgoing: "نوبت نفر خروجی است؛ با گوشی خودش بشمارد",
   joint: "با هم بشمارید",
   matched: "درست است",
   settled: "ثبت شد",
@@ -252,7 +252,7 @@ function countField(target) {
   input.autocomplete = "off";
   input.dir = "ltr";
   input.dataset.scope = target.scope;
-  input.setAttribute("aria-label", target.scope === "cash" ? "شمارش صندوق" : "شمارش این قلم");
+  input.setAttribute("aria-label", target.scope === "cash" ? "جمع کل پول صندوق" : "شمارش این قلم");
   if (target.scope === "item") {
     input.dataset.itemId = target.item_id;
     input.dataset.locationId = target.location_id;
@@ -278,7 +278,7 @@ async function submitNumber(target, input, endpoint) {
   const result = await request(`${API}/${state.handover_id}/${endpoint}`, "POST", countBody(target, answer.value));
   input.value = "";
   await refresh();
-  showMessage(STATUS_LABELS[result.status] || "", DONE_STATUSES.has(result.status) ? "ok" : "info");
+  showMessage(statusText(result.status), DONE_STATUSES.has(result.status) ? "ok" : "info");
 }
 
 function numberJob(target, { title, kicker, hint, inputId, submitId, submitLabel, endpoint }) {
@@ -334,6 +334,22 @@ function advanceJob(text, label) {
 }
 
 const SIDE_LABELS = { incoming: "نفر ورودی", outgoing: "نفر خروجی" };
+
+// Screens name the person («پذیرش یک»), not the side; the side word is only a fallback.
+function sideName(side) {
+  const name = state && (side === "incoming" ? state.incoming_name : state.outgoing_name);
+  return name || SIDE_LABELS[side] || "همکار شما";
+}
+
+function otherName() {
+  return sideName(state && state.my_side === "incoming" ? "outgoing" : "incoming");
+}
+
+function statusText(status) {
+  if (status === "incoming") return `شمارش ثبت شد؛ ${otherName()} با گوشی خودش بشمارد`;
+  if (status === "outgoing") return `نوبت ${sideName("outgoing")} است؛ با گوشی خودش بشمارد`;
+  return STATUS_LABELS[status] || "";
+}
 const WAIT_POLL_MS = 4000;
 let waitTimer = null;
 
@@ -354,7 +370,7 @@ function waitingJob(scope, status) {
   stepContainer.replaceChildren();
   const job = element("div", "ho-job");
   job.id = "handover-turn";
-  job.appendChild(element("h2", "ho-job-title", `نوبت ${SIDE_LABELS[side] || "نفر دیگر"} است`));
+  job.appendChild(element("h2", "ho-job-title", `نوبت ${sideName(side)} است`));
   job.appendChild(element("p", "ho-hint", "این شمارش با گوشی خودِ او انجام می‌شود؛ این صفحه خودکار تازه می‌شود."));
   stepContainer.appendChild(job);
   window.clearTimeout(waitTimer);
@@ -367,7 +383,7 @@ function renderCash() {
     return;
   }
   if (DONE_STATUSES.has(state.cash_status)) {
-    advanceJob("صندوق تسویه شد.", "ادامه");
+    advanceJob("جمع صندوق ثبت و تأیید شد.", "ادامه");
     return;
   }
   if (isOtherSidesTurn("cash", state.cash_status)) {
@@ -377,8 +393,8 @@ function renderCash() {
   numberJob(
     { scope: "cash" },
     {
-      title: "شمارش صندوق",
-      hint: "صندوق را بشمارید و عدد را وارد کنید.",
+      title: "جمع کل پول صندوق",
+      hint: "همهٔ پول نقد داخل صندوق را با هم جمع بزنید و جمع کل را وارد کنید.",
       inputId: "handover-count-input",
       submitId: "handover-count-submit",
       submitLabel: "ثبت شمارش",
@@ -595,8 +611,8 @@ function renderSign() {
   const list = element("ul", "ho-signed");
   list.id = "handover-signed";
   for (const [key, label] of [
-    ["incoming", "نفر ورودی"],
-    ["outgoing", "نفر خروجی"],
+    ["incoming", sideName("incoming")],
+    ["outgoing", sideName("outgoing")],
   ]) {
     if (signed.has(key)) list.appendChild(element("li", null, `${label} — امضا شد`));
   }
@@ -721,6 +737,45 @@ async function loadOpenFlows() {
     list.appendChild(row);
   }
   $("handover-open").classList.toggle("hidden", flows.length === 0);
+  return flows;
+}
+
+function showChooser() {
+  $("handover-choose").classList.remove("hidden");
+  $("handover-await").classList.add("hidden");
+}
+
+// Owner rule: «تحویل شیفت» takes a receptionist into the reception handover and a nurse into the nursing
+// one, with no menu. The person who is not on shift yet starts it; the one who holds the shift joins it
+// as soon as it exists (their phone is told on any page, and this screen waits and follows by itself).
+async function goStraightIn(open) {
+  let me;
+  try {
+    me = await request("/api/v1/auth/me");
+  } catch (error) {
+    if (error instanceof OfflineLeft) return;
+    showChooser();
+    return;
+  }
+  const own = FLOWS.filter((flow) => (me.roles || []).includes(FLOW_ROLE[flow]));
+  if (own.length !== 1) {
+    showChooser();
+    return;
+  }
+  const flow = own[0];
+  const running = open.find((entry) => entry.flow === flow);
+  if (running) {
+    await joinFlow(running.handover_id);
+    return;
+  }
+  if (!(me.on_shift || []).includes(FLOW_ROLE[flow])) {
+    await startFlow(flow);
+    return;
+  }
+  $("handover-await-text").textContent = `منتظر بمانید تا همکارتان تحویل ${FLOW_LABELS[flow]} را شروع کند؛ همین‌جا خودکار وارد می‌شوید.`;
+  $("handover-await").classList.remove("hidden");
+  window.clearTimeout(waitTimer);
+  waitTimer = window.setTimeout(() => guard(boot), WAIT_POLL_MS);
 }
 
 async function joinFlow(handoverId) {
@@ -813,8 +868,17 @@ async function boot() {
     targets = null;
     lastStep = null;
     answeredChecklists.clear();
+    const joinId = new URLSearchParams(window.location.search).get("join");
+    if (joinId) {
+      try {
+        await joinFlow(joinId);
+        return;
+      } catch (error) {
+        if (error instanceof OfflineLeft) return;
+      }
+    }
     showScreen("start");
-    await loadOpenFlows();
+    await goStraightIn(await loadOpenFlows());
   }
 }
 
@@ -832,6 +896,7 @@ $("handover-exists-back").addEventListener("click", () =>
     showRefusal("");
     showScreen("start");
     await loadOpenFlows();
+    showChooser();
   })
 );
 $("handover-refresh").addEventListener("click", () => guard(refresh));

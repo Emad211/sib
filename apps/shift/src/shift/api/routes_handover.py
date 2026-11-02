@@ -259,6 +259,8 @@ def _state(state: HandoverState, principal: Principal | None = None) -> dict[str
         "cash_status": None if state.cash_status is None else state.cash_status.value,
         "counts": {item_id: chain.value for item_id, chain in sorted(state.item_statuses.items())},
         "my_side": _side_of(state, principal),
+        "outgoing_name": state.outgoing_name,
+        "incoming_name": state.incoming_name,
     }
 
 
