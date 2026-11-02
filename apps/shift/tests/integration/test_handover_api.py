@@ -194,17 +194,6 @@ def _checklist(
     return client.post(f"/api/v1/handover/{handover_id}/checklists", json=body, headers=_as(client, phone))
 
 
-def _parcel(
-    client: TestClient,
-    phone: Phone,
-    handover_id: str,
-    parcel_id: str = "parcel-01",
-    packages: int = 2,
-):
-    body = {"parcel_id": parcel_id, "packages": packages}
-    return client.post(f"/api/v1/handover/{handover_id}/parcels", json=body, headers=_as(client, phone))
-
-
 def _current(client: TestClient, phone: Phone):
     """The open flows of this shift, as the second phone finds them to join."""
     return client.get("/api/v1/handover/current", headers=_as(client, phone))
@@ -228,7 +217,6 @@ def _to_checklists(client: TestClient, phone: Phone, handover_id: str) -> None:
 def _to_dual_sign(client: TestClient, phone: Phone, handover_id: str) -> None:
     """Walk the whole reception flow up to the signature step without recording middle steps."""
     _to_checklists(client, phone, handover_id)
-    assert _advance(client, phone, handover_id).json()["step"] == "parcels"
     assert _advance(client, phone, handover_id).json()["step"] == "dual_sign"
 
 
@@ -471,8 +459,8 @@ def test_the_signer_is_the_session_and_a_third_person_is_refused(client: TestCli
     )
 
 
-def test_the_checklists_and_parcels_are_recorded_on_their_own_steps(client: TestClient) -> None:
-    """H-04's two middle steps now record what they see, and only on their own step."""
+def test_the_checklists_are_recorded_on_their_own_step(client: TestClient) -> None:
+    """The checklist step records what it sees, and only on its own step; the parcels step is gone (ADR-032)."""
     incoming = _phone(client)
     _baseline(client)
     handover_id = _start(client, incoming)["handover_id"]
@@ -480,19 +468,12 @@ def test_the_checklists_and_parcels_are_recorded_on_their_own_steps(client: Test
 
     answer = _checklist(client, incoming, handover_id, "store_lock_ok", ok=True)
     reading = _checklist(client, incoming, handover_id, "fridge_temperature", ok=True, reading=7.5)
-    early_parcel = _parcel(client, incoming, handover_id)
-
     assert answer.status_code == 200
     assert answer.json()["step"] == "checklists"
     assert reading.status_code == 200
-    assert early_parcel.status_code == 409, "a parcel belongs to the parcels step"
 
-    assert _advance(client, incoming, handover_id).json()["step"] == "parcels"
-    parcel = _parcel(client, incoming, handover_id, "parcel-01", 2)
+    assert _advance(client, incoming, handover_id).json()["step"] == "dual_sign"
     late_answer = _checklist(client, incoming, handover_id, "store_lock_ok", ok=False)
-
-    assert parcel.status_code == 200
-    assert parcel.json()["step"] == "parcels"
     assert late_answer.status_code == 409, "a checklist answer belongs to the checklists step"
 
     answers = _events(client, "handover.checklist_answered")
@@ -501,10 +482,7 @@ def test_the_checklists_and_parcels_are_recorded_on_their_own_steps(client: Test
         (incoming.staff_id, "fridge_temperature", True),
     ]
     assert answers[1][1]["reading"] == 7.5
-    parcels = _events(client, "handover.parcel_handed")
-    assert parcels == [(incoming.staff_id, {"parcel_id": "parcel-01", "packages": 2})]
-
-    assert _advance(client, incoming, handover_id).json()["step"] == "dual_sign"
+    assert _events(client, "handover.parcel_handed") == []
 
 
 def test_current_lists_the_open_flows_of_the_running_shift_only(client: TestClient) -> None:
@@ -610,10 +588,8 @@ def test_a_closed_flow_rejects_further_work(client: TestClient) -> None:
     late_count = _count(client, incoming, handover_id, scope="cash", counted=CASH_OPENING)
     late_advance = _advance(client, incoming, handover_id)
     late_sign = _sign(client, incoming, handover_id)
-    late_parcel = _parcel(client, incoming, handover_id)
 
     assert (late_count.status_code, late_advance.status_code, late_sign.status_code) == (409, 409, 409)
-    assert late_parcel.status_code == 409
     assert "بسته شده" in late_count.json()["error"]["message"]
 
 
@@ -719,7 +695,6 @@ def test_only_the_two_people_of_a_flow_may_count_advance_or_answer(client: TestC
         ),
         "advance": _advance(client, second, handover_id),
         "checklists": _checklist(client, second, handover_id, "store_lock_ok", ok=True),
-        "parcels": _parcel(client, second, handover_id),
         "early-leave": client.post(f"/api/v1/handover/{handover_id}/early-leave", headers=_as(client, second)),
     }
 

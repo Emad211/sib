@@ -193,7 +193,7 @@ def _close_reception(
     assert service.advance(handover_id, caller=incoming).step is HandoverStep.SHELF
     for item in (PARA, DICLO):
         assert count_on_turn(service, handover_id, _item(item), 0, caller=incoming) is CountStatus.MATCHED
-    for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
+    for step in (HandoverStep.CHECKLISTS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=incoming).step is step
     service.sign(handover_id, caller=incoming)
     assert service.sign(handover_id, caller=outgoing).closed is True
@@ -233,9 +233,6 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
 
     service.answer_checklist(handover_id, "store_lock_ok", ok=True, caller=CALLER)
     state = service.advance(handover_id, caller=CALLER)
-    assert state.step is HandoverStep.PARCELS
-    service.hand_parcel(handover_id, "parcel-1", 2, caller=CALLER)
-    state = service.advance(handover_id, caller=CALLER)
     assert state.step is HandoverStep.DUAL_SIGN
 
     service.sign(handover_id, caller=CALLER)
@@ -273,7 +270,6 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
     assert [step for step in _payloads(database, handover_id, "handover.step_advanced")] == [
         {"step": "shelf"},
         {"step": "checklists"},
-        {"step": "parcels"},
         {"step": "dual_sign"},
     ]
     with database.read() as connection:
@@ -371,7 +367,7 @@ def test_an_emergency_start_names_no_culprit_and_needs_one_signature(
     service.advance(handover_id, caller=CALLER)
     for item in (PARA, DICLO):
         assert count_on_turn(service, handover_id, _item(item), 0, caller=CALLER) is CountStatus.MATCHED
-    for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
+    for step in (HandoverStep.CHECKLISTS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=CALLER).step is step
 
     state = service.sign(handover_id, caller=CALLER)
@@ -594,7 +590,7 @@ def test_the_flow_log_refuses_a_step_past_the_last_one(service: HandoverService,
     service.advance(handover_id, caller=CALLER)
     for item in (PARA, DICLO):
         count_on_turn(service, handover_id, _item(item), 0, caller=CALLER)
-    for step in (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN):
+    for step in (HandoverStep.CHECKLISTS, HandoverStep.DUAL_SIGN):
         assert service.advance(handover_id, caller=CALLER).step is step
     store.append(
         build_event(

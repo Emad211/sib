@@ -356,21 +356,6 @@ def _checklist(
     return response.json()
 
 
-def _parcel(
-    client: TestClient, scanner: Scanner, session: Session, handover_id: str, parcel_id: str, packages: int
-) -> dict[str, Any]:
-    response = _call(
-        client,
-        scanner,
-        "POST",
-        f"/api/v1/handover/{handover_id}/parcels",
-        json={"parcel_id": parcel_id, "packages": packages},
-        headers=_act(client, session),
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
 def _sign(client: TestClient, scanner: Scanner, session: Session, handover_id: str) -> dict[str, Any]:
     """Sign with the session's own side; the request carries no signer at all (H-04, S03 §3)."""
     response = _call(client, scanner, "POST", f"/api/v1/handover/{handover_id}/sign", headers=_act(client, session))
@@ -403,7 +388,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     assert started.status_code == 201, started.text
     state = started.json()
     handover_id = state["handover_id"]
-    assert state["steps"] == ["cash", "shelf", "checklists", "parcels", "dual_sign"]
+    assert state["steps"] == ["cash", "shelf", "checklists", "dual_sign"]
     assert (state["step"], state["cash_status"], state["counts"]) == ("cash", "first", {})
 
     cash_reference, stock = _read_figures(client)
@@ -465,9 +450,6 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     answered = _checklist(client, scanner, incoming, handover_id, "store_lock_ok", ok=True)
     reading = _checklist(client, scanner, incoming, handover_id, "fridge_temperature", ok=True, reading=6.5)
     assert (answered["step"], reading["step"]) == ("checklists", "checklists")
-    _advance(client, scanner, incoming, handover_id, expected="parcels")
-    parcel = _parcel(client, scanner, incoming, handover_id, "parcel-courier-01", 3)
-    assert parcel["step"] == "parcels"
     _advance(client, scanner, incoming, handover_id, expected="dual_sign")
 
     # The second phone finds the flow through the join list and signs its own side there.

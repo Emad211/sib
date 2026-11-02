@@ -128,8 +128,6 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
     service.advance(handover_id, caller=caller)
     service.answer_checklist(handover_id, "store_lock_ok", ok=True, caller=caller)
     service.advance(handover_id, caller=caller)
-    service.hand_parcel(handover_id, "parcel-1", 2, caller=caller)
-    service.advance(handover_id, caller=caller)
     service.sign(handover_id, caller=caller)
     assert service.sign(handover_id, caller=outgoing_caller).closed is True
 

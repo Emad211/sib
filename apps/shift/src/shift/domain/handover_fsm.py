@@ -35,8 +35,8 @@ class HandoverStep(StrEnum):
     DUAL_SIGN = "dual_sign"
 
 
-# Both flows finish the same way: the checklists, the parcels in transit, then the dual signature.
-_CLOSING_STEPS = (HandoverStep.CHECKLISTS, HandoverStep.PARCELS, HandoverStep.DUAL_SIGN)
+# Both flows finish the same way: checklists, then the dual signature (ADR-032 dropped the parcels step).
+_CLOSING_STEPS = (HandoverStep.CHECKLISTS, HandoverStep.DUAL_SIGN)
 
 FLOW_STEPS: Mapping[HandoverFlow, tuple[HandoverStep, ...]] = {
     HandoverFlow.RECEPTION: (HandoverStep.CASH, HandoverStep.SHELF, *_CLOSING_STEPS),

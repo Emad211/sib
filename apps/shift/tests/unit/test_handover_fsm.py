@@ -49,14 +49,12 @@ def test_each_flow_hands_over_its_own_steps_in_h_04_order() -> None:
         HandoverStep.CASH,
         HandoverStep.SHELF,
         HandoverStep.CHECKLISTS,
-        HandoverStep.PARCELS,
         HandoverStep.DUAL_SIGN,
     )
     assert FLOW_STEPS[HandoverFlow.NURSING] == (
         HandoverStep.CPR_ROOM,
         HandoverStep.TROLLEY,
         HandoverStep.CHECKLISTS,
-        HandoverStep.PARCELS,
         HandoverStep.DUAL_SIGN,
     )
 

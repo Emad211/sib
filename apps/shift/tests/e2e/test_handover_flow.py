@@ -6,15 +6,14 @@ Each journey drives the real screen against a real uvicorn server on a synthetic
 synthetic accounting copy with no invoices (`tools/make_synthetic_acc_db.py`) and the manager's
 baseline, exactly as `tools/record_handover_baseline.py` would record it. Both people of a normal
 handover are on their own phone (S03 §3): the incoming person opens the flow, the outgoing person
-finds it in «تحویل باز» and joins it, the checklists and a parcel in transit are recorded, and each
+finds it in «تحویل باز» and joins it, the checklists are recorded, and each
 side signs from the phone it holds. The emergency journey stays on one device, because the outgoing
 person has left (H-08).
 
 What the three journeys promise:
-1. reception: the box, the shelf, the checklists, a parcel and both signatures from two phones,
+1. reception: the box, the shelf, the checklists and both signatures from two phones,
    and no reference from the projections ever reaches either page;
-2. nursing: the CPR room and the trolley from two phones, the cash step is never shown (H-12), and
-   a parcels step with nothing in transit advances without inventing a parcel id;
+2. nursing: the CPR room and the trolley from two phones, the cash step is never shown (H-12);
 3. emergency start: the outgoing person has left, the manager confirms by phone, one signature
    closes the flow and the page names no culprit (H-08).
 """
@@ -63,8 +62,6 @@ CPR_COUNTS = {"saline_500_bag": 424_248, "oxygen_mask": 818_173}
 TROLLEY_COUNTS = {"glove_latex_m": 1_231_233, "alcohol_pad": 7_272_722}
 REFERENCE_VALUES = (CASH_OPENING, *SHELF_COUNTS.values(), *CPR_COUNTS.values(), *TROLLEY_COUNTS.values())
 FRIDGE_READING = "6.5"
-PARCEL_ID = "parcel-courier-01"
-PARCEL_PACKAGES = 2
 
 OFFLINE_GATE = "تحویل شیفت نیازمند اتصال به سرور درمانگاه است"
 ALREADY_OPEN = "این تحویل باز شده است"
@@ -316,16 +313,6 @@ def _answer_checklists(
     page.wait_for_timeout(100)
 
 
-def _hand_parcel(page: Page, parcel_id: str, packages: int) -> None:
-    page.wait_for_selector("#handover-parcel-id", timeout=15000)
-    page.fill("#handover-parcel-id", parcel_id)
-    page.fill("#handover-parcel-packages", str(packages))
-    page.click("#handover-parcel-submit")
-    page.wait_for_selector('#handover-message:has-text("بسته ثبت شد")', timeout=15000)
-    assert page.input_value("#handover-parcel-id") == "", "a recorded parcel leaves the field empty"
-    page.wait_for_timeout(100)
-
-
 def _refresh(page: Page, step: str) -> None:
     """Pull the other phone's progress into this one; nothing polls on its own."""
     page.click("#handover-refresh")
@@ -417,8 +404,6 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
         _count_until_advance(incoming, SHELF_COUNTS)
         _advance(incoming, "checklists")
         _answer_checklists(incoming)
-        _advance(incoming, "parcels")
-        _hand_parcel(incoming, PARCEL_ID, PARCEL_PACKAGES)
         _advance(incoming, "dual_sign")
 
         # Each person signs on their own phone; the outgoing phone refreshes to see the step.
@@ -441,7 +426,6 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
             (payload["item_id"], payload["ok"], payload["reading"])
             for payload in _payloads(events, "handover.checklist_answered")
         ] == [("store_lock_ok", True, None), ("fridge_temperature", True, float(FRIDGE_READING))]
-        assert _payloads(events, "handover.parcel_handed") == [{"parcel_id": PARCEL_ID, "packages": PARCEL_PACKAGES}]
 
         _assert_no_reference_on_the_page(incoming, REFERENCE_VALUES)
         _assert_no_reference_on_the_page(outgoing, REFERENCE_VALUES)
@@ -482,11 +466,6 @@ def test_nursing_handover_counts_the_cpr_room_and_the_trolley_with_no_cash_step(
             reading_name="فشار کپسول اکسیژن ترالی",
             reading="180",
         )
-        _advance(incoming, "parcels")
-
-        # Nothing in transit: the step says so and advances without inventing a parcel id.
-        incoming.wait_for_selector("#handover-parcel-id", timeout=15000)
-        assert "بسته‌ای در راه نیست" in incoming.inner_text("#handover-step")
         _advance(incoming, "dual_sign")
 
         _sign_own(incoming)
@@ -501,7 +480,6 @@ def test_nursing_handover_counts_the_cpr_room_and_the_trolley_with_no_cash_step(
             (INCOMING_NURSE.staff_id, "incoming"),
             (OUTGOING_NURSE.staff_id, "outgoing"),
         ]
-        assert _payloads(events, "handover.parcel_handed") == [], "an empty parcels step invents no parcel"
 
         _assert_no_reference_on_the_page(incoming, REFERENCE_VALUES)
         _assert_no_reference_on_the_page(outgoing, REFERENCE_VALUES)
@@ -546,8 +524,6 @@ def test_emergency_start_finishes_alone_after_the_manager_confirms_by_phone(
         _count_until_advance(page, SHELF_COUNTS)
         _advance(page, "checklists")
         _answer_checklists(page)
-        _advance(page, "parcels")
-        page.wait_for_selector("#handover-parcel-id", timeout=15000)
         _advance(page, "dual_sign")
 
         assert page.locator("#handover-sign-outgoing").count() == 0, "the absent person cannot sign"

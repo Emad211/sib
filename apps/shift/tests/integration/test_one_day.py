@@ -221,14 +221,13 @@ def test_one_working_day_of_the_reception_flow(day: TestClient) -> None:
         )
         assert answer == {"status": "matched"}, item
 
-    # 5. The checklists, the parcels, the two signatures.
+    # 5. The checklists, the two signatures.
     assert phones.act("reception", "POST", f"{url}/advance")["step"] == "checklists"
     for row in phones.act("reception", "GET", f"{url}/targets")["checklists"]:
         body: dict[str, Any] = {"item_id": row["item_id"], "ok": True}
         if row["kind"] == "reading":
             body["reading"] = 5.0
         phones.act("reception", "POST", f"{url}/checklists", body)
-    assert phones.act("reception", "POST", f"{url}/advance")["step"] == "parcels"
     assert phones.act("reception", "POST", f"{url}/advance")["step"] == "dual_sign"
     assert phones.act("reception", "POST", f"{url}/sign")["closed"] is False
     assert phones.act("multi_role", "POST", f"{url}/sign")["closed"] is True
