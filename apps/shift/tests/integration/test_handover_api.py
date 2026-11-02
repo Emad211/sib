@@ -412,6 +412,29 @@ def test_a_joint_count_is_only_taken_when_the_chain_asks_for_it(client: TestClie
     assert joint.status_code == 200
     assert joint.json() == {"status": "settled"}
 
+    # The other person's phone was still on the joint screen: their press is the same answer, not an error.
+    again = client.post(
+        f"/api/v1/handover/{handover_id}/joint",
+        json={"scope": "cash", "counted": 905_000},
+        headers=_as(client, phone),
+    )
+    assert again.status_code == 200, again.text
+    assert again.json() == {"status": "settled"}
+    assert len(_events(client, "handover.joint_counted")) == 1, "the second press records nothing"
+
+
+def test_an_advance_from_a_phone_that_is_behind_changes_nothing(client: TestClient) -> None:
+    """Both phones share one step; the one that is behind must not push the flow past a step it never saw."""
+    _baseline(client)
+    phone = _phone(client, "reception")
+    handover_id = _start(client, phone)["handover_id"]
+    _settle_cash(client, phone, handover_id)
+    assert _advance(client, phone, handover_id).json()["step"] == "shelf"
+
+    late = client.post(f"/api/v1/handover/{handover_id}/advance", json={"from": "cash"}, headers=_as(client, phone))
+    assert late.status_code == 200, late.text
+    assert late.json()["step"] == "shelf", "the flow stays where it is"
+
 
 def test_the_signer_is_the_session_and_a_third_person_is_refused(client: TestClient) -> None:
     """H-04/R-04: each side signs from its own phone, and no body can name a signer."""

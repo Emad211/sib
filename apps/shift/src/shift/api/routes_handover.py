@@ -31,7 +31,7 @@ from shift.api.errors import ApiError, Conflict, Forbidden, NotFound
 from shift.common.clock import to_tehran, utc_iso
 from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_formulas import HandoverError
-from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow
+from shift.domain.handover_fsm import FLOW_STEPS, HandoverFlow, HandoverStep
 from shift.domain.handover_payloads import CountTarget
 from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, FLOW_OWNER_ROLES, STEP_LOCATIONS
 from shift.domain.item_icons import icon_for
@@ -481,15 +481,26 @@ def submit_joint_count(
     return {"status": chain.value}
 
 
+class AdvanceIn(BaseModel):
+    """The step the phone believes it is leaving, so a phone that is behind cannot skip one (H-04)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    from_step: HandoverStep | None = Field(default=None, alias="from")
+
+
 @router.post("/{handover_id}/advance")
 def advance_handover(
     handover_id: str,
     response: Response,
     principal: CountGuard,
     service: Annotated[HandoverService, Depends(get_handover)],
+    body: AdvanceIn | None = None,
 ) -> dict[str, Any]:
     """Leave the current step for the next one; the walk is ordered and never skips (H-04)."""
-    state = _run(service.advance, handover_id, caller=_caller(principal))
+    state = _run(
+        service.advance, handover_id, caller=_caller(principal), from_step=None if body is None else body.from_step
+    )
     _no_store(response)
     return _state(state)
 

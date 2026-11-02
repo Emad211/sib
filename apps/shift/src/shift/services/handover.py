@@ -458,6 +458,9 @@ class HandoverService:
         flow, events = self._cash_reference_ready(self._live(handover_id), target)
         _part_of_the_flow(flow.row, caller)
         chain = self._current(flow, target)
+        if chain.settled:
+            # The other person pressed first and their phone settled it; this press is the same answer.
+            return chain.status
         if chain.status is not CountStatus.JOINT:
             raise HandoverError("this target has no joint count to record")
         new_chain, status = chain.count(counted)
@@ -468,10 +471,17 @@ class HandoverService:
         self._report_carry(flow, caller, carry)
         return status
 
-    def advance(self, handover_id: str, *, caller: Caller) -> HandoverState:
-        """Leave the current step for the next one; the walk is ordered and never skips (H-04)."""
+    def advance(self, handover_id: str, *, caller: Caller, from_step: HandoverStep | None = None) -> HandoverState:
+        """Leave the current step for the next one; the walk is ordered and never skips (H-04).
+
+        A phone says which step it is leaving (`from_step`). Both phones share one step, so a phone that is
+        behind must not push the flow past a step it never saw: when the flow has moved on already, nothing
+        happens and the caller gets the state as it is.
+        """
         flow = self._live(handover_id)
         _part_of_the_flow(flow.row, caller)
+        if from_step is not None and flow.handover.step is not from_step:
+            return self.state(handover_id)
         advanced = flow.handover.advance()  # the domain refuses a closed flow, a skipped sign or H-08
         self._require_step_done(flow)
         step = advanced.step

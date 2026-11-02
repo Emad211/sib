@@ -184,18 +184,64 @@ async function request(path, method = "GET", body) {
   return payload;
 }
 
+// The two phones share one flow. A phone that is behind its colleague (they settled the joint count, they
+// moved to the next step) gets a refusal for something that is already done. That is not an error for the
+// person: the screen follows the flow and says so, instead of leaving a dead end.
+function flowSignature(flowState) {
+  return JSON.stringify([
+    flowState.step,
+    flowState.cash_status,
+    flowState.counts,
+    flowState.signed,
+    flowState.closed,
+    flowState.early_left,
+  ]);
+}
+
+async function followColleague() {
+  if (!state) return false;
+  const before = flowSignature(state);
+  try {
+    const next = await request(`${API}/${state.handover_id}`);
+    if (flowSignature(next) === before) return false;
+    await adopt(next);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 async function guard(work) {
   if (busy) return;
   busy = true;
   try {
     await work();
   } catch (error) {
-    if (!(error instanceof OfflineLeft)) {
+    if (error instanceof OfflineLeft) return;
+    if (error.status === 409 && (await followColleague())) {
+      showMessage("همکار شما جلوتر رفته بود؛ صفحه تازه شد.", "info");
+    } else {
       showMessage(error.message || "درخواست انجام نشد؛ دوباره تلاش کنید.", "error");
     }
   } finally {
     busy = false;
   }
+}
+
+// Every few seconds the wizard asks where the flow is and follows it, so the other person's phone never
+// shows a step that is already over. What somebody is typing is never wiped.
+function watchFlow() {
+  window.setInterval(async () => {
+    if (document.hidden || busy || !state || screens.wizard.classList.contains("hidden")) return;
+    const active = document.activeElement;
+    if (active && active.tagName === "INPUT" && active.value) return;
+    try {
+      const next = await request(`${API}/${state.handover_id}`);
+      if (flowSignature(next) !== flowSignature(state)) await adopt(next);
+    } catch (error) {
+      /* offline or refused: the next tick tries again */
+    }
+  }, 5000);
 }
 
 /* ---------- counting ---------- */
@@ -314,7 +360,8 @@ function jointJob(target) {
 /* ---------- step renders ---------- */
 
 async function advanceFlow() {
-  await adopt(await request(`${API}/${state.handover_id}/advance`, "POST"));
+  // Say which step this phone is leaving: if the colleague's phone already moved on, nothing is skipped.
+  await adopt(await request(`${API}/${state.handover_id}/advance`, "POST", { from: state.step }));
 }
 
 function advanceButton(label) {
@@ -884,6 +931,7 @@ async function boot() {
 
 /* ---------- wiring (no inline handlers: CSP allows 'self' only) ---------- */
 
+watchFlow();
 $("handover-retry").addEventListener("click", () => guard(boot));
 $("handover-start-reception").addEventListener("click", () => guard(() => startFlow("reception")));
 $("handover-start-nursing").addEventListener("click", () => guard(() => startFlow("nursing")));
