@@ -37,11 +37,18 @@
       </a>
 
       <div class="status-bar">
-        <span id="who-am-i" class="who-am-i hidden"></span>
-        <button id="logout-btn" type="button" class="logout-btn hidden">خروج</button>
         <span id="stale-badge" class="badge badge-stale hidden" role="note" aria-live="polite"></span>
         <span id="outbox-count-badge" class="badge badge-queued hidden" role="status"></span>
         <span id="connection-status-badge" class="badge badge-online">آنلاین</span>
+        <div class="account hidden" id="account">
+          <button id="account-button" type="button" class="account-button" aria-haspopup="menu"
+                  aria-expanded="false" aria-controls="account-menu" aria-label="حساب من"></button>
+          <div id="account-menu" class="account-menu hidden" role="menu" aria-label="حساب من">
+            <strong id="account-name" class="account-name"></strong>
+            <span id="who-am-i" class="who-am-i"></span>
+            <button id="logout-btn" type="button" class="logout-btn" role="menuitem">خروج از حساب</button>
+          </div>
+        </div>
       </div>
     </div>
   </header>

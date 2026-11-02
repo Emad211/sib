@@ -336,7 +336,10 @@
   async function showWhoAmI() {
     const who = document.getElementById("who-am-i");
     const logout = document.getElementById("logout-btn");
-    if (!who || !logout) return;
+    const account = document.getElementById("account");
+    const accountButton = document.getElementById("account-button");
+    const accountMenu = document.getElementById("account-menu");
+    if (!who || !logout || !account || !accountButton || !accountMenu) return;
     let me;
     try {
       const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
@@ -353,9 +356,21 @@
       return;
     }
     const roles = (me.roles || []).map((role) => ROLE_NAMES[role] || role).join("، ");
-    who.textContent = `${me.staff.name} · ${roles}`;
-    who.classList.remove("hidden");
-    logout.classList.remove("hidden");
+    document.getElementById("account-name").textContent = me.staff.name;
+    who.textContent = roles;
+    accountButton.textContent = Array.from(me.staff.name.trim())[0] || "؟";
+    account.classList.remove("hidden");
+    const setMenu = (open) => {
+      accountMenu.classList.toggle("hidden", !open);
+      accountButton.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+    accountButton.addEventListener("click", () => setMenu(accountMenu.classList.contains("hidden")));
+    document.addEventListener("click", (event) => {
+      if (!account.contains(event.target)) setMenu(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setMenu(false);
+    });
     logout.addEventListener("click", async () => {
       await fetch("/api/v1/auth/logout", { method: "POST", headers: { "X-CSRFToken": me.csrf_token } });
       await forgetCachedPages();

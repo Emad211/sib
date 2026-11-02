@@ -229,3 +229,14 @@ def test_scripts_and_styles_are_rechecked_on_every_load_while_fonts_and_icons_ma
         assert response.headers.get("etag"), f"{path} needs a validator so the re-check is a cheap 304"
     for path in ("/static/fonts/Vazirmatn-Regular.woff2", "/static/icons/192.png"):
         assert "max-age" in client.get(path).headers["cache-control"], path
+
+
+def test_the_header_keeps_the_account_in_one_button_with_logout_inside_its_menu(client: TestClient) -> None:
+    """The name, the roles and «خروج» no longer sit loose in the header: one round button opens a small menu."""
+    html = client.get("/").text
+    button = html.index('id="account-button"')
+    menu = html.index('id="account-menu"')
+    logout = html.index('id="logout-btn"')
+    assert button < menu < logout, "the logout lives inside the menu that the account button opens"
+    assert 'aria-haspopup="menu"' in html
+    assert 'aria-expanded="false"' in html
