@@ -90,6 +90,9 @@ class EventType(StrEnum):
     # stock, so the shelf and the store change together or not at all.
     SHELF_RETURN_OFFERED = "shelf_return_offered"
     SHELF_RETURN_CONFIRMED = "shelf_return_confirmed"
+    # The giver (or the manager) takes back an offer nobody confirmed, so a wrong figure or name is made
+    # again instead of waiting for ever; it moves no stock.
+    OFFER_WITHDRAWN = "offer_withdrawn"
     STOCK_STORE_BASELINED = "stock.store_baselined"
     STOCK_SAMPLE_COUNT = "stock.sample_count"
     MANAGER_REVIEWED = "manager.reviewed"

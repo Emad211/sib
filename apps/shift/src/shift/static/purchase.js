@@ -73,6 +73,7 @@
     vendorReturn: "مرجوعی ثبت شد.",
     credit: "بستانکاری ثبت شد.",
     restock: "شارژ قفسه ثبت شد.",
+    withdraw: "پس گرفته شد.",
     offer: "شارژ قفسه برای تأیید فرستاده شد.",
     shelfReturn: "برگشت به انبار برای تأیید فرستاده شد.",
     confirm: "تأیید ثبت شد.",
@@ -419,6 +420,17 @@
       button.disabled = true;
     });
     return button;
+  }
+
+  // S-9: an offer nobody confirmed yet can be taken back by whoever recorded it, then made again.
+  function waitingRow(text, offer) {
+    var row = el("li", null, text + " ");
+    row.appendChild(
+      actionButton("پس گرفتن", function () {
+        return run({ action: "offer.withdraw", data: { offer_id: offer.offer_id } }, MESSAGES.withdraw);
+      }, "btn-secondary", "offer.withdraw")
+    );
+    return row;
   }
 
   function card(title, meta) {
@@ -1368,7 +1380,7 @@
     if (pending.length > 0) {
       var list = el("ul", "pu-lines");
       pending.forEach(function (offer) {
-        list.appendChild(el("li", null, itemName(offer.item_id) + " · در انتظار تأیید تحویل‌گیرنده"));
+        list.appendChild(waitingRow(itemName(offer.item_id) + " · در انتظار تأیید تحویل‌گیرنده", offer));
       });
       box.appendChild(list);
     }
@@ -1445,7 +1457,7 @@
         var row = view.items.filter(function (candidate) {
           return candidate.item_id === offer.item_id;
         })[0];
-        list.appendChild(el("li", null, (row ? row.name : "کالا") + " · در انتظار شمارش انباردار"));
+        list.appendChild(waitingRow((row ? row.name : "کالا") + " · در انتظار شمارش انباردار", offer));
       });
       box.appendChild(list);
     }

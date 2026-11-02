@@ -53,6 +53,12 @@ class ShelfReturnOffered(ShelfReturnConfirmed):
     """The giver's half of a return: nothing moves until the named confirmer counts what arrived (A2)."""
 
 
+class OfferWithdrawn(Payload):
+    """An offer of either kind taken back before anyone confirmed it (S-9); nothing had moved."""
+
+    offer_id: Identifier
+
+
 class StoreBaselineLine(Payload):
     item_id: Identifier
     quantity: Counted

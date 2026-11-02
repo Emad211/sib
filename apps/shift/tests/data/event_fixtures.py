@@ -135,6 +135,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
             "quantity": 4,
             "confirmer_id": "staff-2",
         }
+    if event_type == "offer_withdrawn":
+        return {"offer_id": "offer-1"}
     if event_type == "expiry_flagged":
         return {"item_id": "item-1", "location_id": "location-1", "note": None}
     if event_type == "delivery_confirmed":

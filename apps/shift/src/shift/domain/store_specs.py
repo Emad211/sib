@@ -41,6 +41,7 @@ STORE_EVENT_SPECS: Mapping[EventType, tuple[type[BaseModel], EffectBuilder]] = {
     EventType.RESTOCK_OFFERED: (store.RestockOffered, no_effects),
     EventType.SHELF_RETURN_OFFERED: (store.ShelfReturnOffered, no_effects),
     EventType.SHELF_RETURN_CONFIRMED: (store.ShelfReturnConfirmed, stock_transfer),
+    EventType.OFFER_WITHDRAWN: (store.OfferWithdrawn, no_effects),
     EventType.STOCK_STORE_BASELINED: (store.StoreBaselined, store_baseline),
     EventType.STOCK_SAMPLE_COUNT: (store.SampleCounted, no_effects),
     EventType.MANAGER_REVIEWED: (store.ManagerReviewed, no_effects),

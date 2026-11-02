@@ -40,6 +40,7 @@ from shift.domain.rewards import month_of
 from shift.domain.stock_checks import WeeklyStatus, weekly_status, weekly_window
 from shift.domain.store_payloads import (
     DeliveryConfirmed,
+    OfferWithdrawn,
     RestockOffered,
     SampleCounted,
     ShelfReturnConfirmed,
@@ -66,6 +67,7 @@ from shift.services.purchase_rules import (
     NOT_AWAITING,
     NOT_IN_SAMPLE,
     NOT_THE_CONFIRMER,
+    NOT_THE_GIVER,
     NOT_THE_RECEIVER,
     NOT_THE_STORE,
     OFFER_CLOSED,
@@ -99,6 +101,8 @@ ACTIONS: Mapping[str, tuple[Permission, str]] = {
     # only that count moves stock (the shelf down and the store up together).
     "shelf_return.record": (Permission.EVENTS_APPEND, "shelf_return_offer"),
     "shelf_return.confirm": (Permission.EVENTS_APPEND, "shelf_return_confirm"),
+    # S-9: whoever recorded an offer nobody confirmed (or the manager) takes it back.
+    "offer.withdraw": (Permission.EVENTS_APPEND, "offer_withdraw"),
     "weekly.count": (Permission.STOCK_COUNT_SUBMIT, "weekly_count"),
     "store.baseline": (Permission.STOCK_COUNT_SUBMIT, "store_baseline"),
     "sample.count": (Permission.STOCK_COUNT_SUBMIT, "sample_count"),
@@ -189,7 +193,7 @@ class StoreActions:
         closed = {
             str(event.payload.get("offer_id"))
             for event in log
-            if event.type == confirmed and event.payload.get("offer_id")
+            if event.type in (confirmed, EventType.OFFER_WITHDRAWN) and event.payload.get("offer_id")
         }
         return [event for event in log if event.type == offered and event.event_id not in closed]
 
@@ -290,6 +294,25 @@ class StoreActions:
         model = ShelfReturnConfirmed if returns else RestockConfirmed
         payload = body(model, {key: value for key, value in offer.payload.items()} | {"offer_id": offer_id})
         record = new_event(self._clock, confirmed, payload, principal, shift, ref_event_id=offer.event_id)
+        self._events.append(record)
+        return {"status": "recorded", "event_id": record.client_event_id}
+
+    def offer_withdraw(self, principal: Principal, shift: ShiftKey, data: dict[str, Any]) -> dict[str, Any]:
+        """S-9: take back an offer (charge or return) nobody has confirmed; the stock never moved."""
+        offer_id = str(data.get("offer_id") or "")
+        log = self._log()
+        kinds = tuple(kind for kind, _ in _OFFER_TYPES.values())
+        offer = next((event for event in log if event.event_id == offer_id and event.type in kinds), None)
+        if offer is None:
+            raise PurchaseRuleError(UNKNOWN_OFFER)
+        if not any(offer in self.open_offers(log, returns=returns) for returns in (False, True)):
+            raise PurchaseRuleError(OFFER_CLOSED)
+        if offer.actor_id != principal.staff_id and Role.MANAGER.value not in principal.roles:
+            raise PurchaseRuleError(NOT_THE_GIVER)
+        payload = body(OfferWithdrawn, {"offer_id": offer_id})
+        record = new_event(
+            self._clock, EventType.OFFER_WITHDRAWN, payload, principal, shift, ref_event_id=offer.event_id
+        )
         self._events.append(record)
         return {"status": "recorded", "event_id": record.client_event_id}
 

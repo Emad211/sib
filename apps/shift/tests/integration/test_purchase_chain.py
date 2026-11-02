@@ -1357,3 +1357,51 @@ def test_the_return_form_offers_a_shelf_holder_their_own_shelves_and_the_storeke
     assert desk.storekeeper.staff_id in {person["staff_id"] for person in view["receivers"]}
     assert all("quantity" not in row for row in view["items"]), "the form carries no figure"
     assert _state(desk, desk.purchaser)["shelf_return"] is None
+
+
+# --- an offer nobody confirmed (S-9) ---------------------------------------------------------
+
+
+def test_the_giver_or_the_manager_withdraws_an_offer_nobody_confirmed_and_it_moves_nothing(desk: Desk) -> None:
+    """A wrong figure or name cannot be fixed by the confirmer, so the offer is taken back and made again."""
+    charge = _act(
+        desk,
+        desk.storekeeper,
+        "restock.record",
+        item_id=ITEM,
+        from_location_id=STORE,
+        to_location_id=LOCATION,
+        quantity=5,
+        confirmer_id=desk.nurse.staff_id,
+    )
+    giving_back = _return_offer(desk)
+
+    with pytest.raises(PurchaseRuleError, match="پس بگیرد"):
+        _act(desk, desk.nurse, "offer.withdraw", offer_id=charge["event_id"])
+    with pytest.raises(PurchaseRuleError, match="پیدا نشد"):
+        _act(desk, desk.storekeeper, "offer.withdraw", offer_id="no-such-offer")
+
+    _act(desk, desk.storekeeper, "offer.withdraw", offer_id=charge["event_id"])
+    _act(desk, desk.manager, "offer.withdraw", offer_id=giving_back["event_id"])
+
+    for person, key in ((desk.nurse, "restock_to_confirm"), (desk.storekeeper, "return_to_confirm")):
+        assert _state(desk, person)["inbox"][key] == []
+    assert _state(desk, desk.storekeeper)["inbox"]["restock_waiting"] == []
+    assert _state(desk, desk.reception)["inbox"]["return_waiting"] == []
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.nurse, "restock.confirm", offer_id=charge["event_id"], quantity=5)
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=giving_back["event_id"], quantity=3)
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.storekeeper, "offer.withdraw", offer_id=charge["event_id"])
+
+    assert (_shelf(desk, ITEM, STORE), _shelf(desk, ITEM, LOCATION)) == (STORE_BEFORE, SHELF_BEFORE)
+    assert desk.projections.rebuild().drift == ()
+
+
+def test_a_confirmed_offer_cannot_be_withdrawn(desk: Desk) -> None:
+    offered = _return_offer(desk)
+    _act(desk, desk.storekeeper, "shelf_return.confirm", offer_id=offered["event_id"], quantity=3)
+    with pytest.raises(PurchaseRuleError, match="قبلاً"):
+        _act(desk, desk.reception, "offer.withdraw", offer_id=offered["event_id"])
+    assert _shelf(desk, ITEM, LOCATION) == SHELF_BEFORE - 3

@@ -64,6 +64,7 @@
 | `acc.consumption_reversal` | افزودن به همان قفسه | ابطال، بازگشایی یا بازنویسی فاکتور؛ `ref_event_id` همان مصرف؛ کلید `acc:consumption-reversal:<event_id>` |
 | `shelf_return_offered` | بی‌اثر | نیمهٔ تحویل‌دهنده (نگه‌دارندهٔ قفسه) |
 | `shelf_return_confirmed` | کم کردن قفسه و افزودن به انبار اصلی | شمارش کورِ برابرِ انباردار؛ `ref_event_id` همان پیشنهاد |
+| `offer_withdrawn` | بی‌اثر | ثبت‌کنندهٔ پیشنهاد (یا مدیر) پیشنهاد تأییدنشدهٔ شارژ یا برگشت را پس می‌گیرد؛ `offer_id` پیشنهاد را می‌بندد |
 | `manager.reviewed` | بی‌اثر | پاسخ یک‌بارهٔ مدیر به یک مغایرت (`ref_event_id`) |
 
 آینهٔ `acc_consumption` از `m0021` سه ستون دارد: `applied_event_id`، `applied_key` و `skipped` (تصمیم بی‌رویداد: دیررسیده پس از تسویه، یا گرد شده به صفر).
