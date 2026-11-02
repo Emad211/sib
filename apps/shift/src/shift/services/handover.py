@@ -675,7 +675,9 @@ class HandoverService:
         if not delta:
             return flow, []
         reference = flow.cash.reference if flow.cash is not None else flow.references.cash
-        adjusted = replace(flow.cash or CashCount(reference, flow.handover.culprit_id), reference=reference + delta)
+        adjusted = replace(
+            flow.cash or CashCount.start(reference, flow.handover.culprit_id), reference=reference + delta
+        )
         return replace(flow, cash=adjusted, adjustment=flow.adjustment + delta), [(_ADJUSTED, {"delta": delta})]
 
     def _pending_adjustment(self, flow: _Flow) -> int:
@@ -805,7 +807,7 @@ class HandoverService:
             if step is not HandoverStep.CASH or flow.references.cash is None:
                 raise HandoverError("the cash box is counted on the cash step of a reception handover")
             chain = flow.cash
-            return chain if chain is not None else CashCount(flow.references.cash, flow.handover.culprit_id)
+            return chain if chain is not None else CashCount.start(flow.references.cash, flow.handover.culprit_id)
         key = (str(target.item_id), str(target.location_id))
         if step is None or STEP_LOCATIONS[step] != target.location_id:
             raise HandoverError("this item is not counted on the current step")
@@ -973,7 +975,9 @@ def _cash_status(flow: _Flow) -> CountStatus | None:
     """The box's chain status, or None for a flow that hands over no cash (H-12)."""
     if flow.cash is not None:
         return flow.cash.status
-    return CountStatus.FIRST if flow.row.flow is HandoverFlow.RECEPTION else None
+    if flow.row.flow is not HandoverFlow.RECEPTION:
+        return None
+    return CountStatus.FIRST if flow.handover.culprit_id is None else CountStatus.JOINT
 
 
 def _count_event(status: CountStatus, target: CountTarget) -> str:
@@ -1038,7 +1042,7 @@ def _replay(
     if event.type == EventType.HANDOVER_CASH_REFERENCE_ADJUSTED.value:
         if references.cash is None:
             raise HandoverError("a cash reference moved in a flow that hands over no cash")
-        chain = cash if cash is not None else CashCount(references.cash, handover.culprit_id)
+        chain = cash if cash is not None else CashCount.start(references.cash, handover.culprit_id)
         return handover, replace(chain, reference=chain.reference + int(payload["delta"])), items
     if event.type not in _COUNT_EVENTS:
         return handover, cash, items  # notes, recount requests, settlements and discrepancies
@@ -1046,7 +1050,7 @@ def _replay(
     if key is None:
         if references.cash is None:
             raise HandoverError("a cash count in a flow that hands over no cash")
-        money = cash if cash is not None else CashCount(references.cash, handover.culprit_id)
+        money = cash if cash is not None else CashCount.start(references.cash, handover.culprit_id)
         return handover, money.count(counted)[0], items
     if key not in references.items:
         raise HandoverError("the log counts an item this handover never froze a reference for")

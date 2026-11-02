@@ -163,7 +163,14 @@ def _count(
         body["item_id"] = item_id
         body["location_id"] = location_id
     phone = _whose_turn(client, phone, handover_id, scope, item_id)
-    return client.post(f"/api/v1/handover/{handover_id}/counts", json=body, headers=_as(client, phone))
+    state = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, phone))
+    joint = (
+        state.status_code == 200
+        and (state.json()["cash_status"] if scope == "cash" else state.json()["counts"].get(item_id)) == "joint"
+    )
+    return client.post(
+        f"/api/v1/handover/{handover_id}/{'joint' if joint else 'counts'}", json=body, headers=_as(client, phone)
+    )
 
 
 def _item(client: TestClient, phone: Phone, handover_id: str, item_id: str, counted: int, location: str = SHELF):
@@ -200,8 +207,7 @@ def _current(client: TestClient, phone: Phone):
 
 
 def _settle_cash(client: TestClient, phone: Phone, handover_id: str) -> None:
-    """Two blind counts on one figure settle the box without a joint count (H-13)."""
-    assert _count(client, phone, handover_id, scope="cash", counted=CASH_OPENING).json()["status"] == "incoming"
+    """The box is counted together from the start: one joint figure that equals the reference settles it."""
     assert _count(client, phone, handover_id, scope="cash", counted=CASH_OPENING).json()["status"] == "matched"
 
 
@@ -345,15 +351,13 @@ def test_a_count_answers_a_status_and_nothing_else(client: TestClient) -> None:
     _baseline(client)
     handover_id = _start(client, phone)["handover_id"]
 
-    cash = _count(client, phone, handover_id, scope="cash", counted=CASH_OPENING)
     cash_done = _count(client, phone, handover_id, scope="cash", counted=CASH_OPENING)
     _advance(client, phone, handover_id)
     item = _item(client, phone, handover_id, PARA, 0)
 
-    assert cash.json() == {"status": "incoming"}
     assert cash_done.json() == {"status": "matched"}
     assert item.json() == {"status": "matched"}
-    for response in (cash, cash_done, item):
+    for response in (cash_done, item):
         assert not any(character.isdigit() for character in response.text)
 
 
@@ -377,20 +381,20 @@ def test_the_steps_are_enforced_in_order(client: TestClient) -> None:
 
 
 def test_a_joint_count_is_only_taken_when_the_chain_asks_for_it(client: TestClient) -> None:
-    """H-05/H-13: a joint figure belongs to a chain that already has two differing blind counts."""
+    """H-05/H-13: the box opens as a joint count; an item only reaches one after differing blind counts."""
     phone = _phone(client)
     _baseline(client)
     handover_id = _start(client, phone)["handover_id"]
 
+    blind = _raw_count(client, phone, handover_id, CASH_OPENING, scope="cash")
+    assert blind.status_code == 409, "the box is counted together, not blind"
     no_joint_yet = client.post(
         f"/api/v1/handover/{handover_id}/joint",
-        json={"scope": "cash", "counted": CASH_OPENING},
+        json={"scope": "item", "item_id": PARA, "location_id": SHELF, "counted": 0},
         headers=_as(client, phone),
     )
     assert no_joint_yet.status_code == 409
 
-    assert _count(client, phone, handover_id, scope="cash", counted=900_000).json()["status"] == "incoming"
-    assert _count(client, phone, handover_id, scope="cash", counted=910_000).json()["status"] == "joint"
     joint = client.post(
         f"/api/v1/handover/{handover_id}/joint",
         json={"scope": "cash", "counted": 905_000},
@@ -743,7 +747,7 @@ def _raw_count(client: TestClient, phone: Phone, handover_id: str, counted: int,
 
 
 def test_every_count_is_taken_by_the_side_it_belongs_to(client: TestClient) -> None:
-    """A4: the box is counted by the outgoing person first, a shelf item by the incoming person first."""
+    """A4: the box is counted together, a shelf item by the incoming person first."""
     incoming = _phone(client)
     outgoing = _phone(client, OUTGOING_ROLE)
     _baseline(client)
@@ -752,11 +756,10 @@ def test_every_count_is_taken_by_the_side_it_belongs_to(client: TestClient) -> N
     theirs = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, outgoing)).json()
     assert (mine["my_side"], theirs["my_side"]) == ("incoming", "outgoing")
 
-    cash = {"scope": "cash"}
-    assert _raw_count(client, incoming, handover_id, CASH_OPENING, **cash).status_code == 403
-    assert _raw_count(client, outgoing, handover_id, CASH_OPENING, **cash).json() == {"status": "incoming"}
-    assert _raw_count(client, outgoing, handover_id, CASH_OPENING, **cash).status_code == 403
-    assert _raw_count(client, incoming, handover_id, CASH_OPENING, **cash).json() == {"status": "matched"}
+    joint = {"scope": "cash", "counted": CASH_OPENING}
+    assert client.post(f"/api/v1/handover/{handover_id}/joint", json=joint, headers=_as(client, incoming)).json() == {
+        "status": "matched"
+    }, "either of the two people records the box's joint figure"
     _advance(client, incoming, handover_id)
 
     item = {"scope": "item", "item_id": PARA, "location_id": SHELF}

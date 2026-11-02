@@ -17,6 +17,8 @@ def count_on_turn(service: Any, handover_id: str, target: Any, counted: int, *, 
     status = state.cash_status if target.scope == "cash" else state.item_statuses.get(str(target.item_id))
     if status is None:
         return service.count(handover_id, target, counted, caller=caller)
+    if status is CountStatus.JOINT:  # the cash box opens as a joint count: both people, one figure
+        return service.joint(handover_id, target, counted, caller=caller)
     side = counter_side(target.scope, status, alone=state.emergency_by is not None)
     who = state.outgoing_id if side == "outgoing" else state.incoming_id
     return service.count(handover_id, target, counted, caller=Caller(actor_id=who, device_id=caller.device_id))

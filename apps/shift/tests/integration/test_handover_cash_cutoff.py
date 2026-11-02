@@ -97,7 +97,6 @@ def _start(service: HandoverService, *, opening_cash: int | None = None, incomin
 def _settle(service: HandoverService, handover_id: str, counted: int, *, actor: str = INCOMING) -> None:
     """Both counts of one flow, taken by the person who took it over (A5: only its own two people)."""
     caller = Caller(actor_id=actor, device_id="device-1")
-    assert count_on_turn(service, handover_id, CASH, counted, caller=caller) is CountStatus.INCOMING
     assert count_on_turn(service, handover_id, CASH, counted, caller=caller) in {
         CountStatus.MATCHED,
         CountStatus.SETTLED,
@@ -149,7 +148,7 @@ def test_a_withdrawal_that_happened_before_the_cutoff_moves_the_reference_not_th
             "item_id": None,
             "location_id": None,
             "counted": 400_000,
-            "basis": "agreeing_blind",
+            "basis": "joint",
             "carry": 0,
         }
     ]

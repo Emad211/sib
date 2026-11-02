@@ -116,8 +116,6 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
         caller=caller,
     ).handover_id
 
-    count_on_turn(service, handover_id, cash, 990_000, caller=caller)
-    count_on_turn(service, handover_id, cash, 995_000, caller=caller)
     service.joint(handover_id, cash, 997_000, caller=caller)
     service.advance(handover_id, caller=caller)
     count_on_turn(service, handover_id, shelf, 8, caller=caller)
@@ -187,7 +185,6 @@ def test_a_settlement_carry_rebuilds_to_the_live_cash_projection(database: Datab
     )
     projections.sync()
     cash = CountTarget(scope="cash")
-    count_on_turn(service, handover_id, cash, 1_000_000, caller=caller)
     count_on_turn(service, handover_id, cash, 1_000_000, caller=caller)
 
     with database.read() as connection:

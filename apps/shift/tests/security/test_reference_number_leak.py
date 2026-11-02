@@ -389,7 +389,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     state = started.json()
     handover_id = state["handover_id"]
     assert state["steps"] == ["cash", "shelf", "checklists", "dual_sign"]
-    assert (state["step"], state["cash_status"], state["counts"]) == ("cash", "first", {})
+    assert (state["step"], state["cash_status"], state["counts"]) == ("cash", "joint", {})
 
     cash_reference, stock = _read_figures(client)
     assert cash_reference == CASH_REFERENCE, "the box's reference really was in the server's hands"
@@ -400,10 +400,7 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     assert targets.status_code == 200
     assert {item["item_id"] for item in targets.json()["items"]} == {PARA, DICLO}
 
-    assert _count(client, scanner, outgoing, handover_id, scope="cash", counted=CASH_FIRST) == "incoming"
-    assert _read_figures(client)[0] == CASH_REFERENCE, "a blind count never moves the reference (H-11)"
-    assert _count(client, scanner, incoming, handover_id, scope="cash", counted=CASH_SECOND) == "joint"
-    assert _read_figures(client)[0] == CASH_REFERENCE, "two blind counts still compare against the reference"
+    assert _read_figures(client)[0] == CASH_REFERENCE, "opening the box moves nothing (H-11)"
     assert _joint(client, scanner, incoming, handover_id, CASH_JOINT) == "settled"
     assert _read_figures(client)[0] == CASH_JOINT, "only the settlement moves the box (H-13)"
     shelf = _advance(client, scanner, incoming, handover_id, expected="shelf")

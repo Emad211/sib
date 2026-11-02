@@ -103,6 +103,11 @@ class CashCount(_BlindChain):
 
     first: int | None = None
 
+    @classmethod
+    def start(cls, reference: int, culprit_id: str | None) -> Self:
+        """The owner counts the box together: with a partner it opens as a joint count; alone, as a blind one."""
+        return cls(reference, culprit_id, status=CountStatus.FIRST if culprit_id is None else CountStatus.JOINT)
+
     def count(self, counted: int) -> tuple[Self, CountStatus]:
         """Take the count the chain asks for and say what the operator does next."""
         self._refuse_negative(counted)

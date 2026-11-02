@@ -205,12 +205,9 @@ def test_one_working_day_of_the_reception_flow(day: TestClient) -> None:
     assert {item: stock[(item, SHELF)] for item in expected} == expected
     box = _box(day)
 
-    # 4. The box: outgoing first, then incoming, blind to each other. Then the shelf, incoming first.
+    # 4. The box: counted together, one joint figure. Then the shelf, incoming first.
     url = f"/api/v1/handover/{handover_id}"
-    assert phones.act("multi_role", "POST", f"{url}/counts", {"scope": "cash", "counted": box}) == {
-        "status": "incoming"
-    }
-    assert phones.act("reception", "POST", f"{url}/counts", {"scope": "cash", "counted": box}) == {"status": "matched"}
+    assert phones.act("reception", "POST", f"{url}/joint", {"scope": "cash", "counted": box}) == {"status": "matched"}
     assert phones.act("reception", "POST", f"{url}/advance")["step"] == "shelf"
     for item, quantity in expected.items():
         answer = phones.act(

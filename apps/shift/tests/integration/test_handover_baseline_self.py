@@ -150,10 +150,13 @@ def test_the_receptionist_counts_the_box_and_shelf_before_holding_custody(client
     assert started.status_code == 201, started.text
     handover_id = started.json()["handover_id"]
     assert started.json()["flow"] == "reception"
-    # A4: the outgoing person (the custodian who counted first) takes the first cash count on their own phone.
-    cash = _count(client, counter, handover_id, scope="cash", counted=CASH_OPENING)
-    assert cash.json()["status"] == "incoming", cash.text
-    assert _count(client, incoming, handover_id, scope="cash", counted=CASH_OPENING).json()["status"] == "matched"
+    # The box is counted together: one joint figure from either of the two people.
+    cash = client.post(
+        f"/api/v1/handover/{handover_id}/joint",
+        json={"scope": "cash", "counted": CASH_OPENING},
+        headers=_as(client, incoming),
+    )
+    assert cash.json()["status"] == "matched", cash.text
     advanced = client.post(f"/api/v1/handover/{handover_id}/advance", headers=_as(client, incoming))
     assert advanced.json()["step"] == "shelf"
     counted = _count(client, incoming, handover_id, scope="item", counted=12, item_id=PARA, location_id=SHELF)

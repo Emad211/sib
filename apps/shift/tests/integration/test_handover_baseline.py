@@ -182,7 +182,6 @@ def test_the_first_flows_outgoing_person_is_the_custodian_and_a_close_hands_cust
     assert row is not None and row.outgoing_id == CUSTODIAN
 
     count_on_turn(service, state.handover_id, CASH, 1_000_000, caller=CALLER)
-    count_on_turn(service, state.handover_id, CASH, 1_000_000, caller=CALLER)
     assert service.advance(state.handover_id, caller=CALLER).step is HandoverStep.SHELF
     for item, quantity in ((PARA, 10), (DICLO, 4)):
         count_on_turn(service, state.handover_id, _item(item), quantity, caller=CALLER)

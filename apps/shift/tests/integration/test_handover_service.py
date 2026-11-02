@@ -182,7 +182,6 @@ def _start(
 
 
 def _settle_cash(service: HandoverService, handover_id: str, counted: int) -> None:
-    assert count_on_turn(service, handover_id, CASH, counted, caller=CALLER) is CountStatus.INCOMING
     assert count_on_turn(service, handover_id, CASH, counted, caller=CALLER) is CountStatus.MATCHED
 
 
@@ -219,7 +218,7 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
 ) -> None:
     state = _start(service, opening_cash=1_000_000, stock={PARA: 10, DICLO: 4})
     handover_id = state.handover_id
-    assert (state.step, state.cash_status, state.item_statuses) == (HandoverStep.CASH, CountStatus.FIRST, {})
+    assert (state.step, state.cash_status, state.item_statuses) == (HandoverStep.CASH, CountStatus.JOINT, {})
 
     _settle_cash(service, handover_id, 1_000_000)
     state = service.advance(handover_id, caller=CALLER)
@@ -246,7 +245,7 @@ def test_a_reception_handover_counts_cash_every_item_the_lists_and_both_signatur
             "item_id": None,
             "location_id": None,
             "counted": 1_000_000,
-            "basis": "agreeing_blind",
+            "basis": "joint",
             "carry": 0,
         },
         {
@@ -474,7 +473,7 @@ def test_a_cash_receipt_stamped_inside_a_flow_is_reported_to_the_manager_and_car
             "item_id": None,
             "location_id": None,
             "counted": 215_000,
-            "basis": "agreeing_blind",
+            "basis": "joint",
             "carry": 999_000,
         }
     ]
@@ -550,7 +549,6 @@ def test_a_withdrawal_during_a_flow_is_carried_negatively_and_flagged_like_a_rec
     """
     clock.moment = datetime(2026, 10, 28, 9, 30, tzinfo=TEHRAN)
     handover_id = _start(service, opening_cash=1_000_000).handover_id
-    assert count_on_turn(service, handover_id, CASH, 1_000_000, caller=CALLER) is CountStatus.INCOMING
 
     clock.moment = datetime(2026, 10, 28, 9, 31, tzinfo=TEHRAN)
     _movement(store, projections, "cash.withdrawn", 20_000, at=clock.moment)
@@ -610,10 +608,6 @@ def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverSer
     with pytest.raises(HandoverError, match="counted and settled"):
         service.advance(handover_id, caller=CALLER)
 
-    count_on_turn(service, handover_id, CASH, 1, caller=CALLER)  # one mismatching blind count settles nothing
-    with pytest.raises(HandoverError, match="counted and settled"):
-        service.advance(handover_id, caller=CALLER)
-
     assert count_on_turn(service, handover_id, CASH, 1, caller=CALLER) is CountStatus.SETTLED
     service.advance(handover_id, caller=CALLER)
     count_on_turn(service, handover_id, _item(PARA), 10, caller=CALLER)
@@ -629,8 +623,8 @@ def test_a_count_is_refused_on_a_step_that_does_not_own_its_target(service: Hand
 
     with pytest.raises(HandoverError, match="current step"):
         count_on_turn(service, state.handover_id, _item(PARA), 1, caller=CALLER)
-    with pytest.raises(HandoverError, match="no joint count"):
-        service.joint(state.handover_id, CASH, 0, caller=CALLER)
+    with pytest.raises(HandoverError, match="current step"):
+        service.joint(state.handover_id, _item(PARA), 0, caller=CALLER)
 
 
 def test_the_reference_map_is_audited_and_never_returned(service: HandoverService, database: Database) -> None:

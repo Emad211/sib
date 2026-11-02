@@ -349,7 +349,10 @@ function jointJob(target) {
   numberJob(target, {
     title: "با هم بشمارید",
     kicker: target.kicker,
-    hint: "هر دو نفر با هم بشمارید و عدد توافق‌شده را وارد کنید.",
+    hint:
+      target.scope === "cash"
+        ? "هر دو نفر با هم همهٔ پول نقد داخل صندوق را بشمارید و جمع کل را وارد کنید."
+        : "هر دو نفر با هم بشمارید و عدد توافق‌شده را وارد کنید.",
     inputId: "handover-joint-input",
     submitId: "handover-joint-submit",
     submitLabel: "ثبت شمارش مشترک",
