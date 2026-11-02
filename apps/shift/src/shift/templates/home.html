@@ -24,6 +24,7 @@
 
 {% if tiles %}
 <h1 class="home-title">کارهای من</h1>
+<p id="badge-summary" class="badge-summary hidden" role="status" aria-live="polite"></p>
 {% for group in tile_groups %}
 <section class="home-group" data-group="{{ group.id }}" aria-labelledby="group-{{ group.id }}">
   <h2 id="group-{{ group.id }}" class="home-group-title">{{ group.title }}</h2>
@@ -31,7 +32,10 @@
   <nav class="home-tiles" aria-label="{{ group.title }}">
     {% for tile in group.tiles %}
     <a class="home-tile" href="{{ tile.href }}">
-      <span class="home-tile-icon" aria-hidden="true">{{ tile.icon }}</span>
+      <span class="home-tile-lead">
+        <span class="home-tile-icon" aria-hidden="true">{{ tile.icon }}</span>
+        <span class="tile-badge hidden" data-badge="{{ tile.href }}" role="status"></span>
+      </span>
       <span class="home-tile-text">
         <span class="home-tile-title">{{ tile.title }}</span>
         <span class="home-tile-hint">{{ tile.hint }}</span>
@@ -63,4 +67,5 @@
 
 {% block extra_scripts %}
 <script src="/static/presence.js"></script>
+<script src="/static/badges.js"></script>
 {% endblock %}

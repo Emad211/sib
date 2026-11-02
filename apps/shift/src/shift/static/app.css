@@ -460,6 +460,38 @@ textarea:focus-visible,
   text-decoration: none;
 }
 .home-tile:hover, .home-tile:focus-visible { border-color: var(--color-primary); }
+/* The red number: how many open jobs wait for this person on this tile. */
+.home-tile-lead { position: relative; display: inline-flex; }
+.tile-badge {
+  position: absolute;
+  top: -0.6rem;
+  inset-inline-start: -0.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: #dc2626;
+  border: 2px solid var(--color-surface);
+  border-radius: 999px;
+}
+.tile-badge.hidden { display: none; }
+.badge-summary {
+  display: inline-block;
+  margin: 0 0 0.75rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: #dc2626;
+  border-radius: 999px;
+}
+.badge-summary.hidden { display: none; }
 .home-tile-icon { font-size: 1.75rem; line-height: 1; }
 .home-tile-text { display: grid; gap: 0.125rem; }
 .home-tile-title { font-size: 1.0625rem; font-weight: 700; }

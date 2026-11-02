@@ -14,6 +14,7 @@ from shift.api import (
     deps,
     routes_accountant,
     routes_auth,
+    routes_badges,
     routes_campaigns,
     routes_catalog,
     routes_devices,
@@ -322,6 +323,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(routes_auth.router)
+    app.include_router(routes_badges.router)
     app.include_router(routes_devices.router)
     app.include_router(
         routes_catalog.build_catalog_router(

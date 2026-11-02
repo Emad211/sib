@@ -195,6 +195,20 @@
    "storekeeper": 200
   }
  },
+ "GET /api/v1/badges [badges]": {
+  "guard": "authenticated",
+  "roles": {
+   "accountant": 200,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /api/v1/campaigns [list_campaigns]": {
   "guard": "permission:catalog.manage",
   "roles": {
