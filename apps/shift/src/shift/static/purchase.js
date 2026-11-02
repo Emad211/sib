@@ -620,7 +620,7 @@
     var sections = Array.prototype.slice.call(document.querySelectorAll(".pu-section")).filter(function (section) {
       return !section.hidden;
     });
-    var openAll = sections.length <= 2;
+    var openAll = sections.length <= 3;
     var saved = readFolds();
     sections.forEach(function (section) {
       if (section.dataset.foldReady) return;

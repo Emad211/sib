@@ -71,6 +71,10 @@
   display: none;
 }
 
+.pu-folded .card-title {
+  margin-bottom: 0;
+}
+
 .pu-card {
   padding: 0.875rem;
   margin-bottom: 0.75rem;
