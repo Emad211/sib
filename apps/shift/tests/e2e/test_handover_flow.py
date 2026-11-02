@@ -574,3 +574,31 @@ def test_emergency_start_finishes_alone_after_the_manager_confirms_by_phone(
         _assert_no_reference_on_the_page(page, REFERENCE_VALUES)
     finally:
         context.close()
+
+
+@pytest.mark.e2e
+def test_a_fresh_visit_shows_the_choice_and_only_a_reload_goes_back_into_the_flow(
+    live_server: tuple[str, Database],
+    browser: Browser,
+) -> None:
+    """Opening «تحویل شیفت» from home asks which handover; the open one is offered, not forced on the person."""
+    base_url, _db = live_server
+    context, page = _open_phone(browser)
+    try:
+        _login(page, base_url, INCOMING_NURSE)
+        _open_handover(page, base_url)
+        _start(page, "nursing", step="cpr_room")
+
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _open_handover(page, base_url)
+        page.wait_for_selector("#handover-open:not(.hidden)", timeout=15000)
+        assert page.locator("#handover-wizard").is_hidden(), "a fresh visit must not drop into the open flow"
+        assert page.locator("#handover-start-reception").is_visible()
+        assert page.locator("#handover-join-nursing").is_visible()
+
+        page.click("#handover-join-nursing")
+        page.wait_for_selector('#handover-wizard[data-step="cpr_room"]', timeout=15000)
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector('#handover-wizard[data-step="cpr_room"]', timeout=15000)
+    finally:
+        context.close()

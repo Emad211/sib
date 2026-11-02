@@ -778,12 +778,19 @@ async function confirmManager() {
   await adopt(confirmed);
 }
 
+function comingBack() {
+  const entry = window.performance && performance.getEntriesByType ? performance.getEntriesByType("navigation")[0] : null;
+  return Boolean(entry) && (entry.type === "reload" || entry.type === "back_forward");
+}
+
 async function boot() {
   if (!navigator.onLine) {
     showOffline();
     return;
   }
-  const stored = readStorage();
+  // A reload or the back button goes back into the flow this phone was in; opening the page from home
+  // asks which handover, and the open one is offered under «تحویل باز» instead of being forced on the person.
+  const stored = comingBack() ? readStorage() : {};
   let resumed = false;
   for (const flowName of FLOWS) {
     if (!stored[flowName]) continue;
