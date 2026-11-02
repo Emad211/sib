@@ -161,6 +161,14 @@ class ChecklistIn(BaseModel):
     photo_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class CardReceiptIn(BaseModel):
+    """The content hash of the card reader receipt photo the phone already uploaded (ADR-034)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    photo_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ParcelIn(BaseModel):
     """One parcel still on its way to the store, and how many packages it holds (H-04)."""
 
@@ -261,6 +269,7 @@ def _state(state: HandoverState, principal: Principal | None = None) -> dict[str
         "my_side": _side_of(state, principal),
         "outgoing_name": state.outgoing_name,
         "incoming_name": state.incoming_name,
+        "card_receipt": state.card_receipt,
     }
 
 
@@ -525,6 +534,23 @@ def answer_checklist(
     )
     _no_store(response)
     return _state(state)
+
+
+@router.post("/{handover_id}/card-receipt")
+def send_card_receipt(
+    handover_id: str,
+    body: CardReceiptIn,
+    request: Request,
+    response: Response,
+    principal: CountGuard,
+    service: Annotated[HandoverService, Depends(get_handover)],
+) -> dict[str, Any]:
+    """Name the uploaded photo of the card reader's receipt on the cash step (ADR-034)."""
+    if not request.app.state.photos.exists(body.photo_sha256):
+        raise Conflict("عکس رسید هنوز بارگذاری نشده است.")
+    state = _run(service.send_card_receipt, handover_id, body.photo_sha256, caller=_caller(principal))
+    _no_store(response)
+    return _state(state, principal)
 
 
 @router.post("/{handover_id}/parcels")

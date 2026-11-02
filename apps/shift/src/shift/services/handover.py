@@ -82,6 +82,7 @@ SESSION_GRACE = timedelta(hours=1)
 NOT_A_MANAGER = "تأیید تلفنی را فقط یکی از مدیران فعال درمانگاه می‌دهد."
 START_OWN_FLOW = "هر نفر فقط تحویل جریان خودش را شروع می‌کند."
 CHECKLIST_INCOMING = "چک‌لیست را نفر ورودی پر می‌کند."
+CARD_RECEIPT_OUTGOING = "عکس رسید کارتخوان را نفر خروجی می‌فرستد."
 _CASH = "cash"
 _PENDING = frozenset({CountStatus.OUTGOING, CountStatus.JOINT})
 _JOINT_EVENT = EventType.HANDOVER_JOINT_COUNTED.value
@@ -145,6 +146,8 @@ class HandoverState:
     # Their names, so a screen says whose turn it is instead of «نفر خروجی».
     outgoing_name: str = ""
     incoming_name: str = ""
+    # Whether the outgoing person already sent the card reader's receipt photo (reception flow only, ADR-034).
+    card_receipt: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,6 +193,7 @@ class _Flow:
     # and never a clock one (H-11), and how far its cash reference has already been adjusted.
     start_seq: int = 0
     adjustment: int = 0
+    card_receipt: bool = False
 
 
 class HandoverService:
@@ -415,6 +419,7 @@ class HandoverService:
             emergency_by=handover.emergency_by,
             emergency_at=flow.emergency_at,
             closed=handover.closed,
+            card_receipt=flow.card_receipt,
         )
 
     def _full_name(self, staff_id: str) -> str:
@@ -511,6 +516,18 @@ class HandoverService:
             raise HandoverError("the item is not on this flow's checklist")
         payload = {"item_id": item_id, "ok": ok, "reading": reading, "photo_id": photo_id}
         self._append(flow.row, caller, [(EventType.HANDOVER_CHECKLIST_ANSWERED.value, payload)])
+        return self.state(handover_id)
+
+    def send_card_receipt(self, handover_id: str, photo_sha256: str, *, caller: Caller) -> HandoverState:
+        """The outgoing person's photo of the card reader's receipt, taken on the cash step (ADR-034)."""
+        row = self._row(handover_id)
+        _part_of_the_flow(row, caller)
+        if row.flow is not HandoverFlow.RECEPTION:
+            raise HandoverError("only a reception handover has a card reader to photograph")
+        if caller.actor_id != row.outgoing_id:
+            raise NotOfTheFlow(CARD_RECEIPT_OUTGOING)
+        flow = self._require_step(handover_id, HandoverStep.CASH)
+        self._append(flow.row, caller, [(EventType.HANDOVER_CARD_RECEIPT_SENT.value, {"photo_sha256": photo_sha256})])
         return self.state(handover_id)
 
     def hand_parcel(self, handover_id: str, parcel_id: str, packages: int, *, caller: Caller) -> HandoverState:
@@ -788,6 +805,8 @@ class HandoverService:
         """
         step = flow.handover.step
         if step is HandoverStep.CASH:
+            if flow.handover.emergency_by is None and not flow.card_receipt:
+                raise HandoverError("the card reader's receipt has to be photographed before the shelf")
             if flow.cash is None or not flow.cash.settled:
                 raise HandoverError("the cash box has to be counted and settled before the shelf")
             return
@@ -844,7 +863,9 @@ class HandoverService:
         emergency_at: datetime | None = None
         start_seq = 0
         adjustment = 0
+        card_receipt = False
         for event in events_repo.iter_handover_events(connection, row.handover_id):
+            card_receipt = card_receipt or event.type == EventType.HANDOVER_CARD_RECEIPT_SENT.value
             if start_seq == 0 and event.type == EventType.HANDOVER_STARTED.value:
                 # The freeze point: money appended after this row is what the settle has to place.
                 start_seq = event.seq
@@ -854,7 +875,7 @@ class HandoverService:
             if event.type == EventType.HANDOVER_EMERGENCY_START_CONFIRMED.value:
                 # H-08 records who confirmed the emergency start and when; the when is its server stamp.
                 emergency_at = parse_iso(event.server_at)
-        return _Flow(row, handover, references, cash, items, emergency_at, start_seq, adjustment)
+        return _Flow(row, handover, references, cash, items, emergency_at, start_seq, adjustment, card_receipt)
 
     def _references_of(self, handover_id: str) -> _References:
         """Read the references frozen at `start` back from the audit trail (R-02 allows them nowhere else)."""

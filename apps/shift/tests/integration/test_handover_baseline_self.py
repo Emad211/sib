@@ -20,6 +20,7 @@ from auth_fixtures import PIN, ROLES, login, seed_roster
 from fastapi.testclient import TestClient
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed as seed_catalog
+from turns import send_receipt_api
 
 from shift.adapters.db import handover_repo
 from shift.app import create_app
@@ -150,6 +151,7 @@ def test_the_receptionist_counts_the_box_and_shelf_before_holding_custody(client
     assert started.status_code == 201, started.text
     handover_id = started.json()["handover_id"]
     assert started.json()["flow"] == "reception"
+    assert send_receipt_api(client, _as(client, counter), handover_id).status_code == 200  # the outgoing person
     # The box is counted together: one joint figure from either of the two people.
     cash = client.post(
         f"/api/v1/handover/{handover_id}/joint",

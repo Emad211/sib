@@ -13,6 +13,7 @@ goes, so a change that breaks how they fit is caught here:
 6. no discrepancy was recorded, a rebuild equals the live projections, and no answer carried a figure.
 """
 
+import hashlib
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -99,7 +100,9 @@ class Phones:
         self.tokens: dict[str, tuple[str, str]] = {}
         self.bodies: list[str] = []
 
-    def act(self, role: str, method: str, url: str, body: dict[str, Any] | None = None) -> Any:
+    def act(
+        self, role: str, method: str, url: str, body: dict[str, Any] | None = None, *, raw: bytes | None = None
+    ) -> Any:
         person = ROLES[role]
         if role not in self.tokens:
             self.client.cookies.clear()
@@ -109,7 +112,11 @@ class Phones:
         token, csrf = self.tokens[role]
         self.client.cookies.clear()
         self.client.cookies.set(SESSION_COOKIE, token)
-        response = self.client.request(method, url, json=body, headers={"X-CSRFToken": csrf})
+        if raw is not None:
+            headers = {"X-CSRFToken": csrf, "Content-Type": "image/jpeg"}
+            response = self.client.request(method, url, content=raw, headers=headers)
+        else:
+            response = self.client.request(method, url, json=body, headers={"X-CSRFToken": csrf})
         self.bodies.append(response.text)
         assert response.status_code < 400, f"{role} {method} {url}: {response.text}"
         return response.json() if response.content else None
@@ -207,6 +214,10 @@ def test_one_working_day_of_the_reception_flow(day: TestClient) -> None:
 
     # 4. The box: counted together, one joint figure. Then the shelf, incoming first.
     url = f"/api/v1/handover/{handover_id}"
+    receipt = b"card-reader-receipt"
+    sha = hashlib.sha256(receipt).hexdigest()
+    phones.act("multi_role", "PUT", f"/api/v1/photos/{sha}", raw=receipt)
+    assert phones.act("multi_role", "POST", f"{url}/card-receipt", {"photo_sha256": sha})["card_receipt"] is True
     assert phones.act("reception", "POST", f"{url}/joint", {"scope": "cash", "counted": box}) == {"status": "matched"}
     assert phones.act("reception", "POST", f"{url}/advance")["step"] == "shelf"
     for item, quantity in expected.items():

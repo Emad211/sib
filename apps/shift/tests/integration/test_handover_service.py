@@ -20,7 +20,7 @@ from clocks import FixedClock
 from make_synthetic_acc_db import build
 from synthetic_accounting import close_open_invoices, empty_accounting
 from synthetic_catalog import seed
-from turns import count_on_turn
+from turns import count_on_turn, send_receipt
 
 from event_fixtures import build_event
 from shift.adapters.accounting.views import parse_time
@@ -605,6 +605,10 @@ def test_the_flow_log_refuses_a_step_past_the_last_one(service: HandoverService,
 
 def test_the_steps_are_left_only_when_their_work_is_settled(service: HandoverService) -> None:
     handover_id = _start(service, opening_cash=0, stock={PARA: 10, DICLO: 4}).handover_id
+    with pytest.raises(HandoverError, match="photographed"):
+        service.advance(handover_id, caller=CALLER)
+
+    send_receipt(service, handover_id)
     with pytest.raises(HandoverError, match="counted and settled"):
         service.advance(handover_id, caller=CALLER)
 

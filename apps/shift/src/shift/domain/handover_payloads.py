@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import Field, model_validator
 
 from shift.domain.handover_fsm import HandoverStep
-from shift.domain.payloads import AmountRaw, Identifier, ItemCounted, Payload, Quantity
+from shift.domain.payloads import AmountRaw, Identifier, ItemCounted, Payload, PhotoHash, Quantity
 
 CountScope = Literal["cash", "item"]
 SignerSide = Literal["incoming", "outgoing"]
@@ -106,6 +106,12 @@ class ParcelHanded(Payload):
 
     parcel_id: Identifier
     packages: Quantity
+
+
+class CardReceiptSent(Payload):
+    """The outgoing person photographed the card reader's short receipt for the shift being handed over (ADR-034)."""
+
+    photo_sha256: PhotoHash
 
 
 class HandoverSigned(Payload):

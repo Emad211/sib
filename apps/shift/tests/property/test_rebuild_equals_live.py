@@ -12,7 +12,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed
-from turns import count_on_turn
+from turns import count_on_turn, send_receipt
 
 from event_fixtures import build_event, random_events
 from shift.adapters.db import projections_repo
@@ -116,6 +116,7 @@ def test_a_finished_handover_rebuilds_to_the_live_projections(database: Database
         caller=caller,
     ).handover_id
 
+    send_receipt(service, handover_id)
     service.joint(handover_id, cash, 997_000, caller=caller)
     service.advance(handover_id, caller=caller)
     count_on_turn(service, handover_id, shelf, 8, caller=caller)

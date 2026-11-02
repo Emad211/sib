@@ -15,6 +15,7 @@ class EventType(StrEnum):
     HANDOVER_COUNT_SETTLED = "handover.count_settled"
     HANDOVER_CHECKLIST_ANSWERED = "handover.checklist_answered"
     HANDOVER_PARCEL_HANDED = "handover.parcel_handed"
+    HANDOVER_CARD_RECEIPT_SENT = "handover.card_receipt_sent"
     HANDOVER_SIGNED = "handover.signed"
     HANDOVER_EARLY_LEAVE_REPORTED = "handover.early_leave_reported"
     HANDOVER_EMERGENCY_START_CONFIRMED = "handover.emergency_start_confirmed"

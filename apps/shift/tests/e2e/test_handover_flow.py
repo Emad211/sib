@@ -18,6 +18,7 @@ What the three journeys promise:
    closes the flow and the page names no culprit (H-08).
 """
 
+import base64
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -65,6 +66,9 @@ FRIDGE_READING = "6.5"
 
 OFFLINE_GATE = "تحویل شیفت نیازمند اتصال به سرور درمانگاه است"
 ALREADY_OPEN = "این تحویل باز شده است"
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 PERSIAN_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 PHONE_VIEWPORT = {"width": 390, "height": 844}
 
@@ -392,6 +396,10 @@ def test_reception_handover_counts_the_box_the_shelf_and_both_people_sign_on_the
 
         # The box is counted together: one joint figure, typed on one phone with Persian digits; the other
         # phone follows the flow by itself and shows the same settled box.
+        outgoing.wait_for_selector("#handover-receipt-input", timeout=15000)
+        outgoing.set_input_files(
+            "#handover-receipt-input", files=[{"name": "r.png", "mimeType": "image/png", "buffer": PNG}]
+        )
         incoming.wait_for_selector("#handover-joint-input", timeout=15000)
         outgoing.wait_for_selector("#handover-joint-input", timeout=15000)
         outgoing.fill("#handover-joint-input", _persian(CASH_OPENING))

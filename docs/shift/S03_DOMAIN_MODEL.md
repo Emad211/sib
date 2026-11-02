@@ -36,7 +36,7 @@
 
 | گروه | انواع |
 |---|---|
-| تحویل | `handover.started`، `handover.cash_counted`، `handover.item_counted`، `handover.recount_requested`، `handover.outgoing_counted`، `handover.joint_counted`، `handover.count_settled`، `handover.step_advanced`، `handover.checklist_answered`، `handover.parcel_handed`، `handover.signed`، `handover.early_leave_reported`، `handover.emergency_start_confirmed`؛ دو رکورد داخلیِ برش نقدی: `handover.cash_reference_adjusted` (متادیتا، بی‌اثر) و `handover.late_cash_recorded` (اثر معکوسِ رویداد دیررسیده، تا صندوق دو بار کم نشود) |
+| تحویل | `handover.started`، `handover.cash_counted`، `handover.item_counted`، `handover.recount_requested`، `handover.outgoing_counted`، `handover.joint_counted`، `handover.count_settled`، `handover.step_advanced`، `handover.checklist_answered`، `handover.parcel_handed`، `handover.card_receipt_sent`، `handover.signed`، `handover.early_leave_reported`، `handover.emergency_start_confirmed`؛ دو رکورد داخلیِ برش نقدی: `handover.cash_reference_adjusted` (متادیتا، بی‌اثر) و `handover.late_cash_recorded` (اثر معکوسِ رویداد دیررسیده، تا صندوق دو بار کم نشود) |
 | مغایرت | `discrepancy.recorded` (خودکار) |
 | رویداد شیفت — پول | `card.transfer_reported`، `refund.requested`، `campaign.discount_applied`، `cash.withdrawn` |
 | رویداد شیفت — انبار | `stock.waste_reported`، `stock.shelf_restocked`، `stock.emergency_withdrawal` |

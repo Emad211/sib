@@ -9,6 +9,7 @@ S03 §3 has each person sign on their own device, so the tests that walk a flow 
 sessions at once: the incoming person's phone opens the flow and the outgoing person's phone joins it.
 """
 
+import hashlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -23,6 +24,7 @@ from fastapi.testclient import TestClient
 from make_synthetic_acc_db import build
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed as seed_catalog
+from turns import FAKE_JPEG, send_receipt_api
 
 from shift.adapters.db import handover_repo
 from shift.app import create_app
@@ -168,6 +170,9 @@ def _count(
         state.status_code == 200
         and (state.json()["cash_status"] if scope == "cash" else state.json()["counts"].get(item_id)) == "joint"
     )
+    if joint and scope == "cash" and not state.json()["card_receipt"] and state.json()["emergency"] is None:
+        outgoing = _phone(client, OUTGOING_ROLE)
+        assert send_receipt_api(client, _as(client, outgoing), handover_id).status_code == 200
     return client.post(
         f"/api/v1/handover/{handover_id}/{'joint' if joint else 'counts'}", json=body, headers=_as(client, phone)
     )
@@ -755,6 +760,17 @@ def test_every_count_is_taken_by_the_side_it_belongs_to(client: TestClient) -> N
     mine = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, incoming)).json()
     theirs = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, outgoing)).json()
     assert (mine["my_side"], theirs["my_side"]) == ("incoming", "outgoing")
+
+    sha = hashlib.sha256(FAKE_JPEG).hexdigest()
+    client.put(
+        f"/api/v1/photos/{sha}", content=FAKE_JPEG, headers={**_as(client, outgoing), "Content-Type": "image/jpeg"}
+    )
+    refused = client.post(
+        f"/api/v1/handover/{handover_id}/card-receipt", json={"photo_sha256": sha}, headers=_as(client, incoming)
+    )
+    assert refused.status_code == 403, "only the outgoing person photographs the card reader's receipt"
+    assert _advance(client, incoming, handover_id).status_code == 409, "the cash step waits for the receipt"
+    assert send_receipt_api(client, _as(client, outgoing), handover_id).json()["card_receipt"] is True
 
     joint = {"scope": "cash", "counted": CASH_OPENING}
     assert client.post(f"/api/v1/handover/{handover_id}/joint", json=joint, headers=_as(client, incoming)).json() == {

@@ -27,7 +27,7 @@
    "storekeeper": 403
   }
  },
- "GET /accountant/queue [get_accountant_queue]": {
+ "GET /accountant/prices [get_price_history]": {
   "guard": "permission:accountant.queue.view",
   "roles": {
    "accountant": 200,
@@ -41,119 +41,7 @@
    "storekeeper": 403
   }
  },
- "GET /manager/rewards [get_manager_rewards]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /rewards [get_my_rewards]": {
-  "guard": "permission:reward.view",
-  "roles": {
-   "accountant": 200,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 200,
-   "nurse": 200,
-   "purchaser": 200,
-   "reception": 200,
-   "shift_doctor": 200,
-   "storekeeper": 200
-  }
- },
- "POST /manager/rewards/accrue [post_accrue]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /manager/rewards/rates [post_rate]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /manager/rewards/revoke [post_revoke]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /manager/rewards/staff-map [post_staff_map]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /manager/rewards/credit [post_credit]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /manager/rewards/goal [post_goal]": {
-  "guard": "permission:reward.grant",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /accountant/prices [get_price_history]": {
+ "GET /accountant/queue [get_accountant_queue]": {
   "guard": "permission:accountant.queue.view",
   "roles": {
    "accountant": 200,
@@ -196,20 +84,6 @@
   }
  },
  "GET /api/v1/badges [badges]": {
-  "guard": "authenticated",
-  "roles": {
-   "accountant": 200,
-   "anon": 401,
-   "manager": 200,
-   "multi_role": 200,
-   "nurse": 200,
-   "purchaser": 200,
-   "reception": 200,
-   "shift_doctor": 200,
-   "storekeeper": 200
-  }
- },
- "GET /api/v1/shift/now [shift_now]": {
   "guard": "authenticated",
   "roles": {
    "accountant": 200,
@@ -379,6 +253,21 @@
    "storekeeper": 403
   }
  },
+ "GET /api/v1/photos/{sha256} [get_photo]": {
+  "guard": "permission:shift_event.approve",
+  "note": "a receipt photo: only the manager and the approvers may read the bytes; the hash is the whole path (SHF-7)",
+  "roles": {
+   "accountant": 404,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 404,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 404,
+   "storekeeper": 404
+  }
+ },
  "GET /api/v1/purchase/state [get_purchase_state]": {
   "guard": "permission:events.append",
   "note": "the purchasing chain as this person may see it: the service cuts the sections down to the permissions held, so any phone that may append asks and gets only its own (R-01, R-07)",
@@ -422,6 +311,21 @@
    "storekeeper": 403
   }
  },
+ "GET /api/v1/shift-events/open [get_open_events]": {
+  "guard": "permission:events.append",
+  "note": "the open record a closing event points at (fault assign/fix, belonging delivery); the service returns only records this person may act on, whatever shift opened them (F2, SHF-7)",
+  "roles": {
+   "accountant": 200,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
  "GET /api/v1/shift-events/pending [get_pending_events]": {
   "guard": "permission:events.append",
   "note": "my open items: any phone that may append asks, because the named confirmer of a record may be a nurse or a receptionist; the service returns only the records this person may decide (R-01, R-07)",
@@ -437,9 +341,8 @@
    "storekeeper": 200
   }
  },
- "GET /api/v1/shift-events/open [get_open_events]": {
-  "guard": "permission:events.append",
-  "note": "the open record a closing event points at (fault assign/fix, belonging delivery); the service returns only records this person may act on, whatever shift opened them (F2, SHF-7)",
+ "GET /api/v1/shift/now [shift_now]": {
+  "guard": "authenticated",
   "roles": {
    "accountant": 200,
    "anon": 401,
@@ -552,6 +455,21 @@
    "storekeeper": 200
   }
  },
+ "GET /manager/baseline [get_manager_baseline]": {
+  "guard": "permission:handover.baseline",
+  "note": "the manager records the app's opening count on the phone, through the same service as the CLI (SHF-7.1)",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /manager/campaigns [get_manager_campaigns]": {
   "guard": "permission:settings.change",
   "roles": {
@@ -611,9 +529,81 @@
    "storekeeper": 403
   }
  },
+ "GET /manager/decisions [get_manager_decisions]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/items [get_manager_items]": {
+  "guard": "permission:catalog.manage",
+  "note": "the clinic's items with their accounting codes, the items without a code first (SHF-7.1, Q-17)",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/rewards [get_manager_rewards]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/security [get_manager_security]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "GET /manager/settings [get_manager_settings]": {
   "guard": "permission:settings.change",
   "note": "the settings screen the existing settings API already drives (R-09)",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "GET /manager/staff [get_manager_staff]": {
+  "guard": "permission:staff.manage",
+  "note": "ADR-022: the staff screen — add a person, give roles, deactivate",
   "roles": {
    "accountant": 403,
    "anon": 303,
@@ -657,6 +647,20 @@
  "GET /purchase [get_purchase_page]": {
   "guard": "permission:events.append",
   "note": "the purchasing and warehouse screen: one job per role, and the API cuts each section down to the permissions held, so no price reaches a phone without purchase.payment.record (R-10, R-07)",
+  "roles": {
+   "accountant": 200,
+   "anon": 303,
+   "manager": 200,
+   "multi_role": 200,
+   "nurse": 200,
+   "purchaser": 200,
+   "reception": 200,
+   "shift_doctor": 200,
+   "storekeeper": 200
+  }
+ },
+ "GET /rewards [get_my_rewards]": {
+  "guard": "permission:reward.view",
   "roles": {
    "accountant": 200,
    "anon": 303,
@@ -769,8 +773,9 @@
    "storekeeper": 200
   }
  },
- "POST /api/v1/handover/start [start_handover]": {
-  "guard": "permission:handover.start",
+ "POST /api/v1/handover/baseline [record_own_baseline]": {
+  "guard": "permission:handover.baseline.own",
+  "note": "owner decision 9: the person whose role owns the flow records its first count and becomes its custodian",
   "roles": {
    "accountant": 403,
    "anon": 401,
@@ -783,9 +788,8 @@
    "storekeeper": 403
   }
  },
- "POST /api/v1/handover/baseline [record_own_baseline]": {
-  "guard": "permission:handover.baseline.own",
-  "note": "owner decision 9: the person whose role owns the flow records its first count and becomes its custodian",
+ "POST /api/v1/handover/start [start_handover]": {
+  "guard": "permission:handover.start",
   "roles": {
    "accountant": 403,
    "anon": 401,
@@ -810,6 +814,20 @@
    "reception": 404,
    "shift_doctor": 404,
    "storekeeper": 404
+  }
+ },
+ "POST /api/v1/handover/{handover_id}/card-receipt [send_card_receipt]": {
+  "guard": "permission:handover.count.submit",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 422,
+   "nurse": 422,
+   "purchaser": 403,
+   "reception": 422,
+   "shift_doctor": 422,
+   "storekeeper": 422
   }
  },
  "POST /api/v1/handover/{handover_id}/checklists [answer_checklist]": {
@@ -911,12 +929,41 @@
   },
   "note": " (ADR-022 تصمیم ۱۰: حسابدار امضای تحویل ندارد)"
  },
- "POST /api/v1/manager/held-events/{held_event_id}/release [release_held]": {
+ "POST /api/v1/manager/baseline [post_manager_baseline]": {
+  "guard": "permission:handover.baseline",
+  "note": "the opening count as JSON; an unknown flow is refused before anything is written (SHF-7.1)",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/decisions/early-leave/{handover_id} [post_early_leave]": {
   "guard": "permission:daily_card.view",
   "roles": {
    "accountant": 403,
    "anon": 401,
-   "manager": 404,
+   "manager": 409,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/decisions/review [post_review]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,
@@ -931,6 +978,62 @@
    "accountant": 403,
    "anon": 401,
    "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/held-events/{held_event_id}/release [release_held]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 404,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/begin [post_two_step_begin]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 200,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/confirm [post_two_step_confirm]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/manager/two-step/disable [post_two_step_disable]": {
+  "guard": "permission:daily_card.view",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,
@@ -954,6 +1057,51 @@
    "storekeeper": 422
   }
  },
+ "POST /api/v1/shift/presence [declare_presence]": {
+  "guard": "permission:shift.presence.declare",
+  "note": "ADR-021: the button a second receptionist or the shift doctor presses; only the role the person holds may be declared",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 403,
+   "multi_role": 201,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 201,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/staff [create_staff]": {
+  "guard": "permission:staff.manage",
+  "note": "ADR-022: the empty body is refused by validation after the guard",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /api/v1/staff/{staff_id}/active [set_staff_active]": {
+  "guard": "permission:staff.manage",
+  "note": "ADR-022: deactivate or reactivate one person",
+  "roles": {
+   "accountant": 403,
+   "anon": 401,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
  "POST /api/v1/staff/{staff_id}/pin-reset [reset_pin]": {
   "guard": "permission:staff.pin.reset",
   "roles": {
@@ -974,6 +1122,90 @@
    "accountant": 403,
    "anon": 401,
    "manager": 204,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/accrue [post_accrue]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/credit [post_credit]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/goal [post_goal]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/rates [post_rate]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/revoke [post_revoke]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
+   "multi_role": 403,
+   "nurse": 403,
+   "purchaser": 403,
+   "reception": 403,
+   "shift_doctor": 403,
+   "storekeeper": 403
+  }
+ },
+ "POST /manager/rewards/staff-map [post_staff_map]": {
+  "guard": "permission:reward.grant",
+  "roles": {
+   "accountant": 403,
+   "anon": 303,
+   "manager": 422,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,
@@ -1038,35 +1270,6 @@
    "storekeeper": 403
   }
  },
- "PUT /api/v1/settings/{setting} [change_setting]": {
-  "guard": "permission:settings.change",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /api/v1/photos/{sha256} [get_photo]": {
-  "guard": "permission:shift_event.approve",
-  "note": "a receipt photo: only the manager and the approvers may read the bytes; the hash is the whole path (SHF-7)",
-  "roles": {
-   "accountant": 404,
-   "anon": 401,
-   "manager": 404,
-   "multi_role": 404,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 404,
-   "storekeeper": 404
-  }
- },
  "PUT /api/v1/photos/{sha256} [put_photo]": {
   "guard": "permission:events.append",
   "note": "the recorder uploads the receipt before the event that names it; a body that is not a JPEG is refused (SHF-7)",
@@ -1082,103 +1285,12 @@
    "storekeeper": 415
   }
  },
- "GET /manager/baseline [get_manager_baseline]": {
-  "guard": "permission:handover.baseline",
-  "note": "the manager records the app's opening count on the phone, through the same service as the CLI (SHF-7.1)",
+ "PUT /api/v1/settings/{setting} [change_setting]": {
+  "guard": "permission:settings.change",
   "roles": {
    "accountant": 403,
-   "anon": 303,
+   "anon": 401,
    "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /manager/items [get_manager_items]": {
-  "guard": "permission:catalog.manage",
-  "note": "the clinic's items with their accounting codes, the items without a code first (SHF-7.1, Q-17)",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/baseline [post_manager_baseline]": {
-  "guard": "permission:handover.baseline",
-  "note": "the opening count as JSON; an unknown flow is refused before anything is written (SHF-7.1)",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/shift/presence [declare_presence]": {
-  "guard": "permission:shift.presence.declare",
-  "note": "ADR-021: the button a second receptionist or the shift doctor presses; only the role the person holds may be declared",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 403,
-   "multi_role": 201,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 201,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /manager/staff [get_manager_staff]": {
-  "guard": "permission:staff.manage",
-  "note": "ADR-022: the staff screen — add a person, give roles, deactivate",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/staff [create_staff]": {
-  "guard": "permission:staff.manage",
-  "note": "ADR-022: the empty body is refused by validation after the guard",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/staff/{staff_id}/active [set_staff_active]": {
-  "guard": "permission:staff.manage",
-  "note": "ADR-022: deactivate or reactivate one person",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
    "multi_role": 403,
    "nurse": 403,
    "purchaser": 403,
@@ -1190,104 +1302,6 @@
  "PUT /api/v1/staff/{staff_id}/roles/{role} [set_staff_role]": {
   "guard": "permission:staff.manage",
   "note": "ADR-022: the change applies from the next shift and login reads the same answer",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /manager/decisions [get_manager_decisions]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/decisions/early-leave/{handover_id} [post_early_leave]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 409,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/decisions/review [post_review]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "GET /manager/security [get_manager_security]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 303,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/two-step/begin [post_two_step_begin]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 200,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/two-step/confirm [post_two_step_confirm]": {
-  "guard": "permission:daily_card.view",
-  "roles": {
-   "accountant": 403,
-   "anon": 401,
-   "manager": 422,
-   "multi_role": 403,
-   "nurse": 403,
-   "purchaser": 403,
-   "reception": 403,
-   "shift_doctor": 403,
-   "storekeeper": 403
-  }
- },
- "POST /api/v1/manager/two-step/disable [post_two_step_disable]": {
-  "guard": "permission:daily_card.view",
   "roles": {
    "accountant": 403,
    "anon": 401,

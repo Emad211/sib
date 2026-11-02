@@ -40,6 +40,8 @@ def default_payload(event_type: str) -> dict[str, Any]:
         return {"item_id": "item-1", "ok": True}
     if event_type == "handover.parcel_handed":
         return {"parcel_id": "parcel-1", "packages": 2}
+    if event_type == "handover.card_receipt_sent":
+        return {"photo_sha256": "a" * 64}
     if event_type == "shift.presence_declared":
         return {"role": "reception"}
     if event_type == "handover.signed":

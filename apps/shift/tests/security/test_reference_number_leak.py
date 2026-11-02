@@ -34,6 +34,7 @@ from auth_fixtures import PIN, ROLES, seed_roster
 from fastapi.testclient import TestClient
 from synthetic_accounting import empty_accounting
 from synthetic_catalog import seed as seed_catalog
+from turns import send_receipt_api
 
 import shift as shift_package
 from shift.adapters.db import projections_repo
@@ -299,6 +300,13 @@ def _count(
     return response.json()["status"]
 
 
+def _send_receipt(client: TestClient, scanner: Scanner, session: Session, handover_id: str) -> dict[str, Any]:
+    response = send_receipt_api(client, _act(client, session), handover_id)
+    assert response.status_code == 200, response.text
+    scanner.scan(response, "card-receipt")
+    return response.json()
+
+
 def _joint(
     client: TestClient,
     scanner: Scanner,
@@ -401,6 +409,8 @@ def _reception_flow(client: TestClient, scanner: Scanner, incoming: Session, out
     assert {item["item_id"] for item in targets.json()["items"]} == {PARA, DICLO}
 
     assert _read_figures(client)[0] == CASH_REFERENCE, "opening the box moves nothing (H-11)"
+    receipt = _send_receipt(client, scanner, outgoing, handover_id)
+    assert receipt["card_receipt"] is True
     assert _joint(client, scanner, incoming, handover_id, CASH_JOINT) == "settled"
     assert _read_figures(client)[0] == CASH_JOINT, "only the settlement moves the box (H-13)"
     shelf = _advance(client, scanner, incoming, handover_id, expected="shelf")

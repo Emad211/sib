@@ -191,6 +191,7 @@ function flowSignature(flowState) {
   return JSON.stringify([
     flowState.step,
     flowState.cash_status,
+    flowState.card_receipt,
     flowState.counts,
     flowState.signed,
     flowState.closed,
@@ -427,7 +428,70 @@ function waitingJob(scope, status) {
   waitTimer = window.setTimeout(() => guard(refresh), WAIT_POLL_MS);
 }
 
+// ADR-034: the outgoing person photographs the card reader's short receipt before the box is counted.
+function receiptJpeg(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, 1280 / Math.max(image.width, image.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.width * scale));
+      canvas.height = Math.max(1, Math.round(image.height * scale));
+      canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("عکس آماده نشد."))), "image/jpeg", 0.7);
+    };
+    image.onerror = () => reject(new Error("عکس خوانده نشد؛ دوباره بگیرید."));
+    image.src = url;
+  });
+}
+
+async function sendReceipt(file) {
+  const blob = await receiptJpeg(file);
+  if (!window.crypto || !crypto.subtle) throw new Error("برای گرفتن عکس، اتصال امن (HTTPS) لازم است.");
+  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const put = await fetch(`/api/v1/photos/${hash}`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "image/jpeg" },
+    body: blob,
+  });
+  if (!put.ok) throw new Error("فرستادن عکس انجام نشد؛ دوباره تلاش کنید.");
+  await adopt(await request(`${API}/${state.handover_id}/card-receipt`, "POST", { photo_sha256: hash }));
+}
+
+function receiptJob() {
+  stepContainer.replaceChildren();
+  const job = element("div", "ho-job");
+  job.append(element("h2", "ho-job-title", "رسید کارتخوان"));
+  if (state.my_side !== "outgoing") {
+    job.append(element("p", "ho-hint", `منتظر بمانید تا ${sideName("outgoing")} عکس رسید کارتخوان را بفرستد.`));
+    stepContainer.appendChild(job);
+    window.clearTimeout(waitTimer);
+    waitTimer = window.setTimeout(() => guard(refresh), WAIT_POLL_MS);
+    return;
+  }
+  job.append(element("p", "ho-hint", "از رسید کوتاه دستگاه کارتخوان عکس بگیرید و بفرستید."));
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.capture = "environment";
+  input.id = "handover-receipt-input";
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    if (file) guard(() => sendReceipt(file));
+  });
+  job.append(input);
+  stepContainer.appendChild(job);
+}
+
 function renderCash() {
+  if (!state.card_receipt && !state.emergency) {
+    receiptJob();
+    return;
+  }
   if (state.cash_status === "joint") {
     jointJob({ scope: "cash" });
     return;

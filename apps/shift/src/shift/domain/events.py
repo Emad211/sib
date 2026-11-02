@@ -24,6 +24,7 @@ from shift.domain.event_types import EventType, UnknownEventType
 from shift.domain.handover_baseline import BaselineRecorded
 from shift.domain.handover_cash_payloads import CashReferenceAdjusted, LateCashRecorded
 from shift.domain.handover_payloads import (
+    CardReceiptSent,
     ChecklistAnswered,
     CountSettled,
     DiscrepancyRecorded,
@@ -84,6 +85,7 @@ BASE_EVENT_SPECS: Mapping[EventType, EventSpec] = {
     EventType.HANDOVER_COUNT_SETTLED: EventSpec(CountSettled, settled_count, requires_shift=True),
     EventType.HANDOVER_CHECKLIST_ANSWERED: EventSpec(ChecklistAnswered, no_effects, requires_shift=True),
     EventType.HANDOVER_PARCEL_HANDED: EventSpec(ParcelHanded, no_effects, requires_shift=True),
+    EventType.HANDOVER_CARD_RECEIPT_SENT: EventSpec(CardReceiptSent, no_effects, requires_shift=True),
     EventType.HANDOVER_SIGNED: EventSpec(HandoverSigned, no_effects, requires_shift=True),
     EventType.HANDOVER_EARLY_LEAVE_REPORTED: EventSpec(EarlyLeaveReported, no_effects, requires_shift=True),
     EventType.HANDOVER_EMERGENCY_START_CONFIRMED: EventSpec(EmergencyStartConfirmed, no_effects, requires_shift=True),
