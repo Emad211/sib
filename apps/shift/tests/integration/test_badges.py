@@ -48,7 +48,7 @@ def test_a_quiet_clinic_shows_no_number(client: TestClient) -> None:
     assert answer.headers["cache-control"] == "no-store"
 
 
-def test_an_order_waiting_for_the_manager_lights_the_purchase_tile_and_a_decision_clears_it(client: TestClient) -> None:
+def test_an_order_waiting_for_the_manager_lights_the_daily_card_and_a_decision_clears_it(client: TestClient) -> None:
     store_csrf = _sign_in(client, "storekeeper")
     drafted = _act(
         client,
@@ -57,16 +57,18 @@ def test_an_order_waiting_for_the_manager_lights_the_purchase_tile_and_a_decisio
         {"lines": [{"item_id": ITEM, "location_id": LOCATION, "quantity": 4}], "note": "قفسه خالی شد"},
     )
     assert drafted["status"] == "recorded", drafted
-    assert client.get(BADGES).json()["badges"].get("/purchase") is None, "the author has nothing to decide"
+    assert client.get(BADGES).json()["badges"] == {}, "the author has nothing to decide"
 
     manager_csrf = _sign_in(client, "manager")
-    assert client.get(BADGES).json()["badges"]["/purchase"] == 1
+    assert client.get(BADGES).json()["badges"] == {"/manager/card": 1}, (
+        "the order is decided on the card, and only the card shows it"
+    )
 
     decided = _act(
         client, manager_csrf, "order.decide", {"order_id": drafted["order_id"], "decision": "approved", "note": None}
     )
     assert decided["status"] == "recorded", decided
-    assert "/purchase" not in client.get(BADGES).json()["badges"]
+    assert client.get(BADGES).json()["badges"] == {}
 
 
 def test_a_person_gets_a_number_only_for_tiles_they_hold(client: TestClient) -> None:

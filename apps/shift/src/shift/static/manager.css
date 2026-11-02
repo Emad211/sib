@@ -15,8 +15,17 @@
 
 .mg-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
+  margin-inline: -1rem;
+  padding: 0 1rem 0.25rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.mg-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .mg-nav-link {
@@ -31,6 +40,18 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   text-decoration: none;
+}
+
+.mg-nav-link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  scroll-snap-align: center;
+}
+
+.mg-nav-link[aria-current="page"] {
+  color: var(--color-on-primary);
+  background-color: var(--color-primary-button);
+  border-color: transparent;
 }
 
 .mg-nav-link:focus-visible {

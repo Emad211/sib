@@ -419,3 +419,20 @@ def test_a_manager_builds_a_space_checklist_on_the_items_page(manager_client: Te
     assert refused.status_code == 400
     assert "این محل" in refused.json()["error"]["message"]
     assert "must be" not in refused.text
+
+
+def test_the_manager_menu_marks_the_page_you_are_on_and_only_that_one(manager_client: TestClient) -> None:
+    """One scrollable row of pages; the current one is highlighted so the manager always knows where they are."""
+    _signed_in(manager_client)
+    for path, label in (
+        ("/manager/staff", "کارکنان"),
+        ("/manager/decisions", "تصمیم‌های باز"),
+        (CARD_PAGE, "کارت امروز"),
+    ):
+        html = manager_client.get(path).text
+        current = re.findall(r'<a class="mg-nav-link"[^>]*aria-current="page"[^>]*>([^<]+)</a>', html)
+        assert current == [label], f"{path}: {current}"
+    history = manager_client.get("/manager/cards").text
+    assert re.findall(r'aria-current="page"[^>]*>([^<]+)</a>', history) == ["تاریخچهٔ کارت‌ها"], (
+        "the cards page is not the card"
+    )

@@ -16,8 +16,8 @@ from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, FLOW_OWNER_ROLES
 from shift.domain.item_icons import icon_for
-from shift.domain.on_shift import held_roles, off_shift_notice
-from shift.domain.permissions import Permission
+from shift.domain.on_shift import effective_permissions, held_roles, off_shift_notice
+from shift.domain.permissions import Permission, Role
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
 from shift.services.purchase import PURCHASE_PERMISSIONS
@@ -115,12 +115,39 @@ _GROUP_OF = {
 }
 
 
+def tile_group(href: str) -> str:
+    """The group a home tile belongs to; a page that is not listed is the manager's."""
+    return _GROUP_OF.get(href, "manager")
+
+
+def duty_permissions(principal: Principal | None) -> frozenset[Permission]:
+    """What the roles other than manager grant right now (a bound role only while on shift).
+
+    The manager holds every permission so the card, the approvals and the settings all work, but that is
+    not the work the manager's phone shows: the shift, store and accountant tiles appear only for a person
+    who actually holds one of those roles, so a manager who is only a manager sees the manager's tiles.
+    """
+    if principal is None:
+        return frozenset()
+    others = [role for role in principal.roles if role != Role.MANAGER.value]
+    return effective_permissions(others, principal.on_shift_roles) if others else frozenset()
+
+
+def tile_allowed(href: str, needs: frozenset[Permission], principal: Principal | None) -> bool:
+    """Whether this person's home shows (and counts) the tile: the manager's tiles by permission, the rest by role."""
+    if principal is None:
+        return False
+    if tile_group(href) == "manager":
+        return bool(principal.permissions & needs)
+    return bool(duty_permissions(principal) & needs)
+
+
 def _grouped(tiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The visible tiles under their group headings, in the clinic's order; unlisted pages are the manager's."""
     return [
         {"id": group_id, "title": title, "hint": hint, "tiles": members}
         for group_id, title, hint in HOME_GROUPS
-        if (members := [tile for tile in tiles if _GROUP_OF.get(tile["href"], "manager") == group_id])
+        if (members := [tile for tile in tiles if tile_group(tile["href"]) == group_id])
     ]
 
 
@@ -303,8 +330,7 @@ def get_home(request: Request) -> HTMLResponse:
     """Render the main PWA shell and issue the double-submit CSRF cookie."""
     principal = deps.principal_or_none(request)
     # A visitor with no session keeps no tile; the sections inside each screen are cut down by the API.
-    granted = principal.permissions if principal is not None else frozenset()
-    tiles = [tile for tile in HOME_TILES if granted & tile["needs"]]
+    tiles = [tile for tile in HOME_TILES if tile_allowed(tile["href"], tile["needs"], principal)]
     # ADR-021: an off-shift person reads that their shift is not open and keeps the handover tile.
     notice = None if principal is None else off_shift_notice(principal.roles, principal.on_shift_roles)
     # Owner decision 9: the first count sits right under the handover tile, and only while it is missing.

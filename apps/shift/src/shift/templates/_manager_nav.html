@@ -1,13 +1,18 @@
+{% set here = request.url.path if request is defined else "" %}
 <nav class="mg-nav" aria-label="صفحه‌های مدیر">
-  <a class="mg-nav-link" href="/manager/card">کارت امروز</a>
-  <a class="mg-nav-link" href="/manager/decisions">تصمیم‌های باز</a>
-  <a class="mg-nav-link" href="/manager/cards">تاریخچهٔ کارت‌ها</a>
-  <a class="mg-nav-link" href="/manager/staff">کارکنان</a>
-  <a class="mg-nav-link" href="/manager/baseline">شمارش اولیه</a>
-  <a class="mg-nav-link" href="/manager/items">اقلام و کد کالا</a>
-  <a class="mg-nav-link" href="/manager/campaigns">کمپین‌ها</a>
-  <a class="mg-nav-link" href="/manager/rewards">پاداش کارکنان</a>
-  <a class="mg-nav-link" href="/manager/settings">تنظیمات</a>
-  <a class="mg-nav-link" href="/admin/devices">گوشی‌ها</a>
-  <a class="mg-nav-link" href="/manager/security">ورود دومرحله‌ای</a>
+  {% for href, label in [
+    ("/manager/card", "کارت امروز"),
+    ("/manager/decisions", "تصمیم‌های باز"),
+    ("/manager/cards", "تاریخچهٔ کارت‌ها"),
+    ("/manager/staff", "کارکنان"),
+    ("/manager/baseline", "شمارش اولیه"),
+    ("/manager/items", "اقلام و کد کالا"),
+    ("/manager/campaigns", "کمپین‌ها"),
+    ("/manager/rewards", "پاداش کارکنان"),
+    ("/manager/settings", "تنظیمات"),
+    ("/admin/devices", "گوشی‌ها"),
+    ("/manager/security", "ورود دومرحله‌ای"),
+  ] %}
+  <a class="mg-nav-link" href="{{ href }}"{% if here == href or here.startswith(href ~ "/") %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
 </nav>

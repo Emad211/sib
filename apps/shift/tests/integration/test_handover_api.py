@@ -705,18 +705,15 @@ def test_only_the_two_people_of_a_flow_may_count_advance_or_answer(client: TestC
         assert "دو نفرِ همین تحویل" in response.json()["error"]["message"], f"{step}: {response.text}"
 
 
-def test_the_manager_reads_any_flow_but_never_counts_in_it(client: TestClient) -> None:
-    """The admin sees every flow's status (no reference figure travels); the count stays the two people's."""
+def test_the_manager_does_not_read_a_flow_of_two_other_people(client: TestClient) -> None:
+    """The flow belongs to its two people; the manager reads the day on the card, not inside their handover."""
     _baseline(client)
     incoming = _phone(client, "reception")
     handover_id = _start(client, incoming)["handover_id"]
     manager = _phone(client, "manager")
 
-    seen = client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, manager))
-    assert seen.status_code == 200, seen.text
-    assert "reference" not in seen.text
+    assert client.get(f"/api/v1/handover/{handover_id}", headers=_as(client, manager)).status_code == 403
     assert _item(client, manager, handover_id, PARA, 0).status_code == 403
-    assert _advance(client, manager, handover_id).status_code == 403
 
 
 # --- whose count it is (A4) ----------------------------------------------------------------------

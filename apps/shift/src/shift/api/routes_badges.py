@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 
 from shift.api import deps
+from shift.api.routes_web import tile_allowed
 from shift.domain.permissions import Permission
 from shift.services.auth import Principal
 from shift.services.purchase import PURCHASE_PERMISSIONS
@@ -44,16 +45,17 @@ def _events(request: Request, principal: Principal) -> int:
 
 
 def _purchase(request: Request, principal: Principal) -> int:
-    """Parcels to count, shelf charges and returns to confirm, and (for a decider) orders waiting."""
-    shift = deps.running_shift(request)
-    purchase = request.app.state.purchase
-    inbox = purchase.state(principal, shift).inbox
-    waiting = 0
-    if inbox is not None:
-        waiting = len(inbox["parcels_to_count"]) + len(inbox["restock_to_confirm"]) + len(inbox["return_to_confirm"])
-    if Permission.PURCHASE_ORDER_DECIDE in principal.permissions:
-        waiting += len(purchase.pending(shift).orders)
-    return waiting
+    """Parcels to count and shelf charges and returns to confirm."""
+    inbox = request.app.state.purchase.state(principal, deps.running_shift(request)).inbox
+    if inbox is None:
+        return 0
+    return len(inbox["parcels_to_count"]) + len(inbox["restock_to_confirm"]) + len(inbox["return_to_confirm"])
+
+
+def _card(request: Request, _principal: Principal) -> int:
+    """The manager's orders waiting for a decision and the parcels whose payment is locked: both are decided on the card."""
+    pending = request.app.state.purchase.pending(deps.running_shift(request))
+    return len(pending.orders) + len(pending.locked_deliveries)
 
 
 def _accountant_queue(request: Request, principal: Principal) -> int:
@@ -75,6 +77,7 @@ _TILES: tuple[tuple[str, frozenset[Permission], Counter], ...] = (
     ("/events", frozenset({Permission.EVENTS_APPEND}), _events),
     ("/purchase", frozenset(PURCHASE_PERMISSIONS), _purchase),
     ("/accountant/queue", frozenset({Permission.ACCOUNTANT_QUEUE_VIEW}), _accountant_queue),
+    ("/manager/card", frozenset({Permission.DAILY_CARD_VIEW}), _card),
     ("/manager/decisions", frozenset({Permission.DAILY_CARD_VIEW}), _decisions),
     ("/manager/rewards", frozenset({Permission.REWARD_GRANT}), _rewards),
 )
@@ -86,7 +89,7 @@ def badges(request: Request, response: Response, principal: SessionUser) -> dict
     response.headers["Cache-Control"] = "no-store"
     counts: dict[str, int] = {}
     for href, needs, count in _TILES:
-        if not principal.permissions & needs:
+        if not tile_allowed(href, needs, principal):
             continue
         try:
             waiting = count(request, principal)

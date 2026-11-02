@@ -195,12 +195,14 @@ def test_the_shift_doctor_declares_presence_and_nobody_else_does(off_shift_clien
     assert refused.status_code == 403, "a nurse comes on shift by taking over, not by a button"
 
 
-def test_the_manager_home_lists_every_manager_page_and_the_nurse_home_none_of_them(on_shift_client: TestClient) -> None:
-    """The admin phone opens everything from the home screen, including the decisions and two-step pages."""
+def test_the_manager_home_shows_manager_work_only_and_the_nurse_home_none_of_it(on_shift_client: TestClient) -> None:
+    """The manager's phone is the manager's: the pages of the shift staff, the store and the accountant stay off it."""
     _session(on_shift_client, "manager")
     manager_home = on_shift_client.get("/").text
-    for path in ("/manager/decisions", "/manager/security", "/manager/card", "/admin/devices", "/purchase", "/events"):
+    for path in ("/manager/decisions", "/manager/security", "/manager/card", "/manager/staff", "/admin/devices"):
         assert f'href="{path}"' in manager_home, path
+    for path in ("/handover", "/events", "/purchase", "/accountant/queue", "/rewards"):
+        assert f'href="{path}"' not in manager_home, path
 
     on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
     _session(on_shift_client, "nurse")
@@ -217,9 +219,9 @@ def test_the_home_screen_groups_the_tiles_by_who_uses_them(on_shift_client: Test
     """A tester told «همه‌چیز یک‌جا» cannot tell which job is whose: each group says which roles it is for."""
     _session(on_shift_client, "manager")
     manager_home = on_shift_client.get("/").text
-    for group in ("shift", "store", "accountant", "manager"):
-        assert f'data-group="{group}"' in manager_home, group
-    assert manager_home.index('data-group="shift"') < manager_home.index('data-group="manager"')
+    assert 'data-group="manager"' in manager_home
+    for group in ("shift", "store", "accountant"):
+        assert f'data-group="{group}"' not in manager_home, group
 
     on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
     _session(on_shift_client, "nurse")
@@ -227,3 +229,9 @@ def test_the_home_screen_groups_the_tiles_by_who_uses_them(on_shift_client: Test
     assert 'data-group="shift"' in nurse_home
     for group in ("accountant", "manager"):  # she takes in parcels, so the store group stays
         assert f'data-group="{group}"' not in nurse_home, group
+
+    on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
+    _session(on_shift_client, "multi_role")  # reception + accountant: both groups, never the manager's
+    both = on_shift_client.get("/").text
+    assert 'data-group="shift"' in both and 'data-group="accountant"' in both
+    assert 'data-group="manager"' not in both

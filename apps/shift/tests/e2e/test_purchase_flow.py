@@ -219,6 +219,12 @@ def browser() -> Generator[Browser]:
 def _open_phone(browser: Browser) -> tuple[BrowserContext, Page]:
     """A phone-sized context; the service worker is blocked so a cache never hides a live answer."""
     context = browser.new_context(viewport=PHONE_VIEWPORT, is_mobile=True, has_touch=True, service_workers="block")
+    # The journeys fill in forms the page folds by default; the folding itself has its own test below.
+    context.add_init_script(
+        "sessionStorage.setItem('shift:purchase:fold', JSON.stringify(Object.fromEntries("
+        "['decide','place','draft','receive','transit','invoice','return','restock','shelf-return','inbox','count','sample']"
+        ".map(name => ['purchase-' + name, 0]))))"
+    )
     return context, context.new_page()
 
 
@@ -577,3 +583,33 @@ def test_the_storekeeper_records_the_stores_opening_count_on_day_one(live_shift:
     finally:
         for phone in phones:
             phone.close()
+
+
+@pytest.mark.e2e
+def test_the_long_purchase_page_folds_each_section_and_keeps_the_waiting_ones_open(
+    live_shift: LiveShift, browser: Browser
+) -> None:
+    """A manager holds every section; forms fold under their title and the ones with work waiting stay open."""
+    context = browser.new_context(viewport=PHONE_VIEWPORT, is_mobile=True, has_touch=True, service_workers="block")
+    page = context.new_page()
+    try:
+        _login(page, live_shift.base_url, MANAGER)
+        page.goto(f"{live_shift.base_url}/purchase", wait_until="domcontentloaded")
+        page.wait_for_selector("#purchase-draft:not([hidden]) .pu-fold", timeout=15000)
+
+        assert page.locator("#purchase-draft").get_attribute("class").count("pu-folded") == 1, "a form starts folded"
+        assert page.locator("#purchase-draft .pu-fold").get_attribute("aria-expanded") == "false"
+        assert not page.locator("#purchase-draft [data-body]").is_visible()
+        assert page.locator("#purchase-decide .pu-fold").get_attribute("aria-expanded") == "true", (
+            "waiting work is open"
+        )
+
+        page.click("#purchase-draft .pu-fold")
+        assert page.locator("#purchase-draft [data-body]").is_visible()
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_selector("#purchase-draft .pu-fold", timeout=15000)
+        assert page.locator("#purchase-draft .pu-fold").get_attribute("aria-expanded") == "true", (
+            "the choice is remembered"
+        )
+    finally:
+        context.close()

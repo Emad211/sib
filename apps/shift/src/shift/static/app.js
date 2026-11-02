@@ -379,6 +379,9 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    // The manager's menu is one scrollable row: bring the page you are on into view.
+    const here = document.querySelector('.mg-nav-link[aria-current="page"]');
+    if (here && here.scrollIntoView) here.scrollIntoView({ inline: "center", block: "nearest" });
     showWhoAmI();
     requestPersistentStorage();
     updateNetworkStatus();

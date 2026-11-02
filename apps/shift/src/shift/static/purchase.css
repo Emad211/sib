@@ -41,6 +41,36 @@
   display: none;
 }
 
+.pu-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.pu-fold::after {
+  content: "▾";
+  font-size: 1rem;
+  color: var(--color-text-muted);
+}
+
+.pu-folded .pu-fold::after {
+  content: "◂";
+}
+
+.pu-folded > :not(h2) {
+  display: none;
+}
+
 .pu-card {
   padding: 0.875rem;
   margin-bottom: 0.75rem;

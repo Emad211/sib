@@ -590,6 +590,63 @@
     if (section) section.hidden = !visible;
   }
 
+  // ---- folding: a long page folds each section under its title; the lists with work waiting stay open.
+  var FOLD_KEY = "shift:purchase:fold";
+  var WAITING_SECTIONS = ["purchase-decide", "purchase-place", "purchase-inbox"];
+
+  function readFolds() {
+    try {
+      return JSON.parse(window.sessionStorage.getItem(FOLD_KEY) || "{}") || {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function writeFolds(folds) {
+    try {
+      window.sessionStorage.setItem(FOLD_KEY, JSON.stringify(folds));
+    } catch (error) {
+      /* private mode: the page still works, it just forgets */
+    }
+  }
+
+  function setFolded(section, folded) {
+    section.classList.toggle("pu-folded", folded);
+    var button = section.querySelector(".pu-fold");
+    if (button) button.setAttribute("aria-expanded", folded ? "false" : "true");
+  }
+
+  function settleFolds() {
+    var sections = Array.prototype.slice.call(document.querySelectorAll(".pu-section")).filter(function (section) {
+      return !section.hidden;
+    });
+    var openAll = sections.length <= 2;
+    var saved = readFolds();
+    sections.forEach(function (section) {
+      if (section.dataset.foldReady) return;
+      section.dataset.foldReady = "1";
+      var title = section.querySelector(".card-title");
+      if (title && !title.querySelector(".pu-fold")) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "pu-fold";
+        button.textContent = title.textContent;
+        title.textContent = "";
+        title.appendChild(button);
+        button.addEventListener("click", function () {
+          var folded = !section.classList.contains("pu-folded");
+          setFolded(section, folded);
+          var folds = readFolds();
+          folds[section.id] = folded ? 1 : 0;
+          writeFolds(folds);
+        });
+      }
+      var remembered = saved[section.id];
+      var open = openAll || WAITING_SECTIONS.indexOf(section.id) !== -1;
+      setFolded(section, remembered === undefined ? !open : remembered === 1);
+    });
+  }
+
   /** The manager's decisions: approve, reject, or send the order back with a short note (P-02). */
   function renderDecide() {
     var orders = clinic.orders;
@@ -1684,6 +1741,7 @@
     renderShelfReturn();
     renderCount();
     renderSample();
+    settleFolds();
   }
 
   document.addEventListener("DOMContentLoaded", function () {
