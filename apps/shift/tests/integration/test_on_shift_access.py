@@ -143,23 +143,37 @@ def test_a_second_receptionist_declares_presence(off_shift_client: TestClient) -
     assert "parcel.handle" in after["permissions"]
 
 
-def test_the_presence_button_is_on_the_home_screen_until_it_is_pressed(
+def test_an_off_shift_receptionist_sees_only_the_handover_and_no_presence_button(
     off_shift_client: TestClient,
 ) -> None:
-    """ADR-021 in the UI: the second receptionist presses one button and her shift opens."""
-    headers, me = _session(off_shift_client, "multi_role")
+    """Owner rule (ADR-030): until they take over, reception and nursing see the handover tile and nothing else."""
+    headers, me = _session(off_shift_client, "multi_role")  # reception + accountant, nobody took over
     assert me["on_shift"] == []
-    home = off_shift_client.get("/")
-    assert "حضور در شیفت" in home.text
-    assert 'data-presence-role="reception"' in home.text
+    home = off_shift_client.get("/").text
+    assert 'href="/handover"' in home
+    for path in ("/events", "/purchase", "/rewards", "/accountant/queue", "/accountant/prices"):
+        assert f'href="{path}"' not in home, path
+    assert "data-presence-role=" not in home, "no shortcut: the shift opens by taking over"
+    assert OFF_SHIFT_MESSAGE in home
 
+    # The route itself is unchanged (a later decision may bring the shortcut back); only the home screen is.
     declared = off_shift_client.post("/api/v1/shift/presence", json={"role": "reception"}, headers=headers)
-
     assert declared.status_code == 201, declared.text
-    assert declared.json()["message"] == "حضور شما در این شیفت ثبت شد."
-    after = off_shift_client.get("/")
-    assert 'data-presence-role="reception"' not in after.text, "the button is done once she is on shift"
-    assert OFF_SHIFT_MESSAGE not in after.text
+
+
+def test_an_off_shift_nurse_sees_only_the_handover_tile(off_shift_client: TestClient) -> None:
+    _session(off_shift_client, "nurse")
+    home = off_shift_client.get("/").text
+    assert 'href="/handover"' in home
+    for path in ("/events", "/purchase", "/rewards"):
+        assert f'href="{path}"' not in home, path
+
+
+def test_taking_over_opens_the_rest_of_the_home_screen(on_shift_client: TestClient) -> None:
+    _session(on_shift_client, "reception")
+    home = on_shift_client.get("/").text
+    for path in ("/handover", "/events", "/rewards"):
+        assert f'href="{path}"' in home, path
 
 
 def test_a_nurse_has_no_presence_button(off_shift_client: TestClient) -> None:
@@ -231,10 +245,14 @@ def test_the_home_screen_groups_the_tiles_by_who_uses_them(on_shift_client: Test
         assert f'data-group="{group}"' not in nurse_home, group
 
     on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
-    _session(on_shift_client, "multi_role")  # reception + accountant: both groups, never the manager's
-    both = on_shift_client.get("/").text
-    assert 'data-group="shift"' in both and 'data-group="accountant"' in both
-    assert 'data-group="manager"' not in both
+    _session(on_shift_client, "multi_role")  # reception + accountant, but nobody handed her the shift yet
+    waiting = on_shift_client.get("/").text
+    assert 'data-group="shift"' in waiting, "the handover tile"
+    assert 'data-group="accountant"' not in waiting and 'data-group="manager"' not in waiting
+
+    on_shift_client.post("/api/v1/auth/logout", headers=_headers(on_shift_client))
+    _session(on_shift_client, "accountant")  # a free role never waits for a shift
+    assert 'data-group="accountant"' in on_shift_client.get("/").text
 
 
 # --- who is on shift, shown to everybody (ADR-029) -------------------------------------------------

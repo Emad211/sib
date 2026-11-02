@@ -16,7 +16,7 @@ from shift.domain.checklist_rules import Frequency
 from shift.domain.handover_fsm import HandoverFlow
 from shift.domain.handover_steps import FLOW_COUNT_LOCATIONS, FLOW_OWNER_ROLES
 from shift.domain.item_icons import icon_for
-from shift.domain.on_shift import effective_permissions, held_roles, off_shift_notice
+from shift.domain.on_shift import effective_permissions, has_bound_role, held_roles, off_shift_notice
 from shift.domain.permissions import Permission, Role
 from shift.services.auth import Principal
 from shift.services.catalog import CatalogService, ItemKind
@@ -133,12 +133,23 @@ def duty_permissions(principal: Principal | None) -> frozenset[Permission]:
     return effective_permissions(others, principal.on_shift_roles) if others else frozenset()
 
 
+# Owner rule (ADR-030): a receptionist or nurse who has not taken the shift over sees the handover and nothing else.
+_BEFORE_THE_SHIFT = frozenset({"/handover", "/handover/baseline"})
+
+
 def tile_allowed(href: str, needs: frozenset[Permission], principal: Principal | None) -> bool:
-    """Whether this person's home shows (and counts) the tile: the manager's tiles by permission, the rest by role."""
+    """Whether this person's home shows (and counts) the tile: the manager's tiles by permission, the rest by role.
+
+    A person who holds a shift-bound role and is not on shift yet gets only the handover tile: no rewards,
+    no records, no store, whatever other role they also hold. Their permissions are unchanged; this is the
+    home screen's rule, so the shift opens by taking over and nothing else invites them in before.
+    """
     if principal is None:
         return False
     if tile_group(href) == "manager":
         return bool(principal.permissions & needs)
+    if has_bound_role(principal.roles) and not principal.on_shift_roles and href not in _BEFORE_THE_SHIFT:
+        return False
     return bool(duty_permissions(principal) & needs)
 
 
@@ -362,8 +373,10 @@ def get_home(request: Request) -> HTMLResponse:
     )
 
 
-# ADR-021: the two roles whose shift opens with «حضور در شیفت» instead of taking the box over.
-_PRESENCE_LABELS = {"reception": "پذیرش (شیفت دوم)", "shift_doctor": "پزشک شیفت"}
+# ADR-021: the shift doctor's shift opens with «حضور در شیفت». Reception and nursing open theirs by taking
+# the shift over and nothing else (ADR-030), so the home screen offers the receptionist no shortcut; the
+# presence route stays, so a later decision can bring the button back for a second receptionist.
+_PRESENCE_LABELS = {"shift_doctor": "پزشک شیفت"}
 
 
 def _presence_options(principal: Principal | None) -> list[dict[str, str]]:
