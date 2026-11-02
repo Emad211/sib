@@ -40,8 +40,8 @@
 
   function paint(card) {
     var shift = card.shift;
-    var hours = fa(shift.from) + "–" + fa(shift.to);
-    if (brandShift) brandShift.textContent = "شیفت " + shift.name + " · " + hours;
+    var hours = fa(shift.from) + " تا " + fa(shift.to);
+    if (brandShift) brandShift.textContent = shift.name + " · " + hours;
     if (!strip) return;
     document.getElementById("shift-name").textContent = "شیفت " + shift.name;
     document.getElementById("shift-when").textContent = fa(shift.date) + " · " + hours;
