@@ -23,6 +23,16 @@
 {% endif %}
 
 {% if tiles %}
+<section id="shift-strip" class="shift-strip hidden" aria-labelledby="shift-name">
+  <div class="shift-head">
+    <span class="shift-live" aria-hidden="true"></span>
+    <strong id="shift-name" class="shift-name"></strong>
+    <span id="shift-when" class="shift-when"></span>
+  </div>
+  <ul id="shift-people" class="shift-people" role="list"></ul>
+  <p id="shift-empty" class="shift-empty hidden">هنوز کسی شیفت را تحویل نگرفته است.</p>
+  <p id="shift-me" class="shift-me hidden" role="status"></p>
+</section>
 <h1 class="home-title">کارهای من</h1>
 <p id="badge-summary" class="badge-summary hidden" role="status" aria-live="polite"></p>
 {% for group in tile_groups %}

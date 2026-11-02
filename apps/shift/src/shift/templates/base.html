@@ -33,7 +33,10 @@
     <div class="header-inner">
       <a href="/" class="brand" aria-label="صفحه اصلی شیفت">
         <img src="/static/icons/192.png" alt="لوگو" class="brand-icon">
-        <span>شیفت</span>
+        <span class="brand-text">
+          <span>شیفت</span>
+          <small id="brand-shift" class="brand-shift" aria-live="polite"></small>
+        </span>
       </a>
 
       <div class="status-bar">
@@ -84,6 +87,7 @@
   <script src="/static/outbox-idb.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/pwa.js"></script>
+  <script src="/static/shift-info.js"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

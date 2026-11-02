@@ -235,3 +235,43 @@ def test_the_home_screen_groups_the_tiles_by_who_uses_them(on_shift_client: Test
     both = on_shift_client.get("/").text
     assert 'data-group="shift"' in both and 'data-group="accountant"' in both
     assert 'data-group="manager"' not in both
+
+
+# --- who is on shift, shown to everybody (ADR-029) -------------------------------------------------
+
+
+def test_the_shift_card_names_the_running_shift_and_who_is_on_it(on_shift_client: TestClient) -> None:
+    """Everybody can see which shift is running and who holds it, so nobody has to guess."""
+    assert on_shift_client.get("/api/v1/shift/now").status_code == 401
+
+    _session(on_shift_client, "reception")
+    card = on_shift_client.get("/api/v1/shift/now").json()
+    assert card["shift"]["name"] in {"صبح", "عصر", "شب"}
+    assert set(card["shift"]) >= {"name", "date", "from", "to"}
+    people = {person["name"]: person for person in card["people"]}
+    assert set(people) == {"پذیرش یک", "پرستار یک"}, "the two custodians the seed puts on shift"
+    assert people["پذیرش یک"]["roles"] == ["پذیرش"] and people["پذیرش یک"]["me"] is True
+    assert people["پرستار یک"]["me"] is False
+    assert card["me"] == {"on_shift": True}
+
+
+def test_the_shift_card_tells_an_off_shift_nurse_she_is_not_on_it_and_a_manager_nothing(
+    off_shift_client: TestClient,
+) -> None:
+    _session(off_shift_client, "nurse")
+    card = off_shift_client.get("/api/v1/shift/now").json()
+    assert card["people"] == [], "nobody took over in this app"
+    assert card["me"] == {"on_shift": False}
+
+    off_shift_client.post("/api/v1/auth/logout", headers=_headers(off_shift_client))
+    _session(off_shift_client, "manager")
+    assert off_shift_client.get("/api/v1/shift/now").json()["me"] == {"on_shift": None}, (
+        "a manager is never shift-bound"
+    )
+
+
+def test_the_header_and_the_home_screen_carry_the_shift_card(on_shift_client: TestClient) -> None:
+    _session(on_shift_client, "nurse")
+    home = on_shift_client.get("/").text
+    assert 'id="brand-shift"' in home, "the header says which shift is running on every page"
+    assert 'id="shift-strip"' in home and 'id="shift-people"' in home

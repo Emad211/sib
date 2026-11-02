@@ -27,6 +27,7 @@ from shift.api import (
     routes_purchase,
     routes_rewards,
     routes_settings,
+    routes_shift,
     routes_web,
 )
 from shift.api.errors import install_error_handlers
@@ -324,6 +325,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(routes_auth.router)
     app.include_router(routes_badges.router)
+    app.include_router(routes_shift.router)
     app.include_router(routes_devices.router)
     app.include_router(
         routes_catalog.build_catalog_router(

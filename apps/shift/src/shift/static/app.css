@@ -144,6 +144,52 @@ body {
   text-decoration: none;
 }
 
+.brand-text { display: grid; line-height: 1.15; }
+.brand-shift { font-size: 0.6875rem; font-weight: 500; color: var(--color-text-muted); }
+.brand-shift:empty { display: none; }
+
+/* The shift card: which shift is running and who is on it. */
+.shift-strip {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.875rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0.875rem;
+}
+.shift-strip.hidden { display: none; }
+.shift-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.shift-live { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #16a34a; }
+.shift-name { font-size: 1rem; }
+.shift-when { font-size: 0.8125rem; color: var(--color-text-muted); }
+.shift-people { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.shift-person {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 999px;
+}
+.shift-person-me { border-color: var(--color-primary); }
+.shift-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-on-primary);
+  background: var(--color-primary-button);
+  border-radius: 50%;
+}
+.shift-person-text { display: grid; line-height: 1.2; font-size: 0.8125rem; }
+.shift-person-role { font-size: 0.6875rem; color: var(--color-text-muted); }
+.shift-empty, .shift-me { margin: 0.5rem 0 0; font-size: 0.8125rem; color: var(--color-text-muted); }
+.shift-me-on { color: #16a34a; font-weight: 600; }
+.shift-empty.hidden, .shift-me.hidden { display: none; }
+
 .brand-icon {
   width: 32px;
   height: 32px;
