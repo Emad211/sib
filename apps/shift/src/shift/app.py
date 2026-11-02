@@ -309,6 +309,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         for name, value in routes_web.BASELINE_HEADERS.items():
             response.headers.setdefault(name, value)
+        if request.url.path.startswith("/static/"):
+            # No header at all lets a phone keep an old script for hours (heuristic freshness) and an
+            # update never lands. Scripts and styles are re-checked each load (a cheap 304 by ETag);
+            # fonts and icons only change with a new file name, so they may be kept a day.
+            kept = request.url.path.startswith(("/static/fonts/", "/static/icons/"))
+            response.headers.setdefault("Cache-Control", "public, max-age=86400" if kept else "no-cache")
         if response.headers.get("content-type", "").startswith("text/html"):
             # The pages without their own policy (login, pairing) still run inline code, so the default
             # only forbids framing; the full policy stays with the pages that were written for it.

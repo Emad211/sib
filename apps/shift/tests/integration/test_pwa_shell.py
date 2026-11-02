@@ -218,3 +218,14 @@ def test_manifest_is_served_as_json_with_install_metadata(client: TestClient) ->
     assert response.headers["content-type"].startswith("application/manifest+json")
     assert data["display"] == "standalone"
     assert data["display_override"] == ["standalone", "minimal-ui"]
+
+
+def test_scripts_and_styles_are_rechecked_on_every_load_while_fonts_and_icons_may_be_kept(client: TestClient) -> None:
+    """Without a cache header a phone keeps an old script for hours (heuristic freshness), so an update never lands."""
+    for path in ("/static/handover.js", "/static/app.css", "/static/pwa.js"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert response.headers["cache-control"] == "no-cache", path
+        assert response.headers.get("etag"), f"{path} needs a validator so the re-check is a cheap 304"
+    for path in ("/static/fonts/Vazirmatn-Regular.woff2", "/static/icons/192.png"):
+        assert "max-age" in client.get(path).headers["cache-control"], path
